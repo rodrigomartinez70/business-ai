@@ -20,18 +20,31 @@ from ..auth import get_role
 
 router = APIRouter(prefix="/api/ingest", tags=["ingest"])
 
-# Solo tablas de negocio — nunca infraestructura interna
-TABLAS_PERMITIDAS = frozenset({
-    "habitaciones",
-    "canales_venta",
-    "huespedes",
-    "reservas",
-    "pagos",
-    "categorias_gasto",
-    "gastos",
-    "consumos_frigobar",
-    "consumos_servicios",
-})
+
+async def _primary_key_columns(tabla: str) -> list[str]:
+    rows = await config.db_pool.fetch("""
+        SELECT kcu.column_name
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.key_column_usage kcu
+            ON tc.constraint_name = kcu.constraint_name
+           AND tc.table_schema    = kcu.table_schema
+        WHERE tc.constraint_type = 'PRIMARY KEY'
+          AND tc.table_schema    = 'public'
+          AND tc.table_name      = $1
+        ORDER BY kcu.ordinal_position
+    """, tabla)
+    return [r["column_name"] for r in rows]
+
+
+async def _tablas_permitidas() -> frozenset[str]:
+    """Tablas de negocio disponibles para importación (excluye infraestructura interna)."""
+    exclude = set(config.CONFIG.get("schema", {}).get("exclude_tables", []))
+    rows = await config.db_pool.fetch("""
+        SELECT table_name FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+        ORDER BY table_name
+    """)
+    return frozenset(r["table_name"] for r in rows if r["table_name"] not in exclude)
 
 
 async def _columnas_insertables(tabla: str) -> list[dict]:
@@ -106,14 +119,15 @@ def _leer_csv(contenido: bytes) -> tuple[list[str], list[dict]]:
 @router.get("/tablas")
 async def listar_tablas(_rol: str = Depends(get_role)):
     """Lista las tablas disponibles para importación."""
-    return {"tablas": sorted(TABLAS_PERMITIDAS)}
+    tablas = await _tablas_permitidas()
+    return {"tablas": sorted(tablas)}
 
 
 @router.post("/{tabla}")
 async def importar_csv(
     tabla:   str,
     archivo: UploadFile = File(..., description="Archivo CSV a importar"),
-    modo:    str        = Query("validar", description="validar (dry-run) | insertar"),
+    modo:    str        = Query("validar", description="validar (dry-run) | insertar | upsert"),
     _rol:    str        = Depends(get_role),
 ):
     """
@@ -122,6 +136,7 @@ async def importar_csv(
     **Modos:**
     - `validar` — preview sin escribir: muestra columnas reconocidas, ignoradas y primeras 3 filas.
     - `insertar` — inserta en una transacción. Si falla alguna fila, rollback total e informe de error.
+    - `upsert`   — INSERT ... ON CONFLICT DO UPDATE usando la clave primaria de la tabla. Idempotente.
 
     **Reglas del CSV:**
     - Primera fila: nombres de columna (case-insensitive).
@@ -129,10 +144,11 @@ async def importar_csv(
     - Celdas vacías se tratan como NULL.
     - Separador: coma. Codificación: UTF-8, UTF-8 BOM o Latin-1.
     """
-    if tabla not in TABLAS_PERMITIDAS:
+    tablas_permitidas = await _tablas_permitidas()
+    if tabla not in tablas_permitidas:
         raise HTTPException(
             status_code=400,
-            detail=f"Tabla '{tabla}' no permitida. Disponibles: {sorted(TABLAS_PERMITIDAS)}",
+            detail=f"Tabla '{tabla}' no permitida. Disponibles: {sorted(tablas_permitidas)}",
         )
 
     cols_db = await _columnas_insertables(tabla)
@@ -168,7 +184,7 @@ async def importar_csv(
             "preview":            filas_proyectadas[:3],
         }
 
-    # ── modo insertar ──────────────────────────────────────────
+    # ── modos insertar / upsert ───────────────────────────────
     if config.ingest_pool is None:
         raise HTTPException(
             status_code=503,
@@ -177,7 +193,28 @@ async def importar_csv(
 
     cols_str     = ", ".join(cols_validas)
     placeholders = ", ".join(f"${i + 1}" for i in range(len(cols_validas)))
-    query        = f"INSERT INTO {tabla} ({cols_str}) VALUES ({placeholders})"
+
+    if modo == "upsert":
+        pk_cols = await _primary_key_columns(tabla)
+        if not pk_cols:
+            raise HTTPException(
+                status_code=400,
+                detail=f"La tabla '{tabla}' no tiene clave primaria — UPSERT no es posible.",
+            )
+        update_cols = [c for c in cols_validas if c not in pk_cols]
+        if not update_cols:
+            raise HTTPException(
+                status_code=400,
+                detail="Sin columnas a actualizar — todas las columnas del CSV son clave primaria.",
+            )
+        conflict = ", ".join(pk_cols)
+        updates  = ", ".join(f"{c} = EXCLUDED.{c}" for c in update_cols)
+        query = (
+            f"INSERT INTO {tabla} ({cols_str}) VALUES ({placeholders})"
+            f" ON CONFLICT ({conflict}) DO UPDATE SET {updates}"
+        )
+    else:
+        query = f"INSERT INTO {tabla} ({cols_str}) VALUES ({placeholders})"
 
     async with config.ingest_pool.acquire() as conn:
         async with conn.transaction():
@@ -202,8 +239,8 @@ async def importar_csv(
                     )
 
     return {
-        "modo":               "insertar",
+        "modo":               modo,
         "tabla":              tabla,
-        "filas_insertadas":   len(filas_proyectadas),
+        "filas_procesadas":   len(filas_proyectadas),
         "columnas_ignoradas": cols_ignoradas,
     }

@@ -24,8 +24,8 @@ async def agente_alertas(
     - **discord_payload**: JSON listo para POST a un webhook de Discord
     """
     kpis    = await calcular_kpis(periodo_dias)
-    alertas = evaluar_umbrales(kpis, config.CONFIG)
-    reporte = renderizar_reporte(kpis, alertas, config.CONFIG)
+    alertas = evaluar_umbrales(kpis)
+    reporte = renderizar_reporte(kpis, alertas, config.CONFIG, periodo_dias)
 
     tiene_critico  = any(a["nivel"] == "critico" for a in alertas)
     estado_general = "critico" if tiene_critico else "alerta" if alertas else "ok"

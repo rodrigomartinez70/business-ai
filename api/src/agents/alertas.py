@@ -1,128 +1,85 @@
 """
-Agente 8 — Indicadores y Alertas Tempranas.
+Agente de Indicadores y Alertas Tempranas.
 
-Calcula KPIs financieros directamente desde la DB (sin LLM) y evalúa
-umbrales definidos en config.yaml. Diseñado para ser llamado por cron.
+Calcula KPIs sin LLM (SQL puro) ejecutando las queries definidas en config.yaml.
+Cada KPI en config.yaml puede tener:
+  - sql:           query que retorna un único valor escalar
+  - unidad:        "%" | "moneda" | "número"
+  - umbral_minimo: alerta si valor < umbral
+  - umbral_maximo: alerta si valor > umbral
+Las variables {fecha_inicio}, {fecha_fin} y {periodo_dias} se sustituyen automáticamente.
 """
 
+import logging
 from datetime import date, timedelta
 
 from .. import config
+
+logger = logging.getLogger(__name__)
 
 
 # ─────────────────────────────────────────────────────────────
 # Cálculo de KPIs
 # ─────────────────────────────────────────────────────────────
 
-async def calcular_kpis(periodo_dias: int) -> dict:
-    """Ejecuta SQL determinístico para obtener KPIs del período."""
-    fecha_fin = date.today()
+async def calcular_kpis(periodo_dias: int) -> list[dict]:
+    """Ejecuta el SQL de cada KPI configurado y retorna la lista de resultados."""
+    fecha_fin    = date.today()
     fecha_inicio = fecha_fin - timedelta(days=periodo_dias - 1)
 
-    async with config.db_pool.acquire() as conn:
-        # Habitaciones activas
-        hab_activas = await conn.fetchval(
-            "SELECT COUNT(*) FROM habitaciones WHERE activa = TRUE"
+    kpis_cfg = [k for k in config.CONFIG.get("kpis", []) if "sql" in k]
+    resultados: list[dict] = []
+
+    for kpi in kpis_cfg:
+        sql = kpi["sql"].format(
+            fecha_inicio=fecha_inicio,
+            fecha_fin=fecha_fin,
+            periodo_dias=periodo_dias,
         )
+        try:
+            async with config.db_pool.acquire() as conn:
+                valor = await conn.fetchval(sql)
+            resultados.append({
+                "name":           kpi["name"],
+                "valor":          float(valor) if valor is not None else None,
+                "unidad":         kpi.get("unidad", "número"),
+                "umbral_minimo":  kpi.get("umbral_minimo"),
+                "umbral_maximo":  kpi.get("umbral_maximo"),
+            })
+        except Exception as e:
+            logger.warning(f"KPI '{kpi['name']}' falló: {e}")
+            resultados.append({
+                "name":   kpi["name"],
+                "valor":  None,
+                "unidad": kpi.get("unidad", "número"),
+                "error":  str(e),
+            })
 
-        # Ocupación: reservas con checkin activo hoy
-        reservas_checkin = await conn.fetchval(
-            "SELECT COUNT(*) FROM reservas WHERE estado = 'checkin'"
-        )
-        ocupacion_pct = round(
-            (reservas_checkin / hab_activas * 100) if hab_activas > 0 else 0.0, 1
-        )
-
-        # Ingresos de hospedaje y noches del período
-        row = await conn.fetchrow(
-            """
-            SELECT
-                COALESCE(SUM(total_hospedaje), 0) AS ingresos_hospedaje,
-                COALESCE(SUM(noches), 0)          AS total_noches
-            FROM reservas
-            WHERE fecha_entrada >= $1
-              AND fecha_entrada <= $2
-              AND estado IN ('checkin', 'checkout')
-            """,
-            fecha_inicio, fecha_fin,
-        )
-        ingresos_hospedaje = float(row["ingresos_hospedaje"])
-        total_noches = int(row["total_noches"])
-
-        adr    = round(ingresos_hospedaje / total_noches if total_noches > 0 else 0.0, 2)
-        revpar = round(
-            ingresos_hospedaje / (hab_activas * periodo_dias) if hab_activas > 0 else 0.0, 2
-        )
-
-        # Ingresos totales del período (pagos cobrados)
-        ingresos_total = float(await conn.fetchval(
-            """
-            SELECT COALESCE(SUM(monto), 0)
-            FROM pagos
-            WHERE fecha >= $1 AND fecha <= $2 AND estado = 'pagado'
-            """,
-            fecha_inicio, fecha_fin,
-        ))
-
-        # Gastos del período
-        gastos_total = float(await conn.fetchval(
-            "SELECT COALESCE(SUM(monto), 0) FROM gastos WHERE fecha >= $1 AND fecha <= $2",
-            fecha_inicio, fecha_fin,
-        ))
-
-        # Pagos pendientes de cobro (acumulado, no solo el período)
-        pagos_pendientes = float(await conn.fetchval(
-            "SELECT COALESCE(SUM(monto), 0) FROM pagos WHERE estado = 'pendiente'"
-        ))
-
-    gop           = round(ingresos_total - gastos_total, 2)
-    quema_diaria  = round(gastos_total / periodo_dias, 2) if periodo_dias > 0 else 0.0
-
-    return {
-        "fecha_inicio":     str(fecha_inicio),
-        "fecha_fin":        str(fecha_fin),
-        "periodo_dias":     periodo_dias,
-        "hab_activas":      int(hab_activas),
-        "reservas_checkin": int(reservas_checkin),
-        "ocupacion_pct":    ocupacion_pct,
-        "adr":              adr,
-        "revpar":           revpar,
-        "ingresos_total":   ingresos_total,
-        "gastos_total":     gastos_total,
-        "gop":              gop,
-        "quema_diaria":     quema_diaria,
-        "pagos_pendientes": pagos_pendientes,
-    }
+    return resultados
 
 
 # ─────────────────────────────────────────────────────────────
 # Evaluación de umbrales
 # ─────────────────────────────────────────────────────────────
 
-def evaluar_umbrales(kpis: dict, cfg: dict) -> list[dict]:
-    """Compara KPIs contra los umbrales de config.yaml → lista de alertas."""
-    umbrales = cfg.get("alertas", {}).get("umbrales", {})
-    alertas  = []
+def evaluar_umbrales(kpis: list[dict]) -> list[dict]:
+    """Compara cada KPI contra sus umbrales → lista de alertas."""
+    alertas: list[dict] = []
 
-    def _alerta(kpi: str, valor, umbral_desc: str, nivel: str):
-        alertas.append({"kpi": kpi, "valor": valor, "umbral": umbral_desc, "nivel": nivel})
+    for kpi in kpis:
+        valor = kpi.get("valor")
+        if valor is None:
+            continue
 
-    min_ocup = umbrales.get("ocupacion_minima_pct")
-    if min_ocup is not None and kpis["ocupacion_pct"] < min_ocup:
-        _alerta("Ocupación", f"{kpis['ocupacion_pct']}%", f"mínimo {min_ocup}%", "alerta")
+        umbral_min = kpi.get("umbral_minimo")
+        umbral_max = kpi.get("umbral_maximo")
 
-    gop_min = umbrales.get("gop_minimo")
-    if gop_min is not None and kpis["gop"] < gop_min:
-        nivel = "critico" if kpis["gop"] < 0 else "alerta"
-        _alerta("GOP", kpis["gop"], f"mínimo {gop_min}", nivel)
+        if umbral_min is not None and valor < umbral_min:
+            nivel = "critico" if valor < 0 else "alerta"
+            alertas.append({"kpi": kpi["name"], "valor": valor, "umbral": f"mínimo {umbral_min}", "nivel": nivel})
 
-    pend_max = umbrales.get("pagos_pendientes_max")
-    if pend_max is not None and kpis["pagos_pendientes"] > pend_max:
-        _alerta("Pagos pendientes", kpis["pagos_pendientes"], f"máximo {pend_max}", "alerta")
-
-    quema_max = umbrales.get("quema_caja_diaria_max")
-    if quema_max is not None and kpis["quema_diaria"] > quema_max:
-        _alerta("Quema diaria", kpis["quema_diaria"], f"máximo {quema_max}", "alerta")
+        if umbral_max is not None and valor > umbral_max:
+            alertas.append({"kpi": kpi["name"], "valor": valor, "umbral": f"máximo {umbral_max}", "nivel": "alerta"})
 
     return alertas
 
@@ -132,7 +89,6 @@ def evaluar_umbrales(kpis: dict, cfg: dict) -> list[dict]:
 # ─────────────────────────────────────────────────────────────
 
 def _fmt(valor: float, cfg: dict) -> str:
-    """Formatea un valor numérico como moneda según config.yaml."""
     currency  = cfg.get("currency", {})
     symbol    = currency.get("symbol", "$")
     sep_miles = currency.get("thousands_separator", ".")
@@ -140,14 +96,25 @@ def _fmt(valor: float, cfg: dict) -> str:
     decimales = int(currency.get("decimal_places", 0))
 
     formatted = f"{valor:,.{decimales}f}"
-    # Python usa coma para miles y punto para decimal — intercambiar
     formatted = (
         formatted
-        .replace(",", "\x00")   # miles → placeholder
-        .replace(".", sep_dec)   # punto → sep decimal del negocio
-        .replace("\x00", sep_miles)  # placeholder → sep miles del negocio
+        .replace(",", "\x00")
+        .replace(".", sep_dec)
+        .replace("\x00", sep_miles)
     )
     return f"{symbol}{formatted}"
+
+
+def _fmt_kpi(kpi: dict, cfg: dict) -> str:
+    valor = kpi.get("valor")
+    if valor is None:
+        return "—"
+    unidad = kpi.get("unidad", "número")
+    if unidad == "moneda":
+        return _fmt(valor, cfg)
+    if unidad == "%":
+        return f"{valor:.1f}%"
+    return f"{valor:,.0f}" if valor == int(valor) else f"{valor:,.2f}"
 
 
 def _estado_kpi(kpi_name: str, alertas: list[dict]) -> str:
@@ -158,33 +125,27 @@ def _estado_kpi(kpi_name: str, alertas: list[dict]) -> str:
     return f"{icono} {match['umbral']}"
 
 
-def renderizar_reporte(kpis: dict, alertas: list[dict], cfg: dict) -> str:
+def renderizar_reporte(kpis: list[dict], alertas: list[dict], cfg: dict, periodo_dias: int) -> str:
     biz_name = cfg.get("business", {}).get("name", "Negocio")
+    fecha_fin    = date.today()
+    fecha_inicio = fecha_fin - timedelta(days=periodo_dias - 1)
 
-    tiene_critico = any(a["nivel"] == "critico" for a in alertas)
-    if tiene_critico:
-        estado_general, icono_gral = "CRÍTICO", "🚨"
-    elif alertas:
-        estado_general, icono_gral = "ALERTA", "⚠️"
-    else:
-        estado_general, icono_gral = "OK", "✅"
+    tiene_critico  = any(a["nivel"] == "critico" for a in alertas)
+    estado_general = "CRÍTICO" if tiene_critico else "ALERTA" if alertas else "OK"
+    icono_gral     = "🚨" if tiene_critico else "⚠️" if alertas else "✅"
 
     lines = [
         f"## {icono_gral} KPIs — {biz_name}",
-        f"**Período:** {kpis['fecha_inicio']} → {kpis['fecha_fin']} ({kpis['periodo_dias']} días)",
+        f"**Período:** {fecha_inicio} → {fecha_fin} ({periodo_dias} días)",
         f"**Estado general:** {estado_general}",
         "",
         "| Indicador | Valor | Estado |",
         "|-----------|-------|--------|",
-        f"| Ocupación (hoy) | {kpis['ocupacion_pct']}% ({kpis['reservas_checkin']}/{kpis['hab_activas']} hab.) | {_estado_kpi('Ocupación', alertas)} |",
-        f"| ADR | {_fmt(kpis['adr'], cfg)} | ✅ OK |",
-        f"| RevPAR | {_fmt(kpis['revpar'], cfg)} | ✅ OK |",
-        f"| Ingresos período | {_fmt(kpis['ingresos_total'], cfg)} | ✅ OK |",
-        f"| Gastos período | {_fmt(kpis['gastos_total'], cfg)} | ✅ OK |",
-        f"| GOP período | {_fmt(kpis['gop'], cfg)} | {_estado_kpi('GOP', alertas)} |",
-        f"| Quema diaria | {_fmt(kpis['quema_diaria'], cfg)} | {_estado_kpi('Quema diaria', alertas)} |",
-        f"| Pagos pendientes | {_fmt(kpis['pagos_pendientes'], cfg)} | {_estado_kpi('Pagos pendientes', alertas)} |",
     ]
+
+    for kpi in kpis:
+        estado = _estado_kpi(kpi["name"], alertas) if kpi.get("valor") is not None else "❌ Error"
+        lines.append(f"| {kpi['name']} | {_fmt_kpi(kpi, cfg)} | {estado} |")
 
     if alertas:
         lines += ["", "### Alertas activas", ""]

@@ -41,7 +41,7 @@ async def reporte_semanal(
     fecha_fin:    Optional[date] = None,
     dias:         Optional[int]  = Query(None, ge=1, le=365, description="Últimos N días (alternativa a fecha_inicio/fecha_fin)"),
     formato:      str = "markdown",
-    _rol:         str = Depends(get_role),
+    rol:          str = Depends(get_role),
 ):
     """Reporte ejecutivo del negocio generado via pipeline LLM (schema-agnostic)."""
     if not fecha_fin:
@@ -58,7 +58,6 @@ async def reporte_semanal(
         f"Formatea la respuesta en markdown con tablas y secciones claras."
     )
 
-    rol   = "gerente"
     pasos = await generar_plan(pregunta, rol)
 
     if pasos:
