@@ -10,24 +10,6 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: test_admin
-          POSTGRES_PASSWORD: test_password
-          POSTGRES_DB: test_negocio_db
-        ports:
-          - 5435:5432
-        options: >-
-          --health-cmd "pg_isready -U test_admin -d test_negocio_db"
-          --health-interval 3s
-          --health-timeout 5s
-          --health-retries 15
-        volumes:
-          - ${{ github.workspace }}/postgres/init.sql:/docker-entrypoint-initdb.d/01_init.sql
-          - ${{ github.workspace }}/postgres/seed.sql:/docker-entrypoint-initdb.d/02_seed.sql
-
     steps:
       - uses: actions/checkout@v4
 
@@ -37,8 +19,10 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: |
-          pip install -r api/requirements.txt -r requirements-test.txt
+        run: pip install -r api/requirements.txt -r requirements-test.txt
+
+      - name: Start test database
+        run: docker compose -f docker-compose.test.yml up -d --wait
 
       - name: Run tests
         working-directory: api
@@ -52,3 +36,7 @@ jobs:
           ANTHROPIC_API_KEY: ""
           OLLAMA_URL: http://localhost:11434
         run: python -m pytest ../tests/ -v
+
+      - name: Stop test database
+        if: always()
+        run: docker compose -f docker-compose.test.yml down
