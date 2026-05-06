@@ -1,0 +1,5 @@
+# Alertas diarias — todos los días a las 08:00
+0 8 * * * /cron/alertas_diarias.sh >> /reportes/cron.log 2>&1
+
+# Reporte semanal — todos los lunes a las 09:00
+0 9 * * 1 /cron/reporte_semanal.sh >> /reportes/cron.log 2>&1

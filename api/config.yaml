@@ -1,0 +1,171 @@
+# ─────────────────────────────────────────────────────────────
+# Configuración de negocio para el agente text-to-SQL
+# Personalizar este archivo para cada cliente/negocio.
+# ─────────────────────────────────────────────────────────────
+
+business:
+  name: "Mi Negocio"
+  description: "Consultas sobre operaciones del negocio"
+  language: "es"
+  model_id: "asistente-ia"       # ID que expone el endpoint /api/v1/models
+
+# ─── Formato de moneda ───────────────────────────────────────
+currency:
+  symbol: "$"
+  thousands_separator: "."       # punto para miles: $1.234.567
+  decimal_separator: ","
+  decimal_places: 0              # 0 = sin decimales (pesos), 2 = centavos
+
+# ─── Roles y API keys ────────────────────────────────────────
+# Agregar o quitar roles según el negocio.
+# excluded_tables: tablas que este rol NO puede ver en el schema.
+roles:
+  - name: gerente
+    env_key: API_KEY_GERENTE
+    default_key: ger_cambia_esto
+    excluded_tables: []
+
+  - name: administracion
+    env_key: API_KEY_ADMINISTRACION
+    default_key: adm_cambia_esto
+    excluded_tables: []
+
+  - name: recepcion
+    env_key: API_KEY_RECEPCION
+    default_key: rec_cambia_esto
+    excluded_tables:
+      - gastos
+      - categorias_gasto
+      - canales_venta
+
+# ─── Schema ──────────────────────────────────────────────────
+schema:
+  # Tablas que NUNCA aparecen en el schema del LLM (infraestructura interna)
+  exclude_tables:
+    - audit_log
+
+  # Anotaciones opcionales: enriquecen el schema auto-descubierto con
+  # descripciones y hints de dominio para que el LLM genere mejor SQL.
+  annotations:
+    habitaciones:
+      description: "Catálogo de habitaciones"
+      columns:
+        tipo: "Valores: 'Simple', 'Doble', 'Triple', 'Suite'"
+        tarifa_base: "Tarifa rack por noche en moneda local"
+
+    reservas:
+      columns:
+        estado: "Valores: 'confirmada', 'checkin', 'checkout', 'cancelada', 'no_show'"
+        noches: "Calculado automáticamente: fecha_salida - fecha_entrada"
+        total_hospedaje: "Calculado: noches * tarifa_noche"
+
+    canales_venta:
+      columns:
+        nombre: "Valores: 'Directo', 'Booking.com', 'Airbnb', 'Despegar', 'Agencia'"
+        comision_pct: "Porcentaje de comisión del canal"
+
+    consumos_frigobar:
+      columns:
+        total: "Calculado: cantidad * precio_unitario"
+        costo_total: "Calculado: cantidad * costo_unitario"
+        margen: "Calculado: cantidad * (precio_unitario - costo_unitario)"
+
+    consumos_servicios:
+      columns:
+        servicio: "Valores: 'Lavandería', 'Estacionamiento', 'Traslado'"
+        total: "Calculado: cantidad * precio_unitario"
+        costo_total: "Calculado: cantidad * costo_unitario"
+        margen: "Calculado: cantidad * (precio_unitario - costo_unitario)"
+
+# ─── KPIs del dominio ────────────────────────────────────────
+# Aparecen al final del schema que ve el LLM.
+# Describir cómo calcularlos con las tablas disponibles.
+kpis:
+  - name: "Ocupación"
+    description: "reservas con estado 'checkin' o 'checkout' / total habitaciones activas"
+  - name: "RevPAR"
+    description: "Revenue per Available Room: SUM(total_hospedaje) / habitaciones_activas / días_período"
+  - name: "ADR"
+    description: "Average Daily Rate: SUM(total_hospedaje) / SUM(noches)"
+  - name: "GOP"
+    description: "Gross Operating Profit: ingresos totales - gastos totales"
+
+# ─── Clasificación de columnas para el formateador ───────────
+# money_columns: si el nombre de columna contiene alguna de estas palabras
+#   → se formatea como moneda ($1.234)
+# non_money_columns: excepciones (aunque contengan una money_column word, no son dinero)
+money_columns:
+  - monto
+  - total
+  - ingreso
+  - gasto
+  - tarifa
+  - precio
+  - pago
+  - comision
+  - adr
+  - revpar
+  - gop
+  - revenue
+  - facturado
+  - hospedaje
+  - unitario
+  - rack
+  - honorario
+  - sueldo
+  - pagado
+  - margen
+
+non_money_columns:
+  - habitacion
+  - reserva
+  - cantidad
+  - numero
+  - num
+  - registro
+  - count
+  - noches
+
+# ─── Keywords para calcular GOP en síntesis local ────────────
+# El pre-cálculo Python usa estas palabras para clasificar filas
+# como ingreso o gasto antes de pasarlas a Ollama.
+income_keywords:
+  - ingreso
+  - hospedaje
+  - frigobar
+  - servicio
+  - total
+  - revenue
+  - monto
+
+expense_keywords:
+  - gasto
+  - costo
+  - egreso
+  - expense
+
+# ─── Agente 8: Umbrales de alertas ──────────────────────────
+# El endpoint /api/agents/alertas dispara alertas cuando los KPIs
+# superan estos umbrales. Comentar una línea para desactivar ese umbral.
+alertas:
+  periodo_dias: 7                    # Ventana de análisis en días
+  umbrales:
+    ocupacion_minima_pct: 40         # Alerta si ocupación hoy < 40%
+    gop_minimo: 0                    # Alerta si GOP del período es negativo
+    # pagos_pendientes_max: 1000000  # Alerta si hay más de X pendiente de cobro
+    # quema_caja_diaria_max: 50000   # Alerta si gasto diario promedio > X
+
+# ─── Aliases SQL sugeridos ───────────────────────────────────
+# Informan al LLM qué alias usar por convención.
+# No son obligatorios; el LLM puede ignorarlos si el negocio
+# cambia los nombres de tablas.
+table_aliases:
+  habitaciones: h
+  reservas: r
+  huespedes: hu
+  pagos: p
+  gastos: g
+  canales_venta: c
+  consumos_frigobar: f
+  consumos_servicios: cs
+  categorias_gasto: cg

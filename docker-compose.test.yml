@@ -1,0 +1,17 @@
+services:
+  postgres_test:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: test_admin
+      POSTGRES_PASSWORD: test_password
+      POSTGRES_DB: test_negocio_db
+    volumes:
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+      - ./postgres/seed.sql:/docker-entrypoint-initdb.d/02_seed.sql:ro
+    ports:
+      - "5435:5432"   # Puerto distinto para no colisionar con el DB de desarrollo
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test_admin -d test_negocio_db"]
+      interval: 3s
+      timeout: 5s
+      retries: 15

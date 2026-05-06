@@ -1,0 +1,16 @@
+:81 {
+    handle /app/* {
+        uri strip_prefix /app
+        reverse_proxy api:8000
+    }
+    handle /adminer/* {
+        basic_auth {
+            admin {$ADMINER_HASH}
+        }
+        uri strip_prefix /adminer
+        reverse_proxy adminer:8080
+    }
+    handle {
+        reverse_proxy open-webui:8080
+    }
+}

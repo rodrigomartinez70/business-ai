@@ -1,0 +1,26 @@
+# Variables de entorno — NUNCA subir al repo
+.env
+.env.*
+!.env.example
+
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+
+# Docker volumes locales
+postgres_data/
+caddy_data/
+caddy_config/
+open_webui_data/
+reportes_data/
+
+# Logs
+*.log
+cron.log

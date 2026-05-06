@@ -1,0 +1,125 @@
+services:
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      - ADMINER_HASH=${ADMINER_HASH}
+    ports:
+      - "81:81"
+      - "444:444"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - open-webui
+      - api
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: negocio_open_webui
+    restart: unless-stopped
+    environment:
+      - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY}
+      - WEBUI_AUTH=true
+      - ENABLE_SIGNUP=false
+      - ENABLE_OLLAMA_API=false
+      - OLLAMA_BASE_URL=http://ollama:11434
+      # API del negocio como modelo OpenAI-compatible (text-to-SQL)
+      - OPENAI_API_BASE_URLS=http://negocio_api:8000/api/v1
+      - OPENAI_API_KEYS=${API_KEY_GERENTE}
+      - DEFAULT_MODELS=${WEBUI_DEFAULT_MODEL:-asistente-ia}
+      - SCARF_NO_ANALYTICS=true
+      - DO_NOT_TRACK=true
+      - ANONYMIZED_TELEMETRY=false
+    volumes:
+      - open_webui_data:/app/backend/data
+    depends_on:
+      - api
+
+  api:
+    build: ./api
+    container_name: negocio_api
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://negocio_user:${NEGOCIO_USER_PASSWORD}@negocio_postgres:5432/${POSTGRES_DB}
+      - OLLAMA_URL=http://ollama:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2:3b}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-haiku-4-5}
+      - BUSINESS_CONFIG_PATH=/app/config.yaml
+      # Pool de escritura para /api/ingest — usa negocio_ingest (INSERT) o el admin
+      - INGEST_DATABASE_URL=postgresql://negocio_ingest:${NEGOCIO_INGEST_PASSWORD}@negocio_postgres:5432/${POSTGRES_DB}
+      # API keys por rol — definidas en .env
+      - API_KEY_GERENTE=${API_KEY_GERENTE}
+      - API_KEY_ADMINISTRACION=${API_KEY_ADMINISTRACION}
+      - API_KEY_RECEPCION=${API_KEY_RECEPCION}
+    volumes:
+      # config.yaml montado como volumen: cambios de negocio sin rebuild
+      - ./api/config.yaml:/app/config.yaml:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: negocio_postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+      - ./postgres/seed.sql:/docker-entrypoint-initdb.d/02_seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  adminer:
+    image: adminer
+    restart: unless-stopped
+
+  discord_bot:
+    build: ./discord_bot
+    container_name: negocio_discord_bot
+    restart: unless-stopped
+    environment:
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
+      - DISCORD_CHANNEL_ID=${DISCORD_CHANNEL_ID}
+      - DISCORD_API_KEY=${API_KEY_GERENTE}
+      - API_URL=http://negocio_api:8000
+      - DISCORD_MODEL_ID=${WEBUI_DEFAULT_MODEL:-asistente-ia}
+      - DISCORD_MAX_HISTORY=10
+    depends_on:
+      - api
+
+  cron:
+    image: alpine:3.19
+    restart: unless-stopped
+    entrypoint: >
+      sh -c "
+        apk add --no-cache curl &&
+        mkdir -p /reportes &&
+        crontab /cron/crontab &&
+        crond -f -l 2
+      "
+    environment:
+      - API_KEY_GERENTE=${API_KEY_GERENTE}
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}   # opcional — vacío = no enviar alertas
+    volumes:
+      - ./cron:/cron:ro
+      - reportes_data:/reportes
+    depends_on:
+      - api
+
+volumes:
+  caddy_data:
+  caddy_config:
+  open_webui_data:
+  postgres_data:
+  reportes_data:
