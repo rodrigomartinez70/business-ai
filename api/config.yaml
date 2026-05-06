@@ -78,17 +78,33 @@ schema:
         margen: "Calculado: cantidad * (precio_unitario - costo_unitario)"
 
 # ─── KPIs del dominio ────────────────────────────────────────
-# Aparecen al final del schema que ve el LLM.
-# Describir cómo calcularlos con las tablas disponibles.
+# description: texto que ve el LLM en el schema (siempre requerido)
+# sql:         query escalar para el agente de alertas (opcional)
+#              Variables disponibles: {fecha_inicio}, {fecha_fin}, {periodo_dias}
+# unidad:      "%" | "moneda" | "número"
+# umbral_minimo / umbral_maximo: disparan alertas si el valor cruza el umbral
 kpis:
   - name: "Ocupación"
-    description: "reservas con estado 'checkin' o 'checkout' / total habitaciones activas"
+    description: "reservas con estado 'checkin' / total habitaciones activas × 100"
+    sql: "SELECT ROUND((SELECT COUNT(*) FROM reservas WHERE estado = 'checkin') * 100.0 / NULLIF((SELECT COUNT(*) FROM habitaciones WHERE activa = TRUE), 0), 1)"
+    unidad: "%"
+    umbral_minimo: 40
+
+  - name: "ADR"
+    description: "Average Daily Rate: SUM(total_hospedaje) / SUM(noches) del período"
+    sql: "SELECT ROUND(COALESCE(SUM(total_hospedaje), 0) / NULLIF(COALESCE(SUM(noches), 0), 0), 2) FROM reservas WHERE fecha_entrada >= '{fecha_inicio}' AND fecha_entrada <= '{fecha_fin}' AND estado IN ('checkin', 'checkout')"
+    unidad: "moneda"
+
   - name: "RevPAR"
     description: "Revenue per Available Room: SUM(total_hospedaje) / habitaciones_activas / días_período"
-  - name: "ADR"
-    description: "Average Daily Rate: SUM(total_hospedaje) / SUM(noches)"
+    sql: "SELECT ROUND(COALESCE((SELECT SUM(total_hospedaje) FROM reservas WHERE fecha_entrada >= '{fecha_inicio}' AND fecha_entrada <= '{fecha_fin}' AND estado IN ('checkin', 'checkout')), 0) / NULLIF((SELECT COUNT(*) FROM habitaciones WHERE activa = TRUE), 0) / {periodo_dias}, 2)"
+    unidad: "moneda"
+
   - name: "GOP"
-    description: "Gross Operating Profit: ingresos totales - gastos totales"
+    description: "Gross Operating Profit: ingresos cobrados - gastos del período"
+    sql: "SELECT ROUND((SELECT COALESCE(SUM(monto), 0) FROM pagos WHERE fecha >= '{fecha_inicio}' AND fecha <= '{fecha_fin}' AND estado = 'pagado') - (SELECT COALESCE(SUM(monto), 0) FROM gastos WHERE fecha >= '{fecha_inicio}' AND fecha <= '{fecha_fin}'), 2)"
+    unidad: "moneda"
+    umbral_minimo: 0
 
 # ─── Clasificación de columnas para el formateador ───────────
 # money_columns: si el nombre de columna contiene alguna de estas palabras
@@ -144,16 +160,6 @@ expense_keywords:
   - egreso
   - expense
 
-# ─── Agente 8: Umbrales de alertas ──────────────────────────
-# El endpoint /api/agents/alertas dispara alertas cuando los KPIs
-# superan estos umbrales. Comentar una línea para desactivar ese umbral.
-alertas:
-  periodo_dias: 7                    # Ventana de análisis en días
-  umbrales:
-    ocupacion_minima_pct: 40         # Alerta si ocupación hoy < 40%
-    gop_minimo: 0                    # Alerta si GOP del período es negativo
-    # pagos_pendientes_max: 1000000  # Alerta si hay más de X pendiente de cobro
-    # quema_caja_diaria_max: 50000   # Alerta si gasto diario promedio > X
 
 # ─── Aliases SQL sugeridos ───────────────────────────────────
 # Informan al LLM qué alias usar por convención.

@@ -172,7 +172,7 @@ async def on_message(message: discord.Message):
                     )
                 else:
                     ignoradas = f"\n⚠️ Columnas ignoradas: `{', '.join(data['columnas_ignoradas'])}`" if data["columnas_ignoradas"] else ""
-                    texto = f"**Importación — `{tabla}`**\n✅ {data['filas_insertadas']} filas insertadas.{ignoradas}"
+                    texto = f"**Importación — `{tabla}`**\n✅ {data['filas_procesadas']} filas procesadas.{ignoradas}"
 
             elif cmd.startswith("!"):
                 # Comando desconocido

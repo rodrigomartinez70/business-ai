@@ -126,7 +126,7 @@ async def test_insertar_csv_valido(client, gerente_headers, cleanup_gastos):
     assert resp.status_code == 200
     data = resp.json()
     assert data["modo"] == "insertar"
-    assert data["filas_insertadas"] == 2
+    assert data["filas_procesadas"] == 2
 
     async with config.db_pool.acquire() as conn:
         despues = await conn.fetchval("SELECT COUNT(*) FROM gastos")
