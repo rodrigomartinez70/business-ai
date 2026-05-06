@@ -1,0 +1,54 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test_admin
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: test_negocio_db
+        ports:
+          - 5435:5432
+        options: >-
+          --health-cmd "pg_isready -U test_admin -d test_negocio_db"
+          --health-interval 3s
+          --health-timeout 5s
+          --health-retries 15
+        volumes:
+          - ${{ github.workspace }}/postgres/init.sql:/docker-entrypoint-initdb.d/01_init.sql
+          - ${{ github.workspace }}/postgres/seed.sql:/docker-entrypoint-initdb.d/02_seed.sql
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r api/requirements.txt -r requirements-test.txt
+
+      - name: Run tests
+        working-directory: api
+        env:
+          DATABASE_URL: postgresql://test_admin:test_password@localhost:5435/test_negocio_db
+          INGEST_DATABASE_URL: postgresql://test_admin:test_password@localhost:5435/test_negocio_db
+          BUSINESS_CONFIG_PATH: api/config.yaml
+          API_KEY_GERENTE: test-key-gerente
+          API_KEY_ADMINISTRACION: test-key-admin
+          API_KEY_RECEPCION: test-key-recepcion
+          ANTHROPIC_API_KEY: ""
+          OLLAMA_URL: http://localhost:11434
+        run: python -m pytest ../tests/ -v
