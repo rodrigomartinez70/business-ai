@@ -103,7 +103,8 @@ async def on_ready():
 async def on_message(message: discord.Message):
     if message.author == client.user:
         return
-    if message.channel.id != CHANNEL_ID:
+    channel_id = getattr(message.channel, "parent_id", None) or message.channel.id
+    if channel_id != CHANNEL_ID:
         return
 
     content = message.content.strip()
