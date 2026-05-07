@@ -144,7 +144,12 @@ def renderizar_reporte(kpis: list[dict], alertas: list[dict], cfg: dict, periodo
     ]
 
     for kpi in kpis:
-        estado = _estado_kpi(kpi["name"], alertas) if kpi.get("valor") is not None else "❌ Error"
+        if kpi.get("error"):
+            estado = "❌ Error"
+        elif kpi.get("valor") is not None:
+            estado = _estado_kpi(kpi["name"], alertas)
+        else:
+            estado = "— sin datos"
         lines.append(f"| {kpi['name']} | {_fmt_kpi(kpi, cfg)} | {estado} |")
 
     if alertas:
