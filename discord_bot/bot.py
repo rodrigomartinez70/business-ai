@@ -27,7 +27,6 @@ MAX_HISTORY   = int(os.getenv("DISCORD_MAX_HISTORY", "10"))
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "")
 MODEL_ID      = os.getenv("DISCORD_MODEL_ID", "asistente-ia")
 
-# Historial de conversación por canal (para consultas en lenguaje natural)
 histories: dict[int, list[dict]] = {}
 
 intents = discord.Intents.default()
@@ -50,7 +49,6 @@ Sin `!` → consulta en lenguaje natural al agente text-to-SQL."""
 
 
 def _split_message(text: str, limit: int = 1990) -> list[str]:
-    """Divide texto largo en chunks respetando el límite de Discord."""
     if len(text) <= limit:
         return [text]
     chunks = []
@@ -64,19 +62,21 @@ def _split_message(text: str, limit: int = 1990) -> list[str]:
     return chunks
 
 
-async def _get_markdown(url: str) -> str:
-    """Llama a un endpoint GET que devuelve texto markdown."""
+async def _get_json(url: str) -> dict:
     async with httpx.AsyncClient(timeout=120) as http:
-        response = await http.get(
-            url,
-            headers={"Authorization": f"Bearer {API_KEY}"},
-        )
+        response = await http.get(url, headers={"Authorization": f"Bearer {API_KEY}"})
+        response.raise_for_status()
+        return response.json()
+
+
+async def _get_markdown(url: str) -> str:
+    async with httpx.AsyncClient(timeout=120) as http:
+        response = await http.get(url, headers={"Authorization": f"Bearer {API_KEY}"})
         response.raise_for_status()
         return response.text
 
 
 async def _chat(messages: list[dict]) -> str:
-    """Llama al endpoint de chat completions y devuelve la respuesta."""
     async with httpx.AsyncClient(timeout=120) as http:
         response = await http.post(
             f"{API_URL}/api/v1/chat/completions",
@@ -88,10 +88,120 @@ async def _chat(messages: list[dict]) -> str:
 
 
 def _parse_dias(parts: list[str], default: int = 7) -> int:
-    """Extrae el argumento numérico de un comando (ej. ['!kpis', '14'] → 14)."""
     if len(parts) > 1 and parts[1].isdigit():
         return max(1, min(365, int(parts[1])))
     return default
+
+
+def _fmt_kpi_valor(kpi: dict) -> str:
+    valor = kpi.get("valor")
+    if valor is None:
+        return "—"
+    unidad = kpi.get("unidad", "número")
+    if unidad == "%":
+        return f"{valor:.1f}%"
+    if unidad == "moneda":
+        return f"${valor:,.0f}".replace(",", ".")
+    return f"{valor:,.0f}" if valor == int(valor) else f"{valor:.2f}"
+
+
+def _fmt_kpi_estado(kpi: dict, alertas: list[dict]) -> str:
+    if kpi.get("valor") is None:
+        return "— sin datos"
+    match = next((a for a in alertas if a["kpi"] == kpi["name"]), None)
+    if not match:
+        return "✅ OK"
+    icono = "🚨" if match["nivel"] == "critico" else "⚠️"
+    return f"{icono} {match['umbral']}"
+
+
+def _build_kpis_embed(data: dict, dias: int) -> discord.Embed:
+    estado = data.get("estado_general", "ok")
+    biz    = data.get("business_name", "Negocio")
+
+    color = discord.Color.green()
+    icono = "✅"
+    if estado == "alerta":
+        color = discord.Color.gold()
+        icono = "⚠️"
+    elif estado == "critico":
+        color = discord.Color.red()
+        icono = "🚨"
+
+    kpis    = data.get("kpis", [])
+    alertas = data.get("alertas", [])
+
+    embed = discord.Embed(
+        title=f"{icono} KPIs — {biz}",
+        description=f"Últimos **{dias} días** · Estado: **{estado.upper()}**",
+        color=color,
+    )
+
+    for kpi in kpis:
+        valor  = _fmt_kpi_valor(kpi)
+        estado_kpi = _fmt_kpi_estado(kpi, alertas)
+        embed.add_field(
+            name=kpi["name"],
+            value=f"{valor}\n{estado_kpi}",
+            inline=True,
+        )
+
+    if alertas:
+        alertas_txt = "\n".join(
+            f"{'🚨' if a['nivel'] == 'critico' else '⚠️'} **{a['kpi']}**: {a['valor']} (umbral: {a['umbral']})"
+            for a in alertas
+        )
+        embed.add_field(name="Alertas activas", value=alertas_txt, inline=False)
+
+    return embed
+
+
+def _build_uso_embed(data: dict) -> discord.Embed:
+    periodo  = data.get("periodo", {})
+    resumen  = data.get("resumen", {})
+    por_rol  = data.get("por_rol", [])
+    por_dia  = data.get("por_dia", [])
+
+    tasa     = resumen.get("tasa_exito_pct", 0)
+    color    = discord.Color.green() if tasa >= 95 else discord.Color.gold()
+
+    embed = discord.Embed(
+        title="📊 Uso del agente",
+        description=f"Período: {periodo.get('inicio')} → {periodo.get('fin')}",
+        color=color,
+    )
+
+    lat = resumen.get("duracion_promedio_ms")
+    lat_txt = f"{lat:,.0f} ms" if lat else "—"
+
+    embed.add_field(
+        name="Resumen",
+        value=(
+            f"**Consultas:** {resumen.get('total_consultas', 0)}\n"
+            f"**Exitosas:** {resumen.get('consultas_ok', 0)}\n"
+            f"**Errores:** {resumen.get('consultas_error', 0)}\n"
+            f"**Tasa éxito:** {tasa:.1f}%\n"
+            f"**Latencia prom.:** {lat_txt}"
+        ),
+        inline=True,
+    )
+
+    if por_rol:
+        rol_txt = "\n".join(
+            f"**{r['rol']}:** {r['consultas']} consultas"
+            for r in por_rol
+        )
+        embed.add_field(name="Por rol", value=rol_txt, inline=True)
+
+    if por_dia:
+        dias_recientes = por_dia[-5:]
+        dia_txt = "\n".join(
+            f"`{d['dia']}` — {d['consultas']} consultas"
+            for d in dias_recientes
+        )
+        embed.add_field(name="Actividad reciente", value=dia_txt, inline=False)
+
+    return embed
 
 
 @client.event
@@ -111,7 +221,6 @@ async def on_message(message: discord.Message):
     parts   = content.split()
     cmd     = parts[0].lower() if parts else ""
 
-    # ── Comandos de control ──────────────────────────────────
     if cmd in ("!reset", "!limpiar", "!nuevo"):
         histories.pop(message.channel.id, None)
         await message.reply("Historial limpiado.")
@@ -121,25 +230,24 @@ async def on_message(message: discord.Message):
         await message.channel.send(AYUDA)
         return
 
-    # ── Comandos de agentes (sin LLM) ────────────────────────
     async with message.channel.typing():
         try:
             if cmd == "!kpis":
                 dias = _parse_dias(parts)
-                texto = await _get_markdown(
-                    f"{API_URL}/api/agents/alertas?periodo_dias={dias}&formato=markdown"
-                )
-
-            elif cmd == "!reporte":
-                dias = _parse_dias(parts)
-                texto = await _get_markdown(
-                    f"{API_URL}/api/report/weekly?dias={dias}&formato=markdown"
-                )
+                data  = await _get_json(f"{API_URL}/api/agents/alertas?periodo_dias={dias}")
+                embed = _build_kpis_embed(data, dias)
+                await message.channel.send(embed=embed)
+                return
 
             elif cmd == "!uso":
-                texto = await _get_markdown(
-                    f"{API_URL}/api/report/usage?formato=markdown"
-                )
+                data  = await _get_json(f"{API_URL}/api/report/usage")
+                embed = _build_uso_embed(data)
+                await message.channel.send(embed=embed)
+                return
+
+            elif cmd == "!reporte":
+                dias  = _parse_dias(parts)
+                texto = await _get_markdown(f"{API_URL}/api/report/weekly?dias={dias}&formato=markdown")
 
             elif cmd == "!cargar":
                 if len(parts) < 2:
@@ -176,20 +284,16 @@ async def on_message(message: discord.Message):
                     texto = f"**Importación — `{tabla}`**\n✅ {data['filas_procesadas']} filas procesadas.{ignoradas}"
 
             elif cmd.startswith("!"):
-                # Comando desconocido
                 await message.reply(f"Comando no reconocido: `{cmd}`\nEscribe `!ayuda` para ver los comandos disponibles.")
                 return
 
             else:
-                # Consulta en lenguaje natural → historial + chat completions
                 channel_id = message.channel.id
                 if channel_id not in histories:
                     histories[channel_id] = []
-
                 histories[channel_id].append({"role": "user", "content": content})
                 if len(histories[channel_id]) > MAX_HISTORY:
                     histories[channel_id] = histories[channel_id][-MAX_HISTORY:]
-
                 texto = await _chat(histories[channel_id])
                 histories[channel_id].append({"role": "assistant", "content": texto})
 
