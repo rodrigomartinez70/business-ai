@@ -21,7 +21,7 @@ from . import config
 logger = logging.getLogger(__name__)
 
 # Carga guidelines de SQL desde archivo externo (opcional)
-_GUIDELINES_PATH = Path(__file__).parent.parent.parent / "sql_guidelines.md"
+_GUIDELINES_PATH = Path(__file__).parent.parent / "sql_guidelines.md"
 
 def _load_guidelines() -> str:
     if _GUIDELINES_PATH.exists():
