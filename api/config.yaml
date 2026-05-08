@@ -113,6 +113,7 @@ kpis:
 money_columns:
   - monto
   - total
+  - venta
   - ingreso
   - gasto
   - tarifa
