@@ -253,8 +253,10 @@ async def sintetizar_local(pregunta: str, resultados: list[dict]) -> str:
     for r in resultados:
         if r["ok"] and r["datos"]:
             partes.append(f"[{r['proposito']}]\n{_formatear_tabla(r['datos'])}")
-        elif not r["ok"]:
-            partes.append(f"[{r['proposito']}]\nSin datos disponibles.")
+
+    # Si no hay datos reales, no llamar al LLM — evita alucinaciones
+    if not partes:
+        return "No hay datos disponibles en la base de datos para responder esta consulta."
 
     contexto          = "\n\n".join(partes)
     resumen_calculado = _calcular_resumen_numerico(resultados)
@@ -264,20 +266,21 @@ async def sintetizar_local(pregunta: str, resultados: list[dict]) -> str:
 
 {resumen_calculado}
 
-Datos detallados de la base de datos (números en formato anglosajón: punto decimal, coma miles):
+Datos reales de la base de datos (números en formato anglosajón: punto decimal, coma miles):
 {contexto}
 
-INSTRUCCIONES:
-- El RESUMEN CALCULADO arriba es la fuente de verdad — úsalo para responder si hay GOP, ganancia o pérdida.
-- Usa los números EXACTAMENTE como aparecen — NO los recalcules.
+INSTRUCCIONES ESTRICTAS:
+- Reporta ÚNICAMENTE los números que aparecen en los datos de arriba.
+- NO inventes, NO estimes, NO uses conocimiento propio.
+- Si un dato no aparece arriba, NO lo menciones.
+- El RESUMEN CALCULADO es la fuente de verdad para totales.
 - {config.currency_hint()}
-- Responde en español, con markdown y negritas para los números clave.
-- No menciones SQL, pasos ni la estructura interna."""
+- Responde en español con markdown. No menciones SQL ni estructura interna."""
 
     system = (
         f"Eres un asistente de análisis de {biz_name}. "
-        "Presentas datos de base de datos de forma clara y profesional. "
-        "Nunca inventas ni recalculas números — reportas exactamente lo que recibes."
+        "Reportas ÚNICAMENTE los datos que recibes. "
+        "Si no tienes datos, lo dices claramente. NUNCA inventas números."
     )
     return await llamar_ollama(prompt, system)
 
