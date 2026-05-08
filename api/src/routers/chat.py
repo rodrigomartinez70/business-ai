@@ -10,7 +10,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from .. import config
-from ..agent import ejecutar_plan, ejecutar_sql, generar_plan, generar_sql, sintetizar_local
+from ..agent import ejecutar_plan, ejecutar_sql, formatear_plan_python, generar_plan, generar_sql
 from ..audit import registrar_auditoria
 from ..auth import get_role
 from ..formatting import formatear_respuesta
@@ -120,11 +120,11 @@ async def chat_completions(request: ChatRequest, rol: str = Depends(get_role)):
         pasos = await generar_plan(pregunta, rol)
         if pasos:
             tipo_flujo  = "plan"
-            modelo_llm  = "claude+ollama" if (config.ANTHROPIC_KEY and config.ANTHROPIC_KEY != "sk-ant-tu-clave-aqui") else "ollama"
+            modelo_llm  = "claude" if (config.ANTHROPIC_KEY and config.ANTHROPIC_KEY != "sk-ant-tu-clave-aqui") else "local"
             sql_log     = f"[plan:{len(pasos)} pasos]"
             logger.info(f"Ejecutando plan de {len(pasos)} pasos")
             resultados  = await ejecutar_plan(pasos, rol, pregunta)
-            respuesta   = await sintetizar_local(pregunta, resultados)
+            respuesta   = formatear_plan_python(resultados)
             filas_total = sum(len(r["datos"]) for r in resultados if r["ok"])
         else:
             sql, modelo_llm = await generar_sql(pregunta, rol)

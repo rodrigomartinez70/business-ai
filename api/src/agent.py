@@ -225,6 +225,52 @@ def _formatear_tabla(datos: list[dict]) -> str:
     return "\n".join(lineas)
 
 
+def _fmt_valor_md(val) -> str:
+    """Formatea un valor para tabla markdown respetando la config de moneda."""
+    if val is None:
+        return "—"
+    if not isinstance(val, (int, float, Decimal)):
+        return str(val)
+    cfg      = config.CONFIG.get("currency", {})
+    sep_m    = cfg.get("thousands_separator", ".")
+    sep_d    = cfg.get("decimal_separator", ",")
+    decimals = int(cfg.get("decimal_places", 0))
+    formatted = f"{float(val):,.{decimals}f}".replace(",", "\x00").replace(".", sep_d).replace("\x00", sep_m)
+    return formatted
+
+
+def formatear_plan_python(resultados: list[dict]) -> str:
+    """Formatea resultados de plan multi-paso como tablas markdown sin LLM."""
+    if not resultados:
+        return "No hay datos disponibles en la base de datos para responder esta consulta."
+
+    secciones = []
+    for r in resultados:
+        if not r.get("ok") or not r.get("datos"):
+            continue
+        datos     = r["datos"]
+        proposito = r["proposito"]
+
+        # Encabezado de sección
+        secciones.append(f"**{proposito}**")
+
+        # Cabecera de tabla
+        cols = list(datos[0].keys())
+        header    = "| " + " | ".join(cols) + " |"
+        separator = "| " + " | ".join("---" for _ in cols) + " |"
+        filas_md  = [header, separator]
+        for fila in datos:
+            celdas = [_fmt_valor_md(fila[c]) for c in cols]
+            filas_md.append("| " + " | ".join(celdas) + " |")
+
+        secciones.append("\n".join(filas_md))
+
+    if not secciones:
+        return "No hay datos disponibles en la base de datos para responder esta consulta."
+
+    return "\n\n".join(secciones)
+
+
 def _calcular_resumen_numerico(resultados: list[dict]) -> str:
     income_kw  = set(config.CONFIG.get("income_keywords",  []))
     expense_kw = set(config.CONFIG.get("expense_keywords", []))
