@@ -225,18 +225,20 @@ def _formatear_tabla(datos: list[dict]) -> str:
     return "\n".join(lineas)
 
 
-def _fmt_valor_md(val) -> str:
-    """Formatea un valor para tabla markdown respetando la config de moneda."""
+def _fmt_valor_md(col: str, val) -> str:
+    """Formatea un valor para tabla markdown usando las reglas de moneda del config."""
+    from .formatting import _es_valor_dinero, _formatear_moneda
     if val is None:
         return "—"
     if not isinstance(val, (int, float, Decimal)):
         return str(val)
-    cfg      = config.CONFIG.get("currency", {})
-    sep_m    = cfg.get("thousands_separator", ".")
-    sep_d    = cfg.get("decimal_separator", ",")
-    decimals = int(cfg.get("decimal_places", 0))
-    formatted = f"{float(val):,.{decimals}f}".replace(",", "\x00").replace(".", sep_d).replace("\x00", sep_m)
-    return formatted
+    if _es_valor_dinero(col):
+        return _formatear_moneda(float(val))
+    # Número entero sin separador de miles (años, conteos, IDs)
+    f = float(val)
+    if f == int(f):
+        return str(int(f))
+    return f"{f:.2f}"
 
 
 def formatear_plan_python(resultados: list[dict]) -> str:
@@ -260,7 +262,7 @@ def formatear_plan_python(resultados: list[dict]) -> str:
         separator = "| " + " | ".join("---" for _ in cols) + " |"
         filas_md  = [header, separator]
         for fila in datos:
-            celdas = [_fmt_valor_md(fila[c]) for c in cols]
+            celdas = [_fmt_valor_md(c, fila[c]) for c in cols]
             filas_md.append("| " + " | ".join(celdas) + " |")
 
         secciones.append("\n".join(filas_md))
