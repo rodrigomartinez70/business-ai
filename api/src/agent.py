@@ -8,6 +8,7 @@ import re
 import json
 import logging
 from decimal import Decimal
+from pathlib import Path
 from typing import Optional
 
 import httpx
@@ -18,6 +19,16 @@ from fastapi import HTTPException
 from . import config
 
 logger = logging.getLogger(__name__)
+
+# Carga guidelines de SQL desde archivo externo (opcional)
+_GUIDELINES_PATH = Path(__file__).parent.parent.parent / "sql_guidelines.md"
+
+def _load_guidelines() -> str:
+    if _GUIDELINES_PATH.exists():
+        return "\n\n" + _GUIDELINES_PATH.read_text(encoding="utf-8")
+    return ""
+
+SQL_GUIDELINES = _load_guidelines()
 
 
 # ─── Ollama ──────────────────────────────────────────────────
@@ -128,7 +139,8 @@ Si necesitas combinar datos de tablas con relación 1-a-muchos: son pasos SEPARA
 Los únicos JOINs seguros son los de dimensión (1-a-1).
 
 - Si la pregunta requiere datos inexistentes en el schema: {{"pasos": null, "sin_datos": "motivo"}}
-- Responde SOLO con el JSON, sin texto adicional"""
+- Responde SOLO con el JSON, sin texto adicional
+{SQL_GUIDELINES}"""
 
     prompt = f"Schema:\n{schema}\n\nPregunta: {pregunta}"
 
@@ -308,7 +320,8 @@ Reglas:
   SELECT i.total AS ingresos, g.total AS gastos, i.total - g.total AS resultado FROM ingresos i, gastos_t g
 - CRÍTICO — si todos los datos necesarios están en UNA sola tabla, NO hagas JOIN con otras tablas
 - Si la pregunta requiere datos que NO existen en el schema, responde EXACTAMENTE: SIN_DATOS: No tengo información de [dato faltante] en la base de datos para responder esa consulta.
-- Nunca: INSERT, UPDATE, DELETE, DROP, SET"""
+- Nunca: INSERT, UPDATE, DELETE, DROP, SET
+{SQL_GUIDELINES}"""
 
     prompt = f"Schema:\n{schema}\n\nPregunta: {pregunta}\n\nSQL:"
 
