@@ -113,6 +113,8 @@ Ejemplos SIMPLES (devuelve null):
 - listas o rankings de una tabla
 - filtros por fecha, tipo, estado en una sola tabla
 - cualquier pregunta que un JOIN o GROUP BY simple resuelva
+- datos de MÚLTIPLES AÑOS o MESES → una sola query con IN (...) y GROUP BY año/mes (NO es plan multi-paso)
+- "ventas por canal en 2025 y 2026" → SIMPLE: SELECT ... WHERE año IN (2025,2026) GROUP BY canal, año
 
 Si la pregunta es COMPLEJA → responde con el plan JSON:
 {{
