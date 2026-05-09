@@ -134,6 +134,7 @@ money_columns:
   - margen
   - ticket
   - promedio
+  - valor
 
 non_money_columns:
   - habitacion
