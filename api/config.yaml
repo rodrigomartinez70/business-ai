@@ -132,6 +132,8 @@ money_columns:
   - sueldo
   - pagado
   - margen
+  - ticket
+  - promedio
 
 non_money_columns:
   - habitacion

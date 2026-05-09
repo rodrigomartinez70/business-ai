@@ -68,6 +68,7 @@ jobs:
             api/requirements.txt \
             api/Dockerfile \
             api/sql_guidelines.md \
+            api/config.yaml \
             root@178.104.160.82:/opt/ia_hotel/api/
 
       - name: Rebuild API
