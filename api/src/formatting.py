@@ -31,8 +31,11 @@ def _formatear_moneda(valor: float) -> str:
 def _formatear_valor(clave: str, valor) -> str:
     if valor is None:
         return ""
-    if isinstance(valor, (int, float, Decimal)) and _es_valor_dinero(clave):
-        return _formatear_moneda(float(valor))
+    if isinstance(valor, (int, float, Decimal)):
+        if _es_valor_dinero(clave):
+            return _formatear_moneda(float(valor))
+        f = float(valor)
+        return str(int(f)) if f == int(f) else f"{f:.2f}"
     return str(valor)
 
 
