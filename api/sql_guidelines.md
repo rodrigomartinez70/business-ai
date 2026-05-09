@@ -5,6 +5,39 @@ Agregar nuevos patrones en la misma estructura.
 
 ---
 
+## Nomenclatura — Aliases con sentido del negocio hotelero
+
+Usar siempre nombres en español que el dueño del negocio reconozca. Nunca usar jerga de retail o términos ambiguos.
+
+| En vez de | Usar |
+|---|---|
+| `ticket_promedio` | `gasto_promedio` |
+| `avg_revenue` | `ingreso_promedio` |
+| `count` | `cantidad_reservas` / `cantidad_huespedes` (según contexto) |
+| `revenue` | `ingresos` |
+| `pct` | `porcentaje` |
+| `num_nights` | `noches` |
+| `check_in` / `check_out` | `fecha_entrada` / `fecha_salida` |
+| `booking` | `reserva` |
+| `rate` | `tarifa` |
+| `occupancy` | `ocupacion_pct` |
+
+**Ejemplos correctos:**
+```sql
+SELECT
+    c.nombre                                          AS canal,
+    SUM(r.total_hospedaje)                            AS ingresos,
+    COUNT(r.id)                                       AS cantidad_reservas,
+    ROUND(SUM(r.total_hospedaje) / COUNT(r.id), 0)   AS gasto_promedio
+FROM reservas r
+JOIN canales_venta c ON r.canal_id = c.id
+WHERE r.estado NOT IN ('cancelada', 'no_show')
+GROUP BY c.nombre
+ORDER BY ingresos DESC
+```
+
+---
+
 ## Consultas multi-período
 
 Cuando el usuario pide datos de múltiples años o meses, usar **una sola query** con `GROUP BY` período en lugar de queries separadas.
