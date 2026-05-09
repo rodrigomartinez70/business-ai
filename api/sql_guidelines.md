@@ -160,20 +160,26 @@ END || ' ' || EXTRACT(YEAR FROM v.mes)::int AS mes
 ## Margen neto por canal
 
 Para calcular margen descontando comisión de la OTA usar `comision_pct` de `canales_venta`.
+- Alias `comision_pct` (porcentaje, no dinero) y `ingresos_netos` (dinero).
+- Alias `margen_promedio` para el margen por reserva — **no** usar `margen_promedio_por_reserva`.
+- Para "¿qué canal me deja mejor margen?" agregar `LIMIT 1`.
 
 **Preferido:**
 ```sql
 SELECT
-    c.nombre AS canal,
-    SUM(r.total_hospedaje) AS ingresos_brutos,
-    ROUND(AVG(c.comision_pct), 1) AS comision_pct,
-    ROUND(SUM(r.total_hospedaje) * (1 - AVG(c.comision_pct) / 100), 0) AS ingresos_netos
+    c.nombre                                                              AS canal,
+    SUM(r.total_hospedaje)                                               AS ingresos_brutos,
+    c.comision_pct,
+    ROUND(SUM(r.total_hospedaje) * (1 - c.comision_pct / 100), 0)       AS ingresos_netos,
+    ROUND(SUM(r.total_hospedaje) * (1 - c.comision_pct / 100)
+          / NULLIF(COUNT(r.id), 0), 0)                                   AS margen_promedio
 FROM reservas r
 JOIN canales_venta c ON r.canal_id = c.id
 WHERE r.estado NOT IN ('cancelada', 'no_show')
   AND EXTRACT(YEAR FROM r.fecha_entrada) = EXTRACT(YEAR FROM CURRENT_DATE)
-GROUP BY c.nombre
+GROUP BY c.nombre, c.comision_pct
 ORDER BY ingresos_netos DESC
+LIMIT 1
 ```
 
 ---

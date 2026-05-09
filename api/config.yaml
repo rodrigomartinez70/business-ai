@@ -137,9 +137,14 @@ money_columns:
 
 non_money_columns:
   - habitacion
-  - reserva
   - cantidad
   - numero
+  - _pct
+  - porcentaje
+  - dias
+  - noches
+  - año
+  - mes
   - num
   - registro
   - count
