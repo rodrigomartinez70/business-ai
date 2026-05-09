@@ -39,22 +39,27 @@ def _formatear_valor(clave: str, valor) -> str:
     return str(valor)
 
 
+def _header(col: str) -> str:
+    return col.replace("_", " ").title()
+
+
 def formatear_respuesta(datos: list[dict]) -> str:
     if not datos:
         return "No encontré información que coincida con tu consulta."
 
     if len(datos) == 1:
         fila   = datos[0]
-        lineas = ["**Resultado encontrado:**\n"]
+        lineas = ["**Resultado:**\n"]
         for clave, valor in fila.items():
             if valor is not None:
-                lineas.append(f"- **{clave.replace('_', ' ').title()}:** {_formatear_valor(clave, valor)}")
+                lineas.append(f"- **{_header(clave)}:** {_formatear_valor(clave, valor)}")
         return "\n".join(lineas)
 
-    lineas = [f"**Se encontraron {len(datos)} resultado(s):**\n"]
-    for i, fila in enumerate(datos, 1):
-        lineas.append(f"**{i}.** " + " | ".join(
-            f"{k.replace('_', ' ').title()}: {_formatear_valor(k, v)}"
-            for k, v in fila.items() if v is not None
-        ))
-    return "\n".join(lineas)
+    cols = list(datos[0].keys())
+    header    = "| " + " | ".join(_header(c) for c in cols) + " |"
+    separator = "| " + " | ".join("---" for _ in cols) + " |"
+    filas_md  = [header, separator]
+    for fila in datos:
+        celdas = [_formatear_valor(c, fila.get(c)) for c in cols]
+        filas_md.append("| " + " | ".join(celdas) + " |")
+    return "\n".join(filas_md)

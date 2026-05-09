@@ -135,6 +135,8 @@ money_columns:
   - ticket
   - promedio
   - valor
+  - variacion
+  - diferencia
 
 non_money_columns:
   - habitacion
