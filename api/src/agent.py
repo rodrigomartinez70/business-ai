@@ -360,7 +360,8 @@ async def generar_sql(pregunta: str, rol: str) -> tuple[str, str]:
 
 Reglas:
 - Responde SOLO con el bloque SQL: ```sql ... ```
-- Siempre agregar LIMIT 100
+- Siempre agregar LIMIT 100, EXCEPTO cuando la pregunta pide el mejor/peor/mayor/menor/top 1 → usar LIMIT 1
+- Si la pregunta contiene "cuál fue el mejor", "qué canal/mes/habitación tiene más/menos/mejor/peor" → LIMIT 1
 - ILIKE para búsquedas de texto, SIEMPRE con wildcards: ILIKE '%valor%'
 {aliases}
 {kpis}
