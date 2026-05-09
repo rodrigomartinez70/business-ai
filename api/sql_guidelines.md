@@ -138,6 +138,23 @@ ORDER BY v.mes
 
 **Evitar:** usar 30 días fijos para todos los meses. Usar siempre `EXTRACT(DAY FROM (mes + INTERVAL '1 month') - mes)` para obtener los días reales del mes.
 
+**Nombres de meses en español:** `TO_CHAR` devuelve meses en inglés. Usar siempre este CASE:
+```sql
+CASE EXTRACT(MONTH FROM v.mes)::int
+    WHEN 1 THEN 'Ene' WHEN 2 THEN 'Feb' WHEN 3 THEN 'Mar'
+    WHEN 4 THEN 'Abr' WHEN 5 THEN 'May' WHEN 6 THEN 'Jun'
+    WHEN 7 THEN 'Jul' WHEN 8 THEN 'Ago' WHEN 9 THEN 'Sep'
+    WHEN 10 THEN 'Oct' WHEN 11 THEN 'Nov' WHEN 12 THEN 'Dic'
+END || ' ' || EXTRACT(YEAR FROM v.mes)::int AS mes
+```
+
+**Para "el mejor mes" o "el peor mes":** agregar `LIMIT 1` al ORDER BY existente.
+
+```sql
+-- "¿cuál fue el mes con mejor RevPAR?"
+... ORDER BY revpar DESC LIMIT 1
+```
+
 ---
 
 ## Margen neto por canal
