@@ -13,6 +13,7 @@ Cualquier mensaje sin ! se procesa como consulta en lenguaje natural.
 
 import logging
 import os
+from contextlib import asynccontextmanager
 
 import discord
 import httpx
@@ -132,19 +133,17 @@ def _build_kpis_embed(data: dict, dias: int) -> discord.Embed:
     alertas = data.get("alertas", [])
 
     embed = discord.Embed(
-        title=f"{icono} KPIs — {biz}",
-        description=f"Últimos **{dias} días** · Estado: **{estado.upper()}**",
+        title=f"{icono} KPIs — {biz} · Últimos {dias} días · {estado.upper()}",
         color=color,
     )
 
+    lineas = []
     for kpi in kpis:
-        valor  = _fmt_kpi_valor(kpi)
+        valor      = _fmt_kpi_valor(kpi)
         estado_kpi = _fmt_kpi_estado(kpi, alertas)
-        embed.add_field(
-            name=kpi["name"],
-            value=f"{valor}\n{estado_kpi}",
-            inline=True,
-        )
+        lineas.append(f"**{kpi['name']}:** {valor} · {estado_kpi}")
+
+    embed.add_field(name="Indicadores", value="\n".join(lineas), inline=False)
 
     if alertas:
         alertas_txt = "\n".join(
@@ -209,6 +208,15 @@ async def on_ready():
     logger.info(f"Bot conectado como {client.user}")
 
 
+@asynccontextmanager
+async def _safe_typing(channel):
+    try:
+        async with channel.typing():
+            yield
+    except discord.errors.HTTPException:
+        yield
+
+
 @client.event
 async def on_message(message: discord.Message):
     if message.author == client.user:
@@ -230,7 +238,7 @@ async def on_message(message: discord.Message):
         await message.channel.send(AYUDA)
         return
 
-    async with message.channel.typing():
+    async with _safe_typing(message.channel):
         try:
             if cmd == "!kpis":
                 dias = _parse_dias(parts)
