@@ -127,7 +127,8 @@ async def chat_completions(request: ChatRequest, rol: str = Depends(get_role)):
             respuesta   = formatear_plan_python(resultados)
             filas_total = sum(len(r["datos"]) for r in resultados if r["ok"])
         else:
-            sql, modelo_llm = await generar_sql(pregunta, rol)
+            historial       = [{"role": m.role, "content": m.content} for m in request.messages]
+            sql, modelo_llm = await generar_sql(pregunta, rol, historial)
             sql_log         = sql
             datos           = await ejecutar_sql(sql, rol, pregunta)
             respuesta       = formatear_respuesta(datos)

@@ -349,7 +349,7 @@ INSTRUCCIONES ESTRICTAS:
 
 # ─── Generación de SQL simple ────────────────────────────────
 
-async def generar_sql(pregunta: str, rol: str) -> tuple[str, str]:
+async def generar_sql(pregunta: str, rol: str, historial: list[dict] | None = None) -> tuple[str, str]:
     """Retorna (sql, modelo_usado) donde modelo_usado es 'claude' u 'ollama'."""
     schema   = config.schema_for(rol)
     biz_name = config.biz("name", "negocio")
@@ -374,16 +374,25 @@ Reglas:
 - Nunca: INSERT, UPDATE, DELETE, DROP, SET
 {SQL_GUIDELINES}"""
 
-    prompt = f"Schema:\n{schema}\n\nPregunta: {pregunta}\n\nSQL:"
+    schema_prompt = f"Schema:\n{schema}"
+    user_content  = f"{schema_prompt}\n\nPregunta: {pregunta}\n\nSQL:"
 
     if config.ANTHROPIC_KEY and config.ANTHROPIC_KEY != "sk-ant-tu-clave-aqui":
         try:
-            client  = anthropic.AsyncAnthropic(api_key=config.ANTHROPIC_KEY)
+            client = anthropic.AsyncAnthropic(api_key=config.ANTHROPIC_KEY)
+
+            # Incluir historial reciente para preguntas de seguimiento ("el mismo cuadro anterior", etc.)
+            messages: list[dict] = []
+            if historial:
+                for m in historial[:-1]:  # todos menos el último (que es la pregunta actual)
+                    messages.append({"role": m["role"], "content": m["content"]})
+            messages.append({"role": "user", "content": user_content})
+
             message = await client.messages.create(
                 model=config.CLAUDE_MODEL,
                 max_tokens=1024,
                 system=system,
-                messages=[{"role": "user", "content": prompt}],
+                messages=messages,
             )
             respuesta = message.content[0].text.strip()
             if respuesta.startswith("SIN_DATOS:"):
@@ -397,7 +406,7 @@ Reglas:
         except Exception as e:
             logger.warning(f"Claude API falló, usando Ollama: {e}")
 
-    respuesta = await llamar_ollama(prompt, system)
+    respuesta = await llamar_ollama(user_content, system)
     sql = extraer_sql(respuesta)
     logger.info(f"SQL generado (Ollama): {sql}")
     validar_sql(sql)
