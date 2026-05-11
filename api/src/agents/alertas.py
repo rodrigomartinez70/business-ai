@@ -63,7 +63,12 @@ async def calcular_kpis(periodo_dias: int) -> list[dict]:
 # ─────────────────────────────────────────────────────────────
 
 def evaluar_umbrales(kpis: list[dict]) -> list[dict]:
-    """Compara cada KPI contra sus umbrales → lista de alertas."""
+    """Compara cada KPI contra sus umbrales → lista de alertas.
+
+    Soporta umbrales de dos niveles:
+      umbral_critico_minimo / umbral_warning_minimo (o umbral_minimo como alias)
+      umbral_critico_maximo / umbral_warning_maximo (o umbral_maximo como alias)
+    """
     alertas: list[dict] = []
 
     for kpi in kpis:
@@ -71,15 +76,20 @@ def evaluar_umbrales(kpis: list[dict]) -> list[dict]:
         if valor is None:
             continue
 
-        umbral_min = kpi.get("umbral_minimo")
-        umbral_max = kpi.get("umbral_maximo")
+        crit_min = kpi.get("umbral_critico_minimo")
+        warn_min = kpi.get("umbral_warning_minimo") or kpi.get("umbral_minimo")
+        crit_max = kpi.get("umbral_critico_maximo")
+        warn_max = kpi.get("umbral_warning_maximo") or kpi.get("umbral_maximo")
 
-        if umbral_min is not None and valor < umbral_min:
-            nivel = "critico" if valor < 0 else "alerta"
-            alertas.append({"kpi": kpi["name"], "valor": valor, "umbral": f"mínimo {umbral_min}", "nivel": nivel})
+        if crit_min is not None and valor < crit_min:
+            alertas.append({"kpi": kpi["name"], "valor": valor, "umbral": f"mínimo {crit_min}", "nivel": "critico"})
+        elif warn_min is not None and valor < warn_min:
+            alertas.append({"kpi": kpi["name"], "valor": valor, "umbral": f"mínimo {warn_min}", "nivel": "alerta"})
 
-        if umbral_max is not None and valor > umbral_max:
-            alertas.append({"kpi": kpi["name"], "valor": valor, "umbral": f"máximo {umbral_max}", "nivel": "alerta"})
+        if crit_max is not None and valor > crit_max:
+            alertas.append({"kpi": kpi["name"], "valor": valor, "umbral": f"máximo {crit_max}", "nivel": "critico"})
+        elif warn_max is not None and valor > warn_max:
+            alertas.append({"kpi": kpi["name"], "valor": valor, "umbral": f"máximo {warn_max}", "nivel": "alerta"})
 
     return alertas
 

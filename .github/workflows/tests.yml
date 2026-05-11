@@ -74,6 +74,10 @@ jobs:
             -e "ssh" \
             scripts/ \
             root@${{ secrets.DEPLOY_HOST }}:/opt/ia_hotel/scripts/
+          rsync -avz \
+            -e "ssh" \
+            cron/ \
+            root@${{ secrets.DEPLOY_HOST }}:/opt/ia_hotel/cron/
 
       - name: Rebuild API and scripts image
         run: |
