@@ -70,11 +70,23 @@ jobs:
             api/sql_guidelines.md \
             api/config.yaml \
             root@${{ secrets.DEPLOY_HOST }}:/opt/ia_hotel/api/
+          rsync -avz \
+            -e "ssh" \
+            scripts/ \
+            root@${{ secrets.DEPLOY_HOST }}:/opt/ia_hotel/scripts/
 
-      - name: Rebuild API
+      - name: Rebuild API and scripts image
         run: |
           ssh root@${{ secrets.DEPLOY_HOST }} \
-            "cd /opt/ia_hotel && docker compose up -d --build api"
+            "cd /opt/ia_hotel && docker compose up -d --build api && docker build -t hotel_scripts ./scripts/"
+
+      - name: Setup daily data cron
+        run: |
+          ssh root@${{ secrets.DEPLOY_HOST }} "
+            grep -q 'generar_datos' /etc/cron.d/hotel_data 2>/dev/null || \
+            echo '0 2 * * * root docker run --rm --network ia_hotel_default --env-file /opt/ia_hotel/.env hotel_scripts --ayer >> /var/log/hotel_data.log 2>&1' \
+            > /etc/cron.d/hotel_data
+          "
 
       - name: Health check
         run: |
