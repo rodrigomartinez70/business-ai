@@ -55,29 +55,29 @@ jobs:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
       - name: Add server to known hosts
-        run: ssh-keyscan -H 178.104.160.82 >> ~/.ssh/known_hosts
+        run: ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts
 
       - name: Sync source code
         run: |
           rsync -avz --delete \
             -e "ssh" \
             api/src/ \
-            root@178.104.160.82:/opt/ia_hotel/api/src/
+            root@${{ secrets.DEPLOY_HOST }}:/opt/ia_hotel/api/src/
           rsync -avz \
             -e "ssh" \
             api/requirements.txt \
             api/Dockerfile \
             api/sql_guidelines.md \
             api/config.yaml \
-            root@178.104.160.82:/opt/ia_hotel/api/
+            root@${{ secrets.DEPLOY_HOST }}:/opt/ia_hotel/api/
 
       - name: Rebuild API
         run: |
-          ssh root@178.104.160.82 \
+          ssh root@${{ secrets.DEPLOY_HOST }} \
             "cd /opt/ia_hotel && docker compose up -d --build api"
 
       - name: Health check
         run: |
-          ssh root@178.104.160.82 \
+          ssh root@${{ secrets.DEPLOY_HOST }} \
             "sleep 5 && docker run --rm --network ia_hotel_default curlimages/curl:latest \
              -sf http://hotel_api:8000/api/health"
