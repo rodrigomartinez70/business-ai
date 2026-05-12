@@ -11,6 +11,7 @@ Comandos disponibles (sin LLM intermedio — cada uno llama al endpoint correcto
 Cualquier mensaje sin ! se procesa como consulta en lenguaje natural.
 """
 
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -210,11 +211,14 @@ async def on_ready():
 
 @asynccontextmanager
 async def _safe_typing(channel):
-    try:
-        async with channel.typing():
-            yield
-    except discord.errors.HTTPException:
-        yield
+    # fire-and-forget: don't await so discord.py rate-limit retries never block the handler
+    async def _pulse():
+        try:
+            await channel._state.http.send_typing(channel.id)
+        except Exception:
+            pass
+    asyncio.ensure_future(_pulse())
+    yield
 
 
 @client.event
