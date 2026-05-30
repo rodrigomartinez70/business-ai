@@ -104,4 +104,4 @@ jobs:
         run: |
           ssh root@${{ secrets.DEPLOY_HOST }} \
             "sleep 5 && docker run --rm --network ia_hotel_default curlimages/curl:latest \
-             -sf http://hotel_api:8000/api/health"
+             -sf http://negocio_api:8000/api/health"
