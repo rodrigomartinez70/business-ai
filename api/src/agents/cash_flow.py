@@ -62,8 +62,8 @@ async def calcular_cash_flow() -> dict:
         # ── Gastos por categoría (promedio semanal histórico) ───────────
         gasto_cat = [dict(r) for r in await conn.fetch("""
             SELECT
-                COALESCE(cg.nombre, 'Sin categoría')   AS categoria,
-                ROUND(AVG(semana_monto), 0)             AS promedio_semanal
+                categoria,
+                ROUND(AVG(semana_monto), 0) AS promedio_semanal
             FROM (
                 SELECT
                     DATE_TRUNC('week', g.fecha)::date          AS semana,
