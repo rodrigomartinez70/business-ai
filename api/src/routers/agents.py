@@ -21,6 +21,11 @@ from ..agents.pnl_mensual import (
     calcular_pnl,
     renderizar_pnl_markdown,
 )
+from ..agents.revenue_management import (
+    build_discord_embed_revenue,
+    calcular_revenue_management,
+    renderizar_revenue_markdown,
+)
 from ..auth import get_role
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
@@ -219,5 +224,30 @@ async def agente_pnl_mensual(
 
     if formato == "discord_payload":
         return build_discord_embed_pnl(data, config.CONFIG)
+
+    return data
+
+
+@router.get("/revenue-management")
+async def agente_revenue_management(
+    horizon_dias: int = Query(30, ge=7, le=90, description="Días de proyección hacia adelante"),
+    formato:      str = Query("json", description="json | markdown | discord_payload"),
+    _rol:         str = Depends(get_role),
+):
+    """
+    Agente de Revenue Management.
+
+    Muestra ocupación actual, ADR y RevPAR del día, tendencia de los últimos
+    7 y 30 días, proyección de ocupación para los próximos N días, performance
+    por canal y oportunidades de precio (días con alta demanda y tarifa baja).
+    """
+    data = await calcular_revenue_management(horizon_dias)
+
+    if formato == "markdown":
+        md = renderizar_revenue_markdown(data, config.CONFIG)
+        return PlainTextResponse(content=md, media_type="text/markdown; charset=utf-8")
+
+    if formato == "discord_payload":
+        return build_discord_embed_revenue(data, config.CONFIG)
 
     return data
