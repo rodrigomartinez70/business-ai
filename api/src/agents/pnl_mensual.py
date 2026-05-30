@@ -164,10 +164,25 @@ async def _metricas_mes(conn, fi: date, ff: date) -> dict:
 # ─────────────────────────────────────────────────────────────
 
 async def calcular_pnl(año: int, mes: int) -> dict:
-    fi, ff            = _mes_rango(año, mes)
-    año_ant, mes_ant  = _mes_anterior(año, mes)
-    fi_ant, ff_ant    = _mes_rango(año_ant, mes_ant)
-    fi_aa, ff_aa      = _mes_rango(año - 1, mes)      # mismo mes año anterior
+    from datetime import timedelta
+
+    fi, ff_mes = _mes_rango(año, mes)
+
+    # Si el mes aún no cerró, capear al día de ayer para no incluir días sin datos.
+    # Los períodos de referencia usan exactamente los mismos N días desde su día 1,
+    # garantizando comparaciones equivalentes (MoM y YoY comparables).
+    hoy = date.today()
+    ff  = min(ff_mes, hoy - timedelta(days=1)) if ff_mes >= hoy else ff_mes
+    if ff < fi:
+        ff = fi   # guardia por si el mes empieza hoy
+    dias = (ff - fi).days + 1   # días efectivos del período actual
+
+    año_ant, mes_ant = _mes_anterior(año, mes)
+    fi_ant  = date(año_ant, mes_ant, 1)
+    ff_ant  = fi_ant + timedelta(days=dias - 1)     # mismos N días
+
+    fi_aa   = date(año - 1, mes, 1)
+    ff_aa   = fi_aa + timedelta(days=dias - 1)      # mismos N días
 
     async with config.db_pool.acquire() as conn:
         actual    = await _metricas_mes(conn, fi,     ff)
@@ -189,11 +204,14 @@ async def calcular_pnl(año: int, mes: int) -> dict:
         }
 
     mes_nombre = fi.strftime("%B %Y").capitalize()
+    parcial    = ff < ff_mes   # True si el mes no cerró completamente
 
     return {
         "mes":        mes,
         "año":        año,
         "mes_nombre": mes_nombre,
+        "parcial":    parcial,
+        "dias_comparados": dias,
         "actual":     actual,
         "anterior":   anterior,
         "año_pasado": año_pasado,
@@ -252,9 +270,14 @@ def renderizar_pnl_markdown(data: dict, cfg: dict) -> str:
     res  = a["resultado"]
     met  = a["metricas"]
 
+    nota_parcial = (
+        f" *(parcial — primeros {data['dias_comparados']} días, "
+        f"referencias también {data['dias_comparados']}d desde el 1)*"
+        if data["parcial"] else ""
+    )
     lines = [
         f"# 📑 P&L Mensual — {biz}",
-        f"**Período:** {data['mes_nombre']}",
+        f"**Período:** {data['mes_nombre']}{nota_parcial}",
         f"**Habitaciones activas:** {met['hab_activas']}",
         "",
         "---",
@@ -403,9 +426,10 @@ def build_discord_embed_pnl(data: dict, cfg: dict) -> dict:
         },
     ]
 
+    sufijo = f" · {data['dias_comparados']}d c/u" if data["parcial"] else ""
     return {
         "embeds": [{
-            "title":  f"📑 P&L Mensual — {biz} · {data['mes_nombre']}",
+            "title":  f"📑 P&L — {biz} · {data['mes_nombre']}{sufijo}",
             "color":  color,
             "fields": fields,
         }]

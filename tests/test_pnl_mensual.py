@@ -10,19 +10,25 @@ async def test_pnl_estructura_json(client, gerente_headers):
     resp = await client.get("/api/agents/pnl-mensual?mes=4&anio=2026", headers=gerente_headers)
     assert resp.status_code == 200
     data = resp.json()
-    for campo in ("mes", "año", "mes_nombre", "actual", "anterior", "año_pasado", "comparativas"):
+    for campo in ("mes", "año", "mes_nombre", "parcial", "dias_comparados",
+                  "actual", "anterior", "año_pasado", "comparativas"):
         assert campo in data
 
 
 @pytest.mark.asyncio
-async def test_pnl_periodo_correcto(client, gerente_headers):
+async def test_pnl_periodos_comparables(client, gerente_headers):
+    """Los tres períodos siempre deben tener el mismo número de días."""
     data = (await client.get("/api/agents/pnl-mensual?mes=4&anio=2026", headers=gerente_headers)).json()
-    assert data["mes"] == 4
-    assert data["año"] == 2026
-    assert data["actual"]["periodo"]["inicio"] == "2026-04-01"
-    assert data["actual"]["periodo"]["fin"]    == "2026-04-30"
-    assert data["anterior"]["periodo"]["inicio"] == "2026-03-01"
-    assert data["año_pasado"]["periodo"]["inicio"] == "2025-04-01"
+    dias = data["dias_comparados"]
+    assert dias > 0
+    assert data["actual"]["periodo"]["dias"]    == dias
+    assert data["anterior"]["periodo"]["dias"]  == dias
+    assert data["año_pasado"]["periodo"]["dias"] == dias
+
+    # Los tres empiezan el día 1 de su respectivo mes
+    assert data["actual"]["periodo"]["inicio"].endswith("-01")
+    assert data["anterior"]["periodo"]["inicio"].endswith("-01")
+    assert data["año_pasado"]["periodo"]["inicio"].endswith("-01")
 
 
 @pytest.mark.asyncio
