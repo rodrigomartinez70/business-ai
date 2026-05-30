@@ -37,9 +37,15 @@ async def registrar_auditoria(
         logger.warning(f"No se pudo registrar en audit_log: {e}")
 
 
-async def generar_reporte_uso(fecha_inicio: date, fecha_fin: date) -> dict:
-    fi = datetime.combine(fecha_inicio, datetime.min.time())
-    ff = datetime.combine(fecha_fin,    datetime.max.time())
+async def generar_reporte_uso(
+    fecha_inicio: date,
+    fecha_fin:    date,
+    page:         int = 1,
+    page_size:    int = 20,
+) -> dict:
+    fi     = datetime.combine(fecha_inicio, datetime.min.time())
+    ff     = datetime.combine(fecha_fin,    datetime.max.time())
+    offset = (page - 1) * page_size
 
     async with config.db_pool.acquire() as conn:
         resumen = dict(await conn.fetchrow("""
@@ -106,8 +112,11 @@ async def generar_reporte_uso(fecha_inicio: date, fecha_fin: date) -> dict:
             SELECT timestamp, rol, tipo_flujo, modelo_llm, duracion_ms, filas_retorn, pregunta
             FROM audit_log
             WHERE timestamp BETWEEN $1 AND $2
-            ORDER BY timestamp DESC LIMIT 20
-        """, fi, ff)]
+            ORDER BY timestamp DESC
+            LIMIT $3 OFFSET $4
+        """, fi, ff, page_size, offset)]
+
+        total_consultas = resumen.get("total_consultas") or 0
 
     def _serial(v):
         if isinstance(v, (datetime, date)):
@@ -119,6 +128,9 @@ async def generar_reporte_uso(fecha_inicio: date, fecha_fin: date) -> dict:
     def _limpiar(rows: list[dict]) -> list[dict]:
         return [{k: _serial(v) for k, v in row.items()} for row in rows]
 
+    import math
+    total_pages = max(1, math.ceil(total_consultas / page_size)) if page_size else 1
+
     return {
         "periodo":             {"inicio": str(fecha_inicio), "fin": str(fecha_fin)},
         "resumen":             {k: _serial(v) for k, v in resumen.items()},
@@ -128,6 +140,12 @@ async def generar_reporte_uso(fecha_inicio: date, fecha_fin: date) -> dict:
         "por_dia":             _limpiar(por_dia),
         "errores_recientes":   _limpiar(errores_recientes),
         "consultas_recientes": _limpiar(consultas_recientes),
+        "paginacion": {
+            "page":        page,
+            "page_size":   page_size,
+            "total_pages": total_pages,
+            "total":       total_consultas,
+        },
     }
 
 

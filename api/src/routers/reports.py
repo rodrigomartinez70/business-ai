@@ -18,6 +18,8 @@ async def reporte_uso(
     fecha_inicio: Optional[date] = None,
     fecha_fin:    Optional[date] = None,
     formato:      str = "json",
+    page:         int = Query(1,  ge=1,            description="Página de consultas_recientes"),
+    page_size:    int = Query(20, ge=1, le=100,    description="Registros por página (máx 100)"),
     _rol:         str = Depends(get_role),
 ):
     """Reporte de uso e interacciones del agente (últimos 30 días por defecto)."""
@@ -26,7 +28,7 @@ async def reporte_uso(
     if not fecha_inicio:
         fecha_inicio = fecha_fin - timedelta(days=29)
 
-    reporte = await generar_reporte_uso(fecha_inicio, fecha_fin)
+    reporte = await generar_reporte_uso(fecha_inicio, fecha_fin, page=page, page_size=page_size)
 
     if formato == "markdown":
         md = renderizar_uso_markdown(reporte, config.biz("name", "Negocio"))

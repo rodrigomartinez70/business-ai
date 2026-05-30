@@ -22,6 +22,26 @@ from .schema import build_schema_cache
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+_DEFAULT_PLACEHOLDERS = {"Mi Negocio", "negocio", ""}
+
+
+def _warn_placeholders(cfg: dict) -> None:
+    biz_name = cfg.get("business", {}).get("name", "")
+    if biz_name in _DEFAULT_PLACEHOLDERS:
+        logger.warning(
+            "⚠️  business.name en config.yaml todavía tiene el valor por defecto %r. "
+            "Actualizalo con el nombre real del negocio.",
+            biz_name,
+        )
+    for role in cfg.get("roles", []):
+        default_key = role.get("default_key", "")
+        if default_key and (default_key.endswith("_cambia_esto") or default_key.endswith("_change_me")):
+            logger.warning(
+                "⚠️  El rol %r usa la API key por defecto %r. "
+                "Definí %s en .env con una clave segura.",
+                role["name"], default_key, role["env_key"],
+            )
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -43,6 +63,8 @@ async def lifespan(app: FastAPI):
 
     config.SCHEMA_CACHE = await build_schema_cache(config.db_pool, config.CONFIG)
     logger.info(f"Schema cache construido para roles: {list(config.SCHEMA_CACHE.keys())}")
+
+    _warn_placeholders(config.CONFIG)
 
     if config.INGEST_DATABASE_URL:
         config.ingest_pool = await asyncpg.create_pool(
