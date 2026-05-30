@@ -78,11 +78,15 @@ jobs:
             -e "ssh" \
             cron/ \
             root@${{ secrets.DEPLOY_HOST }}:/opt/ia_hotel/cron/
+          rsync -avz --delete \
+            -e "ssh" \
+            discord_bot/ \
+            root@${{ secrets.DEPLOY_HOST }}:/opt/ia_hotel/discord_bot/
 
       - name: Rebuild API and scripts image
         run: |
           ssh root@${{ secrets.DEPLOY_HOST }} \
-            "cd /opt/ia_hotel && docker compose up -d --build api && docker build -t hotel_scripts ./scripts/"
+            "cd /opt/ia_hotel && docker compose up -d --build api discord_bot && docker build -t hotel_scripts ./scripts/"
 
       - name: Setup daily data cron
         run: |

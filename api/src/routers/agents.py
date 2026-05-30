@@ -1,10 +1,16 @@
 from datetime import date, timedelta
+from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import PlainTextResponse
 
 from .. import config
 from ..agents.alertas import calcular_kpis, evaluar_umbrales, renderizar_reporte, _fmt_kpi
+from ..agents.cierre_diario import (
+    build_discord_embed_cierre,
+    calcular_cierre,
+    renderizar_cierre_markdown,
+)
 from ..auth import get_role
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
@@ -102,3 +108,34 @@ async def agente_alertas(
         "alertas":         alertas,
         "reporte_md":      reporte,
     }
+
+
+@router.get("/cierre-diario")
+async def agente_cierre_diario(
+    fecha:   Optional[date] = Query(None, description="Fecha del cierre (default: hoy)"),
+    formato: str            = Query("json", description="json | markdown | discord_payload"),
+    _rol:    str            = Depends(get_role),
+):
+    """
+    Agente de Cierre Diario.
+
+    Consolida ocupación, movimientos, cobros, ingresos por departamento,
+    gastos y GOP del día. Sin LLM — SQL puro.
+
+    - **json**: estructura completa
+    - **markdown**: reporte listo para leer
+    - **discord_payload**: embed listo para POST al webhook de Discord
+    """
+    if fecha is None:
+        fecha = date.today()
+
+    data = await calcular_cierre(fecha)
+
+    if formato == "markdown":
+        md = renderizar_cierre_markdown(data, config.CONFIG)
+        return PlainTextResponse(content=md, media_type="text/markdown; charset=utf-8")
+
+    if formato == "discord_payload":
+        return build_discord_embed_cierre(data, config.CONFIG)
+
+    return data
