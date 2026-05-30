@@ -238,7 +238,7 @@ async def _safe_typing(channel):
             await channel._state.http.send_typing(channel.id)
         except Exception:
             pass
-    asyncio.ensure_future(_pulse())
+    asyncio.create_task(_pulse())
     yield
 
 
