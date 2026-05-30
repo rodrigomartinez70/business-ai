@@ -38,9 +38,54 @@ ORDER BY ingresos DESC
 
 ---
 
+## Comparaciones año contra año (YoY) — REGLA CRÍTICA
+
+**NUNCA comparar el año completo anterior contra el año en curso parcial.**
+Si el año actual es 2026 y hoy es 29 de mayo, hay datos solo hasta mayo 2026.
+Comparar todo 2025 (12 meses) vs 2026 hasta mayo (5 meses) es siempre incorrecto.
+
+**Regla:** cuando el año de referencia incluye el año actual, recortar AMBOS años
+al mismo rango: desde el 1 de enero hasta `CURRENT_DATE` del año anterior equivalente.
+
+**Patrón correcto para YoY:**
+```sql
+-- "crecimiento de ventas frigobar 2026 vs 2025"
+-- Hoy: 2026-05-29 → comparar Jan 1 - May 29 en ambos años
+WITH corte AS (
+    SELECT
+        DATE_TRUNC('year', CURRENT_DATE)                     AS inicio_actual,
+        CURRENT_DATE                                          AS fin_actual,
+        DATE_TRUNC('year', CURRENT_DATE) - INTERVAL '1 year' AS inicio_anterior,
+        CURRENT_DATE                  - INTERVAL '1 year'    AS fin_anterior
+),
+año_actual AS (
+    SELECT COALESCE(SUM(total), 0) AS ventas
+    FROM consumos_frigobar, corte
+    WHERE fecha BETWEEN corte.inicio_actual AND corte.fin_actual
+),
+año_anterior AS (
+    SELECT COALESCE(SUM(total), 0) AS ventas
+    FROM consumos_frigobar, corte
+    WHERE fecha BETWEEN corte.inicio_anterior AND corte.fin_anterior
+)
+SELECT
+    a.ventas AS ventas_año_anterior,
+    b.ventas AS ventas_año_actual,
+    b.ventas - a.ventas AS variacion_absoluta,
+    ROUND((b.ventas - a.ventas) * 100.0 / NULLIF(a.ventas, 0), 1) AS crecimiento_pct
+FROM año_anterior a, año_actual b
+```
+
+**Lo mismo aplica a comparaciones de meses:**
+- "mayo 2026 vs mayo 2025" → usar los días transcurridos de mayo en ambos años.
+- Si hoy es 15 de mayo: comparar mayo 1-15 de 2026 vs mayo 1-15 de 2025.
+
+---
+
 ## Consultas multi-período
 
-Cuando el usuario pide datos de múltiples años o meses, usar **una sola query** con `GROUP BY` período en lugar de queries separadas.
+Cuando el usuario pide datos de múltiples años o meses, usar **una sola query** con `GROUP BY` período.
+**Si uno de los períodos es el año/mes actual, incluir `AND fecha <= CURRENT_DATE` para no comparar contra meses futuros sin datos.**
 
 **Preferido:**
 ```sql
@@ -50,6 +95,7 @@ SELECT c.nombre AS canal,
 FROM reservas r
 JOIN canales_venta c ON r.canal_id = c.id
 WHERE EXTRACT(YEAR FROM r.fecha_entrada) IN (2025, 2026)
+  AND r.fecha_entrada <= CURRENT_DATE   -- recortar año en curso al día de hoy
   AND r.estado != 'cancelada'
 GROUP BY c.nombre, EXTRACT(YEAR FROM r.fecha_entrada)
 ORDER BY año, ventas DESC
@@ -75,19 +121,20 @@ LIMIT 10
 
 ---
 
-## Comparación entre períodos
+## Comparación entre períodos cerrados
 
-Para "comparar X vs Y" o "variación entre períodos", usar CTEs con JOIN final.
+Para comparar dos períodos **ambos completamente cerrados** (ej. abril 2025 vs abril 2026),
+usar CTEs con fechas explícitas. En este caso sí se pueden usar rangos fijos.
 
-**Preferido:**
+**Preferido (períodos cerrados):**
 ```sql
 WITH periodo_a AS (
     SELECT SUM(monto) AS total FROM pagos
-    WHERE fecha >= '2025-01-01' AND fecha < '2026-01-01' AND estado = 'pagado'
+    WHERE fecha BETWEEN '2025-04-01' AND '2025-04-30' AND estado = 'pagado'
 ),
 periodo_b AS (
     SELECT SUM(monto) AS total FROM pagos
-    WHERE fecha >= '2026-01-01' AND fecha < '2027-01-01' AND estado = 'pagado'
+    WHERE fecha BETWEEN '2026-04-01' AND '2026-04-30' AND estado = 'pagado'
 )
 SELECT
     a.total AS total_2025,
@@ -96,6 +143,8 @@ SELECT
     ROUND((b.total - a.total) * 100.0 / NULLIF(a.total, 0), 1) AS variacion_pct
 FROM periodo_a a, periodo_b b
 ```
+
+**Si uno de los períodos incluye el año o mes actual, ver sección "Comparaciones YoY" arriba.**
 
 ---
 
