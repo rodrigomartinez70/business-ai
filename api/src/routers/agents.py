@@ -6,6 +6,7 @@ from fastapi.responses import PlainTextResponse
 
 from .. import config
 from ..agents.alertas import calcular_kpis, evaluar_umbrales, renderizar_reporte, _fmt_kpi
+from ..agents.insights import generar_insights
 from ..agents.cierre_diario import (
     build_discord_embed_cierre,
     calcular_cierre,
@@ -39,6 +40,19 @@ from ..agents.revenue_management import (
 from ..auth import get_role
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
+
+
+def _adjuntar_insights(embed_payload: dict, insights: list[str]) -> dict:
+    """Agrega el campo de insights IA al primer embed del payload, si hay insights."""
+    if not insights or not embed_payload.get("embeds"):
+        return embed_payload
+    texto = "\n".join(f"• {i}" for i in insights)
+    embed_payload["embeds"][0]["fields"].append({
+        "name":   "💡 Insights IA",
+        "value":  texto,
+        "inline": False,
+    })
+    return embed_payload
 
 # Colores Discord (decimal)
 _COLOR_OK      = 0x2ECC71   # verde
@@ -124,7 +138,9 @@ async def agente_alertas(
         return PlainTextResponse(content=reporte, media_type="text/markdown; charset=utf-8")
 
     if formato == "discord_payload":
-        return _build_discord_embed(kpis, alertas, periodo_dias)
+        data_alertas = {"kpis": kpis, "alertas": alertas, "estado_general": estado_general}
+        insights = await generar_insights("alertas", data_alertas)
+        return _adjuntar_insights(_build_discord_embed(kpis, alertas, periodo_dias), insights)
 
     return {
         "alertas_activas": len(alertas),
@@ -161,7 +177,8 @@ async def agente_cierre_diario(
         return PlainTextResponse(content=md, media_type="text/markdown; charset=utf-8")
 
     if formato == "discord_payload":
-        return build_discord_embed_cierre(data, config.CONFIG)
+        insights = await generar_insights("cierre_diario", data)
+        return _adjuntar_insights(build_discord_embed_cierre(data, config.CONFIG), insights)
 
     return data
 
@@ -196,7 +213,8 @@ async def agente_control_gastos(
         return PlainTextResponse(content=md, media_type="text/markdown; charset=utf-8")
 
     if formato == "discord_payload":
-        return build_discord_embed_control_gastos(data, config.CONFIG)
+        insights = await generar_insights("control_gastos", data)
+        return _adjuntar_insights(build_discord_embed_control_gastos(data, config.CONFIG), insights)
 
     return data
 
@@ -233,7 +251,8 @@ async def agente_pnl_mensual(
         return PlainTextResponse(content=md, media_type="text/markdown; charset=utf-8")
 
     if formato == "discord_payload":
-        return build_discord_embed_pnl(data, config.CONFIG)
+        insights = await generar_insights("pnl_mensual", data)
+        return _adjuntar_insights(build_discord_embed_pnl(data, config.CONFIG), insights)
 
     return data
 
@@ -258,7 +277,8 @@ async def agente_revenue_management(
         return PlainTextResponse(content=md, media_type="text/markdown; charset=utf-8")
 
     if formato == "discord_payload":
-        return build_discord_embed_revenue(data, config.CONFIG)
+        insights = await generar_insights("revenue_management", data)
+        return _adjuntar_insights(build_discord_embed_revenue(data, config.CONFIG), insights)
 
     return data
 
@@ -282,7 +302,8 @@ async def agente_cash_flow(
         return PlainTextResponse(content=md, media_type="text/markdown; charset=utf-8")
 
     if formato == "discord_payload":
-        return build_discord_embed_cash_flow(data, config.CONFIG)
+        insights = await generar_insights("cash_flow", data)
+        return _adjuntar_insights(build_discord_embed_cash_flow(data, config.CONFIG), insights)
 
     return data
 
@@ -316,6 +337,7 @@ async def agente_rentabilidad_canal(
         return PlainTextResponse(content=md, media_type="text/markdown; charset=utf-8")
 
     if formato == "discord_payload":
-        return build_discord_embed_rentabilidad_canal(data, config.CONFIG)
+        insights = await generar_insights("rentabilidad_canal", data)
+        return _adjuntar_insights(build_discord_embed_rentabilidad_canal(data, config.CONFIG), insights)
 
     return data
