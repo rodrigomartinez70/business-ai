@@ -17,7 +17,7 @@ services:
       - api
 
   open-webui:
-    image: ghcr.io/open-webui/open-webui:main
+    image: ghcr.io/open-webui/open-webui:v0.9.5
     container_name: negocio_open_webui
     restart: unless-stopped
     environment:
