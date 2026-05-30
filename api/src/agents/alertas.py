@@ -40,11 +40,15 @@ async def calcular_kpis(periodo_dias: int) -> list[dict]:
             async with config.db_pool.acquire() as conn:
                 valor = await conn.fetchval(sql)
             resultados.append({
-                "name":           kpi["name"],
-                "valor":          float(valor) if valor is not None else None,
-                "unidad":         kpi.get("unidad", "número"),
-                "umbral_minimo":  kpi.get("umbral_minimo"),
-                "umbral_maximo":  kpi.get("umbral_maximo"),
+                "name":                  kpi["name"],
+                "valor":                 float(valor) if valor is not None else None,
+                "unidad":                kpi.get("unidad", "número"),
+                "umbral_minimo":         kpi.get("umbral_minimo"),
+                "umbral_maximo":         kpi.get("umbral_maximo"),
+                "umbral_warning_minimo": kpi.get("umbral_warning_minimo"),
+                "umbral_critico_minimo": kpi.get("umbral_critico_minimo"),
+                "umbral_warning_maximo": kpi.get("umbral_warning_maximo"),
+                "umbral_critico_maximo": kpi.get("umbral_critico_maximo"),
             })
         except Exception as e:
             logger.warning(f"KPI '{kpi['name']}' falló: {e}")
