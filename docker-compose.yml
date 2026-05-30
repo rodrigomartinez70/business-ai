@@ -43,14 +43,13 @@ services:
     container_name: negocio_api
     restart: unless-stopped
     environment:
-      - DATABASE_URL=postgresql://negocio_user:${NEGOCIO_USER_PASSWORD}@negocio_postgres:5432/${POSTGRES_DB}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@negocio_postgres:5432/${POSTGRES_DB}}
       - OLLAMA_URL=http://ollama:11434
       - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2:3b}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-haiku-4-5}
       - BUSINESS_CONFIG_PATH=/app/config.yaml
-      # Pool de escritura para /api/ingest — usa negocio_ingest (INSERT) o el admin
-      - INGEST_DATABASE_URL=postgresql://negocio_ingest:${NEGOCIO_INGEST_PASSWORD}@negocio_postgres:5432/${POSTGRES_DB}
+      - INGEST_DATABASE_URL=${INGEST_DATABASE_URL:-postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@negocio_postgres:5432/${POSTGRES_DB}}
       # API keys por rol — definidas en .env
       - API_KEY_GERENTE=${API_KEY_GERENTE}
       - API_KEY_ADMINISTRACION=${API_KEY_ADMINISTRACION}
