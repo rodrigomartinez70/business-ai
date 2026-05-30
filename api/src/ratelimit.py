@@ -14,9 +14,17 @@ _security = HTTPBearer()
 
 _MAX_REQUESTS = int(os.getenv("RATE_LIMIT_RPM", "20"))
 _WINDOW_S     = 60
+_MAX_KEYS     = 5_000   # máximo de API keys rastreadas simultáneamente
 
 # {api_key: deque de timestamps}
 _windows: dict[str, deque] = defaultdict(deque)
+
+
+def _evict_stale_keys(now: float) -> None:
+    """Elimina keys cuya ventana expiró para acotar el uso de memoria."""
+    stale = [k for k, dq in _windows.items() if not dq or dq[-1] < now - _WINDOW_S]
+    for k in stale:
+        del _windows[k]
 
 
 def rate_limit(credentials: HTTPAuthorizationCredentials = Depends(_security)) -> None:
@@ -34,3 +42,7 @@ def rate_limit(credentials: HTTPAuthorizationCredentials = Depends(_security)) -
         )
 
     dq.append(now)
+
+    # Evitar crecimiento ilimitado: limpiar keys inactivas cuando se acerca al límite
+    if len(_windows) > _MAX_KEYS:
+        _evict_stale_keys(now)

@@ -36,7 +36,11 @@ HISTORY_FILE  = Path(os.getenv("HISTORY_FILE", "/app/data/history.json"))
 def _load_histories() -> dict[int, list[dict]]:
     if HISTORY_FILE.exists():
         try:
-            return {int(k): v for k, v in json.loads(HISTORY_FILE.read_text()).items()}
+            raw = json.loads(HISTORY_FILE.read_text())
+            return {
+                int(k): v[-MAX_HISTORY:] if isinstance(v, list) else []
+                for k, v in raw.items()
+            }
         except Exception as e:
             logger.warning(f"No se pudo cargar historial: {e}")
     return {}
@@ -245,6 +249,8 @@ async def _safe_typing(channel):
 @client.event
 async def on_message(message: discord.Message):
     if message.author == client.user:
+        return
+    if not CHANNEL_ID:
         return
     allowed = {message.channel.id, getattr(message.channel, "parent_id", None)}
     if CHANNEL_ID not in allowed:
