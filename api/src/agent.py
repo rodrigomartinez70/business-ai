@@ -351,6 +351,20 @@ INSTRUCCIONES ESTRICTAS:
         "Reportas ÚNICAMENTE los datos que recibes. "
         "Si no tienes datos, lo dices claramente. NUNCA inventas números."
     )
+
+    if config.ANTHROPIC_KEY and config.ANTHROPIC_KEY != "sk-ant-tu-clave-aqui":
+        try:
+            client = anthropic.AsyncAnthropic(api_key=config.ANTHROPIC_KEY)
+            message = await client.messages.create(
+                model=config.CLAUDE_MODEL,
+                max_tokens=2048,
+                system=system,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            return message.content[0].text.strip()
+        except Exception as e:
+            logger.warning(f"Claude no pudo sintetizar, usando Ollama: {e}")
+
     return await llamar_ollama(prompt, system)
 
 
