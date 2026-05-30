@@ -9,6 +9,7 @@ Endpoints compatibles con Open WebUI:
 
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 
 import asyncpg
@@ -90,11 +91,20 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+_cors_origins_raw = os.getenv("CORS_ALLOWED_ORIGINS", "*")
+_cors_origins     = [o.strip() for o in _cors_origins_raw.split(",")] if _cors_origins_raw != "*" else ["*"]
+
+if "*" in _cors_origins:
+    logger.warning(
+        "⚠️  CORS configurado con origin '*'. "
+        "En producción definí CORS_ALLOWED_ORIGINS con los dominios permitidos."
+    )
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_cors_origins,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 app.include_router(chat.router)

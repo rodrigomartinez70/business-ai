@@ -84,8 +84,11 @@ async def query_simple(request: QueryRequest, rol: str = Depends(get_role), _rl:
     return {"respuesta": respuesta, "filas": len(datos), "datos": datos}
 
 
+_MAX_STREAM_CHARS = 32_000  # ~8k tokens; evita streaming de respuestas gigantes
+
+
 async def _stream_respuesta(chat_id: str, model: str, respuesta: str) -> AsyncGenerator[str, None]:
-    words = respuesta.split(" ")
+    words = respuesta[:_MAX_STREAM_CHARS].split(" ")
     for i, word in enumerate(words):
         chunk = {
             "id": chat_id, "object": "chat.completion.chunk", "model": model,
