@@ -74,10 +74,12 @@ async def test_cierre_cobros_estructura(client, gerente_headers):
 async def test_cierre_resumen_gop(client, gerente_headers):
     data = (await client.get("/api/agents/cierre-diario", headers=gerente_headers)).json()
     r = data["resumen"]
-    assert "gop" in r
-    assert "gop_estado" in r
+    assert "gop_devengado"  in r
+    assert "resultado_caja" in r
+    assert "gop_estado"     in r
     assert r["gop_estado"] in ("positivo", "negativo")
-    assert abs(r["gop"] - (r["total_cobrado"] - r["total_gastos"])) < 0.01
+    assert abs(r["gop_devengado"]  - (r["total_ingresos"] - r["total_gastos"])) < 0.01
+    assert abs(r["resultado_caja"] - (r["total_cobrado"]  - r["total_gastos"])) < 0.01
 
 
 @pytest.mark.asyncio
