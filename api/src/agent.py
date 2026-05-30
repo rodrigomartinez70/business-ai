@@ -432,7 +432,20 @@ async def ejecutar_sql(sql: str, rol: str, pregunta: str = "", intentos: int = 2
                     f"SQL con error:\n{sql}\n\nError:\n{error_msg}\n\n"
                     f"Schema:\n{schema}\n\nDevuelve SOLO el SQL corregido: ```sql ... ```"
                 )
-                respuesta = await llamar_ollama(prompt)
+                if config.ANTHROPIC_KEY and config.ANTHROPIC_KEY != "sk-ant-tu-clave-aqui":
+                    try:
+                        client = anthropic.AsyncAnthropic(api_key=config.ANTHROPIC_KEY)
+                        message = await client.messages.create(
+                            model=config.CLAUDE_MODEL,
+                            max_tokens=512,
+                            messages=[{"role": "user", "content": prompt}],
+                        )
+                        respuesta = message.content[0].text.strip()
+                    except Exception as e:
+                        logger.warning(f"Claude no pudo corregir SQL, usando Ollama: {e}")
+                        respuesta = await llamar_ollama(prompt)
+                else:
+                    respuesta = await llamar_ollama(prompt)
                 sql = extraer_sql(respuesta)
                 validar_sql(sql)
             else:
