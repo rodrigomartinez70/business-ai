@@ -315,4 +315,4 @@ def test_resumen_ignora_pasos_fallidos():
     ]
     resumen = _calcular_resumen_numerico(resultados)
     assert "100,000.00" in resumen
-    assert "Total gastos: 0.00" in resumen
+    assert "Total gastos:   0.00" in resumen
