@@ -154,9 +154,11 @@ Los únicos JOINs seguros son los de dimensión (1-a-1).
         message = await client.messages.create(
             model=config.CLAUDE_MODEL,
             max_tokens=1024,
-            system=system,
+            system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
             messages=[{"role": "user", "content": prompt}],
         )
+        u = message.usage
+        logger.debug(f"[plan] cache_read={u.cache_read_input_tokens} cache_write={u.cache_creation_input_tokens}")
         texto = message.content[0].text.strip()
         m = re.search(r"```(?:json)?\s*([\s\S]*?)```", texto)
         if m:
@@ -391,9 +393,11 @@ Reglas:
             message = await client.messages.create(
                 model=config.CLAUDE_MODEL,
                 max_tokens=1024,
-                system=system,
+                system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
                 messages=messages,
             )
+            u = message.usage
+            logger.debug(f"[sql] cache_read={u.cache_read_input_tokens} cache_write={u.cache_creation_input_tokens}")
             respuesta = message.content[0].text.strip()
             if respuesta.startswith("SIN_DATOS:"):
                 raise HTTPException(status_code=422, detail=respuesta[len("SIN_DATOS:"):].strip())
