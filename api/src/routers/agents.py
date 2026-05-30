@@ -11,6 +11,11 @@ from ..agents.cierre_diario import (
     calcular_cierre,
     renderizar_cierre_markdown,
 )
+from ..agents.control_gastos import (
+    build_discord_embed_control_gastos,
+    calcular_control_gastos,
+    renderizar_control_gastos_markdown,
+)
 from ..auth import get_role
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
@@ -137,5 +142,40 @@ async def agente_cierre_diario(
 
     if formato == "discord_payload":
         return build_discord_embed_cierre(data, config.CONFIG)
+
+    return data
+
+
+@router.get("/control-gastos")
+async def agente_control_gastos(
+    fecha_inicio: Optional[date] = Query(None, description="Inicio del período (default: 7 días atrás)"),
+    fecha_fin:    Optional[date] = Query(None, description="Fin del período (default: ayer)"),
+    formato:      str            = Query("json", description="json | markdown | discord_payload"),
+    _rol:         str            = Depends(get_role),
+):
+    """
+    Agente de Control de Gastos.
+
+    Compara gastos del período actual vs el período anterior de igual duración,
+    detecta variaciones anómalas por categoría, gastos sin clasificar y
+    proveedores que aparecen por primera vez.
+
+    - **json**: estructura completa
+    - **markdown**: reporte listo para leer
+    - **discord_payload**: embed listo para POST al webhook de Discord
+    """
+    if fecha_fin is None:
+        fecha_fin = date.today() - timedelta(days=1)
+    if fecha_inicio is None:
+        fecha_inicio = fecha_fin - timedelta(days=6)
+
+    data = await calcular_control_gastos(fecha_inicio, fecha_fin)
+
+    if formato == "markdown":
+        md = renderizar_control_gastos_markdown(data, config.CONFIG)
+        return PlainTextResponse(content=md, media_type="text/markdown; charset=utf-8")
+
+    if formato == "discord_payload":
+        return build_discord_embed_control_gastos(data, config.CONFIG)
 
     return data

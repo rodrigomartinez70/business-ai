@@ -4,5 +4,8 @@
 # Cierre diario — todos los días a las 23:00
 0 23 * * * /cron/cierre_diario.sh >> /reportes/cron.log 2>&1
 
+# Control de gastos semanal — todos los lunes a las 08:30
+30 8 * * 1 /cron/control_gastos.sh >> /reportes/cron.log 2>&1
+
 # Reporte semanal — todos los lunes a las 09:00
 0 9 * * 1 /cron/reporte_semanal.sh >> /reportes/cron.log 2>&1
