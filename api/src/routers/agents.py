@@ -16,6 +16,11 @@ from ..agents.control_gastos import (
     calcular_control_gastos,
     renderizar_control_gastos_markdown,
 )
+from ..agents.pnl_mensual import (
+    build_discord_embed_pnl,
+    calcular_pnl,
+    renderizar_pnl_markdown,
+)
 from ..auth import get_role
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
@@ -177,5 +182,42 @@ async def agente_control_gastos(
 
     if formato == "discord_payload":
         return build_discord_embed_control_gastos(data, config.CONFIG)
+
+    return data
+
+
+@router.get("/pnl-mensual")
+async def agente_pnl_mensual(
+    mes:    int = Query(0,  ge=0, le=12, description="Mes (1-12). 0 = mes anterior."),
+    año:    int = Query(0,  ge=0,        description="Año. 0 = año actual."),
+    formato: str = Query("json",         description="json | markdown | discord_payload"),
+    _rol:   str = Depends(get_role),
+):
+    """
+    Agente de P&L Mensual.
+
+    Estado de resultados completo con comparativa contra mes anterior y
+    mismo mes del año pasado. Incluye ocupación, ADR y RevPAR.
+
+    - **json**: estructura completa con los tres períodos
+    - **markdown**: informe P&L listo para contabilidad
+    - **discord_payload**: embed ejecutivo para el webhook de Discord
+    """
+    hoy = date.today()
+    if año == 0:
+        año = hoy.year
+    if mes == 0:
+        año_cal, mes_cal = (año - 1, 12) if hoy.month == 1 else (año, hoy.month - 1)
+    else:
+        año_cal, mes_cal = año, mes
+
+    data = await calcular_pnl(año_cal, mes_cal)
+
+    if formato == "markdown":
+        md = renderizar_pnl_markdown(data, config.CONFIG)
+        return PlainTextResponse(content=md, media_type="text/markdown; charset=utf-8")
+
+    if formato == "discord_payload":
+        return build_discord_embed_pnl(data, config.CONFIG)
 
     return data

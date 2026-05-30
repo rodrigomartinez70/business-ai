@@ -1,3 +1,6 @@
+# P&L mensual — día 1 de cada mes a las 06:00
+0 6 1 * * /cron/pnl_mensual.sh >> /reportes/cron.log 2>&1
+
 # Alertas diarias — todos los días a las 07:00
 0 7 * * * /cron/alertas_diarias.sh >> /reportes/cron.log 2>&1
 

@@ -1,0 +1,412 @@
+"""
+Agente de P&L Mensual.
+
+Estado de resultados completo: ingresos por departamento, gastos clasificados,
+GOP, margen operativo y métricas hoteleras (ocupación, ADR, RevPAR).
+Comparativa contra mes anterior y mismo mes del año pasado.
+Sin LLM — SQL puro.
+"""
+
+import calendar
+import logging
+from datetime import date
+from decimal import Decimal
+
+from .. import config
+
+logger = logging.getLogger(__name__)
+
+
+# ─────────────────────────────────────────────────────────────
+# Helpers de fecha
+# ─────────────────────────────────────────────────────────────
+
+def _mes_rango(año: int, mes: int) -> tuple[date, date]:
+    ultimo_dia = calendar.monthrange(año, mes)[1]
+    return date(año, mes, 1), date(año, mes, ultimo_dia)
+
+
+def _mes_anterior(año: int, mes: int) -> tuple[int, int]:
+    return (año - 1, 12) if mes == 1 else (año, mes - 1)
+
+
+# ─────────────────────────────────────────────────────────────
+# Cálculo de métricas para un período
+# ─────────────────────────────────────────────────────────────
+
+async def _metricas_mes(conn, fi: date, ff: date) -> dict:
+    """Calcula todas las métricas P&L para el rango fi→ff (un mes completo)."""
+    dias = (ff - fi).days + 1
+
+    hab_activas = await conn.fetchval(
+        "SELECT COUNT(*) FROM habitaciones WHERE activa = TRUE"
+    )
+    cap_noches = int(hab_activas or 0) * dias   # capacidad total del período
+
+    # ── Ingresos hospedaje (devengado: checkouts en el período) ──────────
+    hosp = dict(await conn.fetchrow("""
+        SELECT
+            COALESCE(SUM(r.total_hospedaje), 0) AS ingresos,
+            COALESCE(SUM(r.noches), 0)          AS noches_vendidas
+        FROM reservas r
+        WHERE r.fecha_salida BETWEEN $1 AND $2
+          AND r.estado = 'checkout'
+    """, fi, ff))
+
+    # ── Frigobar ─────────────────────────────────────────────────────────
+    frig = dict(await conn.fetchrow("""
+        SELECT
+            COALESCE(SUM(total),       0) AS ingresos,
+            COALESCE(SUM(costo_total), 0) AS costos,
+            COALESCE(SUM(margen),      0) AS margen
+        FROM consumos_frigobar
+        WHERE fecha BETWEEN $1 AND $2
+    """, fi, ff))
+
+    # ── Servicios ────────────────────────────────────────────────────────
+    serv = dict(await conn.fetchrow("""
+        SELECT
+            COALESCE(SUM(total),       0) AS ingresos,
+            COALESCE(SUM(costo_total), 0) AS costos,
+            COALESCE(SUM(margen),      0) AS margen
+        FROM consumos_servicios
+        WHERE fecha BETWEEN $1 AND $2
+    """, fi, ff))
+
+    # ── Cobros reales del período (base caja) ─────────────────────────────
+    cobros = await conn.fetchval("""
+        SELECT COALESCE(SUM(monto), 0)
+        FROM pagos
+        WHERE fecha BETWEEN $1 AND $2 AND estado = 'pagado'
+    """, fi, ff)
+
+    # ── Gastos por categoría ──────────────────────────────────────────────
+    gastos_cat = [dict(r) for r in await conn.fetch("""
+        SELECT
+            COALESCE(cg.nombre, 'Sin categoría') AS categoria,
+            SUM(g.monto)                          AS monto
+        FROM gastos g
+        LEFT JOIN categorias_gasto cg ON cg.id = g.categoria_id
+        WHERE g.fecha BETWEEN $1 AND $2
+        GROUP BY cg.nombre
+        ORDER BY monto DESC
+    """, fi, ff)]
+
+    # ── Cálculos derivados ────────────────────────────────────────────────
+    def _f(v):
+        return float(v) if isinstance(v, Decimal) else float(v or 0)
+
+    ing_hosp   = _f(hosp["ingresos"])
+    ing_frig   = _f(frig["ingresos"])
+    ing_serv   = _f(serv["ingresos"])
+    total_ing  = ing_hosp + ing_frig + ing_serv
+
+    total_gast = sum(_f(c["monto"]) for c in gastos_cat)
+    gop        = total_ing - total_gast
+    margen_gop = round(gop * 100 / total_ing, 1) if total_ing > 0 else None
+
+    noches_vend = int(hosp["noches_vendidas"] or 0)
+    ocupacion   = round(noches_vend * 100 / cap_noches, 1) if cap_noches > 0 else None
+    adr         = round(ing_hosp / noches_vend, 2) if noches_vend > 0 else None
+    revpar      = round(ing_hosp / cap_noches, 2)  if cap_noches > 0 else None
+
+    margen_frig = round(_f(frig["margen"]) * 100 / ing_frig, 1) if ing_frig > 0 else None
+    margen_serv = round(_f(serv["margen"]) * 100 / ing_serv, 1) if ing_serv > 0 else None
+
+    return {
+        "periodo":  {"inicio": str(fi), "fin": str(ff), "dias": dias},
+        "ingresos": {
+            "hospedaje": ing_hosp,
+            "frigobar":  ing_frig,
+            "servicios": ing_serv,
+            "total":     total_ing,
+            "cobros_caja": _f(cobros),
+        },
+        "departamentos": {
+            "frigobar": {
+                "ingresos": ing_frig,
+                "costos":   _f(frig["costos"]),
+                "margen":   _f(frig["margen"]),
+                "margen_pct": margen_frig,
+            },
+            "servicios": {
+                "ingresos": ing_serv,
+                "costos":   _f(serv["costos"]),
+                "margen":   _f(serv["margen"]),
+                "margen_pct": margen_serv,
+            },
+        },
+        "gastos": {
+            "total":         total_gast,
+            "por_categoria": [
+                {"categoria": r["categoria"], "monto": _f(r["monto"])}
+                for r in gastos_cat
+            ],
+        },
+        "resultado": {
+            "gop":        gop,
+            "margen_pct": margen_gop,
+            "estado":     "positivo" if gop >= 0 else "negativo",
+        },
+        "metricas": {
+            "noches_vendidas": noches_vend,
+            "cap_noches":      cap_noches,
+            "hab_activas":     int(hab_activas or 0),
+            "ocupacion_pct":   ocupacion,
+            "adr":             adr,
+            "revpar":          revpar,
+        },
+    }
+
+
+# ─────────────────────────────────────────────────────────────
+# Punto de entrada principal
+# ─────────────────────────────────────────────────────────────
+
+async def calcular_pnl(año: int, mes: int) -> dict:
+    fi, ff            = _mes_rango(año, mes)
+    año_ant, mes_ant  = _mes_anterior(año, mes)
+    fi_ant, ff_ant    = _mes_rango(año_ant, mes_ant)
+    fi_aa, ff_aa      = _mes_rango(año - 1, mes)      # mismo mes año anterior
+
+    async with config.db_pool.acquire() as conn:
+        actual    = await _metricas_mes(conn, fi,     ff)
+        anterior  = await _metricas_mes(conn, fi_ant, ff_ant)
+        año_pasado= await _metricas_mes(conn, fi_aa,  ff_aa)
+
+    def _var(v_actual, v_ref):
+        if v_ref and v_ref != 0:
+            return round((v_actual - v_ref) * 100 / abs(v_ref), 1)
+        return None
+
+    def _comp(campo, sub=None):
+        a = actual[campo]    if sub is None else actual[campo][sub]
+        p = anterior[campo]  if sub is None else anterior[campo][sub]
+        y = año_pasado[campo]if sub is None else año_pasado[campo][sub]
+        return {
+            "vs_mes_anterior":  _var(a, p),
+            "vs_año_anterior":  _var(a, y),
+        }
+
+    mes_nombre = fi.strftime("%B %Y").capitalize()
+
+    return {
+        "mes":        mes,
+        "año":        año,
+        "mes_nombre": mes_nombre,
+        "actual":     actual,
+        "anterior":   anterior,
+        "año_pasado": año_pasado,
+        "comparativas": {
+            "ingresos_total": _comp("ingresos", "total"),
+            "gop":            {
+                "vs_mes_anterior": _var(actual["resultado"]["gop"], anterior["resultado"]["gop"]),
+                "vs_año_anterior": _var(actual["resultado"]["gop"], año_pasado["resultado"]["gop"]),
+            },
+            "ocupacion": {
+                "vs_mes_anterior": _var(
+                    actual["metricas"]["ocupacion_pct"] or 0,
+                    anterior["metricas"]["ocupacion_pct"] or 0
+                ),
+                "vs_año_anterior": _var(
+                    actual["metricas"]["ocupacion_pct"] or 0,
+                    año_pasado["metricas"]["ocupacion_pct"] or 0
+                ),
+            },
+            "revpar": {
+                "vs_mes_anterior": _var(actual["metricas"]["revpar"] or 0, anterior["metricas"]["revpar"] or 0),
+                "vs_año_anterior": _var(actual["metricas"]["revpar"] or 0, año_pasado["metricas"]["revpar"] or 0),
+            },
+        },
+    }
+
+
+# ─────────────────────────────────────────────────────────────
+# Renderizado
+# ─────────────────────────────────────────────────────────────
+
+def _fmt(v: float, cfg: dict) -> str:
+    cur = cfg.get("currency", {})
+    sym = cur.get("symbol", "$")
+    sep = cur.get("thousands_separator", ".")
+    return f"{sym}{v:,.0f}".replace(",", sep)
+
+
+def _var_txt(pct) -> str:
+    if pct is None:
+        return "—"
+    arrow = "▲" if pct > 0 else "▼"
+    return f"{arrow} {abs(pct):.1f}%"
+
+
+def renderizar_pnl_markdown(data: dict, cfg: dict) -> str:
+    biz = cfg.get("business", {}).get("name", "Negocio")
+    fm  = lambda v: _fmt(v, cfg)
+    a   = data["actual"]
+    ant = data["anterior"]
+    ay  = data["año_pasado"]
+    c   = data["comparativas"]
+
+    ing  = a["ingresos"]
+    gas  = a["gastos"]
+    res  = a["resultado"]
+    met  = a["metricas"]
+
+    lines = [
+        f"# 📑 P&L Mensual — {biz}",
+        f"**Período:** {data['mes_nombre']}",
+        f"**Habitaciones activas:** {met['hab_activas']}",
+        "",
+        "---",
+        "",
+        "## 💰 Ingresos",
+        "| Departamento | Monto | % del total |",
+        "|---|---|---|",
+    ]
+    total = ing["total"] or 1
+    lines += [
+        f"| Hospedaje | {fm(ing['hospedaje'])} | {ing['hospedaje']*100/total:.1f}% |",
+        f"| Frigobar | {fm(ing['frigobar'])} | {ing['frigobar']*100/total:.1f}% |",
+        f"| Servicios | {fm(ing['servicios'])} | {ing['servicios']*100/total:.1f}% |",
+        f"| **Total ingresos** | **{fm(ing['total'])}** | 100% |",
+        f"| *Cobros caja* | *{fm(ing['cobros_caja'])}* | — |",
+    ]
+
+    dep = a["departamentos"]
+    if dep["frigobar"]["ingresos"] > 0 or dep["servicios"]["ingresos"] > 0:
+        lines += [
+            "", "### Márgenes departamentales",
+            "| Depto | Ingresos | Costos | Margen | % |",
+            "|---|---|---|---|---|",
+        ]
+        for nombre, d in dep.items():
+            if d["ingresos"] > 0:
+                pct = f"{d['margen_pct']:.1f}%" if d["margen_pct"] is not None else "—"
+                lines.append(
+                    f"| {nombre.capitalize()} | {fm(d['ingresos'])} | "
+                    f"{fm(d['costos'])} | {fm(d['margen'])} | {pct} |"
+                )
+
+    lines += ["", "---", "", "## 📋 Gastos Operativos",
+              "| Categoría | Monto | % ingresos |",
+              "|---|---|---|"]
+    for g in gas["por_categoria"]:
+        pct = f"{g['monto']*100/ing['total']:.1f}%" if ing["total"] > 0 else "—"
+        lines.append(f"| {g['categoria']} | {fm(g['monto'])} | {pct} |")
+    lines.append(f"| **Total gastos** | **{fm(gas['total'])}** | "
+                 f"{gas['total']*100/ing['total']:.1f}% |" if ing["total"] > 0 else
+                 f"| **Total gastos** | **{fm(gas['total'])}** | — |")
+
+    gop_icono = "✅" if res["estado"] == "positivo" else "🔴"
+    lines += [
+        "", "---", "", "## 📈 Resultado Operativo (GOP)",
+        "| | Actual | Mes anterior | Año anterior |",
+        "|---|---|---|---|",
+        f"| GOP | **{fm(res['gop'])}** | {fm(ant['resultado']['gop'])} | {fm(ay['resultado']['gop'])} |",
+        f"| Margen GOP | **{res['margen_pct'] or 0:.1f}%** | {ant['resultado']['margen_pct'] or 0:.1f}% | {ay['resultado']['margen_pct'] or 0:.1f}% |",
+        f"| Variación | — | {_var_txt(c['gop']['vs_mes_anterior'])} | {_var_txt(c['gop']['vs_año_anterior'])} |",
+        f"",
+        f"{gop_icono} **GOP: {fm(res['gop'])}** "
+        f"({_var_txt(c['gop']['vs_mes_anterior'])} vs mes ant · "
+        f"{_var_txt(c['gop']['vs_año_anterior'])} vs año ant)",
+    ]
+
+    lines += [
+        "", "---", "", "## 🏨 Métricas Hoteleras",
+        "| Métrica | Actual | Mes anterior | Año anterior |",
+        "|---|---|---|---|",
+        f"| Ocupación | **{met['ocupacion_pct'] or 0:.1f}%** | {ant['metricas']['ocupacion_pct'] or 0:.1f}% | {ay['metricas']['ocupacion_pct'] or 0:.1f}% |",
+        f"| ADR | **{fm(met['adr'] or 0)}** | {fm(ant['metricas']['adr'] or 0)} | {fm(ay['metricas']['adr'] or 0)} |",
+        f"| RevPAR | **{fm(met['revpar'] or 0)}** | {fm(ant['metricas']['revpar'] or 0)} | {fm(ay['metricas']['revpar'] or 0)} |",
+        f"| Noches vendidas | **{met['noches_vendidas']}** | {ant['metricas']['noches_vendidas']} | {ay['metricas']['noches_vendidas']} |",
+    ]
+
+    return "\n".join(lines)
+
+
+def build_discord_embed_pnl(data: dict, cfg: dict) -> dict:
+    biz = cfg.get("business", {}).get("name", "Negocio")
+    fm  = lambda v: _fmt(v, cfg)
+    a   = data["actual"]
+    ant = data["anterior"]
+    ay  = data["año_pasado"]
+    c   = data["comparativas"]
+    res = a["resultado"]
+    met = a["metricas"]
+    ing = a["ingresos"]
+    gas = a["gastos"]
+
+    color = 0x2ECC71 if res["estado"] == "positivo" else 0xE74C3C
+    gop_icon = "✅" if res["estado"] == "positivo" else "🔴"
+
+    top_gastos = gas["por_categoria"][:3]
+    gastos_txt = "\n".join(f"{g['categoria']}: {fm(g['monto'])}" for g in top_gastos)
+    if len(gas["por_categoria"]) > 3:
+        resto = gas["total"] - sum(g["monto"] for g in top_gastos)
+        gastos_txt += f"\nOtros: {fm(resto)}"
+    gastos_txt += f"\n**Total: {fm(gas['total'])}**"
+
+    fields = [
+        {
+            "name":   "💰 Ingresos",
+            "value":  (
+                f"Hospedaje: {fm(ing['hospedaje'])}\n"
+                f"Frigobar: {fm(ing['frigobar'])}\n"
+                f"Servicios: {fm(ing['servicios'])}\n"
+                f"**Total: {fm(ing['total'])}**"
+            ),
+            "inline": True,
+        },
+        {
+            "name":   "📋 Gastos",
+            "value":  gastos_txt,
+            "inline": True,
+        },
+        {
+            "name":   f"{gop_icon} GOP",
+            "value":  (
+                f"**{fm(res['gop'])}**\n"
+                f"Margen: {res['margen_pct'] or 0:.1f}%\n"
+                f"vs mes ant: {_var_txt(c['gop']['vs_mes_anterior'])}\n"
+                f"vs año ant: {_var_txt(c['gop']['vs_año_anterior'])}"
+            ),
+            "inline": True,
+        },
+        {
+            "name":   "🏨 Métricas",
+            "value":  (
+                f"Ocupación: **{met['ocupacion_pct'] or 0:.1f}%** "
+                f"({_var_txt(c['ocupacion']['vs_mes_anterior'])})\n"
+                f"ADR: {fm(met['adr'] or 0)}\n"
+                f"RevPAR: {fm(met['revpar'] or 0)} "
+                f"({_var_txt(c['revpar']['vs_mes_anterior'])})"
+            ),
+            "inline": True,
+        },
+        {
+            "name":   "📊 Comparativa mes anterior",
+            "value":  (
+                f"Ingresos: {_var_txt(c['ingresos_total']['vs_mes_anterior'])}\n"
+                f"GOP: {_var_txt(c['gop']['vs_mes_anterior'])}\n"
+                f"Referencia: {ant['periodo']['inicio'][:7]}"
+            ),
+            "inline": True,
+        },
+        {
+            "name":   "📅 Comparativa año anterior",
+            "value":  (
+                f"Ingresos: {_var_txt(c['ingresos_total']['vs_año_anterior'])}\n"
+                f"GOP: {_var_txt(c['gop']['vs_año_anterior'])}\n"
+                f"Referencia: {ay['periodo']['inicio'][:7]}"
+            ),
+            "inline": True,
+        },
+    ]
+
+    return {
+        "embeds": [{
+            "title":  f"📑 P&L Mensual — {biz} · {data['mes_nombre']}",
+            "color":  color,
+            "fields": fields,
+        }]
+    }
