@@ -95,6 +95,8 @@ services:
       - API_URL=http://negocio_api:8000
       - DISCORD_MODEL_ID=${WEBUI_DEFAULT_MODEL:-asistente-ia}
       - DISCORD_MAX_HISTORY=10
+    volumes:
+      - discord_history:/app/data
     depends_on:
       - api
 
@@ -123,3 +125,4 @@ volumes:
   open_webui_data:
   postgres_data:
   reportes_data:
+  discord_history:

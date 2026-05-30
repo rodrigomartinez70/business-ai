@@ -12,9 +12,11 @@ Cualquier mensaje sin ! se procesa como consulta en lenguaje natural.
 """
 
 import asyncio
+import json
 import logging
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import discord
 import httpx
@@ -28,8 +30,27 @@ CHANNEL_ID    = int(os.getenv("DISCORD_CHANNEL_ID", "0"))
 MAX_HISTORY   = int(os.getenv("DISCORD_MAX_HISTORY", "10"))
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "")
 MODEL_ID      = os.getenv("DISCORD_MODEL_ID", "asistente-ia")
+HISTORY_FILE  = Path(os.getenv("HISTORY_FILE", "/app/data/history.json"))
 
-histories: dict[int, list[dict]] = {}
+
+def _load_histories() -> dict[int, list[dict]]:
+    if HISTORY_FILE.exists():
+        try:
+            return {int(k): v for k, v in json.loads(HISTORY_FILE.read_text()).items()}
+        except Exception as e:
+            logger.warning(f"No se pudo cargar historial: {e}")
+    return {}
+
+
+def _save_histories() -> None:
+    try:
+        HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+        HISTORY_FILE.write_text(json.dumps({str(k): v for k, v in histories.items()}))
+    except Exception as e:
+        logger.warning(f"No se pudo guardar historial: {e}")
+
+
+histories: dict[int, list[dict]] = _load_histories()
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -235,6 +256,7 @@ async def on_message(message: discord.Message):
 
     if cmd in ("!reset", "!limpiar", "!nuevo"):
         histories.pop(message.channel.id, None)
+        _save_histories()
         await message.reply("Historial limpiado.")
         return
 
@@ -308,6 +330,7 @@ async def on_message(message: discord.Message):
                     histories[channel_id] = histories[channel_id][-MAX_HISTORY:]
                 texto = await _chat(histories[channel_id])
                 histories[channel_id].append({"role": "assistant", "content": texto})
+                _save_histories()
 
         except httpx.HTTPStatusError as e:
             logger.error(f"Error API {e.response.status_code}: {e.response.text}")
