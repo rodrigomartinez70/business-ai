@@ -21,6 +21,11 @@ from ..agents.pnl_mensual import (
     calcular_pnl,
     renderizar_pnl_markdown,
 )
+from ..agents.rentabilidad_canal import (
+    build_discord_embed_rentabilidad_canal,
+    calcular_rentabilidad_canal,
+    renderizar_rentabilidad_canal_markdown,
+)
 from ..agents.cash_flow import (
     build_discord_embed_cash_flow,
     calcular_cash_flow,
@@ -278,5 +283,39 @@ async def agente_cash_flow(
 
     if formato == "discord_payload":
         return build_discord_embed_cash_flow(data, config.CONFIG)
+
+    return data
+
+
+@router.get("/rentabilidad-canal")
+async def agente_rentabilidad_canal(
+    mes:    int = Query(0, ge=0, le=12, description="Mes (1-12). 0 = mes anterior."),
+    anio:   int = Query(0, ge=0,        description="Año. 0 = año actual."),
+    formato: str = Query("json",        description="json | markdown | discord_payload"),
+    _rol:   str = Depends(get_role),
+):
+    """
+    Agente de Rentabilidad por Canal.
+
+    Ranking de canales de venta por ingreso neto real (descontando comisión OTA),
+    tasa de cancelación y ADR. Comparativa contra mismo período del año anterior.
+    Identifica el canal más rentable y el más confiable.
+    """
+    hoy = date.today()
+    if anio == 0:
+        anio = hoy.year
+    if mes == 0:
+        año_cal, mes_cal = (anio - 1, 12) if hoy.month == 1 else (anio, hoy.month - 1)
+    else:
+        año_cal, mes_cal = anio, mes
+
+    data = await calcular_rentabilidad_canal(año_cal, mes_cal)
+
+    if formato == "markdown":
+        md = renderizar_rentabilidad_canal_markdown(data, config.CONFIG)
+        return PlainTextResponse(content=md, media_type="text/markdown; charset=utf-8")
+
+    if formato == "discord_payload":
+        return build_discord_embed_rentabilidad_canal(data, config.CONFIG)
 
     return data
