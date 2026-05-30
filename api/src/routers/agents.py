@@ -21,6 +21,11 @@ from ..agents.pnl_mensual import (
     calcular_pnl,
     renderizar_pnl_markdown,
 )
+from ..agents.cash_flow import (
+    build_discord_embed_cash_flow,
+    calcular_cash_flow,
+    renderizar_cash_flow_markdown,
+)
 from ..agents.revenue_management import (
     build_discord_embed_revenue,
     calcular_revenue_management,
@@ -249,5 +254,29 @@ async def agente_revenue_management(
 
     if formato == "discord_payload":
         return build_discord_embed_revenue(data, config.CONFIG)
+
+    return data
+
+
+@router.get("/cash-flow")
+async def agente_cash_flow(
+    formato: str = Query("json", description="json | markdown | discord_payload"),
+    _rol:    str = Depends(get_role),
+):
+    """
+    Agente de Cash Flow.
+
+    Proyecta ingresos esperados (reservas confirmadas futuras, por fecha de checkout)
+    vs gastos estimados (promedio histórico semanal de las últimas 12 semanas)
+    para las próximas 8 semanas. Incluye cobros pendientes y semáforo de liquidez.
+    """
+    data = await calcular_cash_flow()
+
+    if formato == "markdown":
+        md = renderizar_cash_flow_markdown(data, config.CONFIG)
+        return PlainTextResponse(content=md, media_type="text/markdown; charset=utf-8")
+
+    if formato == "discord_payload":
+        return build_discord_embed_cash_flow(data, config.CONFIG)
 
     return data

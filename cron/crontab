@@ -4,6 +4,9 @@
 # Alertas diarias — todos los días a las 07:00
 0 7 * * * /cron/alertas_diarias.sh >> /reportes/cron.log 2>&1
 
+# Cash flow semanal — todos los lunes a las 07:30
+30 7 * * 1 /cron/cash_flow.sh >> /reportes/cron.log 2>&1
+
 # Revenue management diario — todos los días a las 08:00
 0 8 * * * /cron/revenue_management.sh >> /reportes/cron.log 2>&1
 
