@@ -13,6 +13,7 @@ from fastapi import HTTPException
 
 from src.agent import (
     _agregar_wildcards_ilike,
+    _calcular_resumen_numerico,
     extraer_sql,
     generar_plan,
     generar_sql,
@@ -241,3 +242,77 @@ async def test_generar_plan_trunca_a_4_pasos():
 
     assert pasos is not None
     assert len(pasos) <= 4
+
+
+# ── _calcular_resumen_numerico ────────────────────────────────
+
+def _make_resultado(proposito: str, datos: list[dict], ok: bool = True) -> dict:
+    return {"proposito": proposito, "datos": datos, "ok": ok}
+
+
+def test_resumen_clasifica_por_proposito_ingreso():
+    """Paso con proposito de ingreso y columna 'total' → va a ingresos."""
+    resultados = [_make_resultado("ingresos por canal", [{"total": 100_000.0}])]
+    resumen = _calcular_resumen_numerico(resultados)
+    assert "100,000.00" in resumen
+    assert "Total ingresos" in resumen
+    assert "Total gastos" in resumen
+
+
+def test_resumen_clasifica_por_proposito_gasto():
+    """Paso con proposito de gasto y columna 'total' → va a gastos."""
+    resultados = [_make_resultado("gastos operativos", [{"total": 40_000.0}])]
+    resumen = _calcular_resumen_numerico(resultados)
+    assert "40,000.00" in resumen
+    assert "gastos" in resumen.lower()
+
+
+def test_resumen_columna_total_ambigua_se_omite():
+    """Paso con proposito genérico y columna 'total' → se omite (ambiguo)."""
+    resultados = [_make_resultado("resumen del período", [{"total": 50_000.0}])]
+    resumen = _calcular_resumen_numerico(resultados)
+    # Sin ingresos ni gastos clasificados → cadena vacía
+    assert resumen == ""
+
+
+def test_resumen_columna_total_gasto_va_a_gastos():
+    """Columna 'total_gasto' contiene 'gasto' → expense_kw match → gastos."""
+    resultados = [_make_resultado("resumen del período", [{"total_gasto": 30_000.0}])]
+    resumen = _calcular_resumen_numerico(resultados)
+    assert "30,000.00" in resumen
+    assert "gastos" in resumen.lower()
+
+
+def test_resumen_gop_correcto():
+    """GOP = ingresos - gastos calculado correctamente."""
+    resultados = [
+        _make_resultado("ingresos totales",  [{"ingreso": 200_000.0}]),
+        _make_resultado("gastos operativos", [{"monto":    80_000.0}]),
+    ]
+    resumen = _calcular_resumen_numerico(resultados)
+    assert "120,000.00" in resumen  # GOP
+    assert "GANANCIA" in resumen
+
+
+def test_resumen_perdida():
+    resultados = [
+        _make_resultado("ingresos",  [{"ingreso": 50_000.0}]),
+        _make_resultado("gastos",    [{"monto":   90_000.0}]),
+    ]
+    resumen = _calcular_resumen_numerico(resultados)
+    assert "PÉRDIDA" in resumen
+
+
+def test_resumen_vacio_sin_datos():
+    resumen = _calcular_resumen_numerico([])
+    assert resumen == ""
+
+
+def test_resumen_ignora_pasos_fallidos():
+    resultados = [
+        _make_resultado("ingresos", [{"ingreso": 100_000.0}]),
+        _make_resultado("gastos",   [],                        ok=False),
+    ]
+    resumen = _calcular_resumen_numerico(resultados)
+    assert "100,000.00" in resumen
+    assert "Total gastos: 0.00" in resumen

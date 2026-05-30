@@ -278,6 +278,9 @@ def formatear_plan_python(resultados: list[dict]) -> str:
 def _calcular_resumen_numerico(resultados: list[dict]) -> str:
     income_kw  = set(config.CONFIG.get("income_keywords",  []))
     expense_kw = set(config.CONFIG.get("expense_keywords", []))
+    # "total" es demasiado genérico a nivel de columna: aparece en pasos de gastos
+    # e ingresos por igual. Solo se usa para clasificar por proposito, no por columna.
+    col_income_kw = income_kw - {"total"}
 
     total_ingresos = 0.0
     total_gastos   = 0.0
@@ -285,8 +288,9 @@ def _calcular_resumen_numerico(resultados: list[dict]) -> str:
     for r in resultados:
         if not r.get("ok") or not r.get("datos"):
             continue
-        proposito = r["proposito"].lower()
-        es_gasto  = any(p in proposito for p in expense_kw)
+        proposito  = r["proposito"].lower()
+        es_gasto   = any(p in proposito for p in expense_kw)
+        es_ingreso = any(p in proposito for p in income_kw)
         for fila in r["datos"]:
             for col, val in fila.items():
                 if not isinstance(val, (int, float, Decimal)):
@@ -295,8 +299,9 @@ def _calcular_resumen_numerico(resultados: list[dict]) -> str:
                 val_f     = float(val)
                 if es_gasto or any(p in col_lower for p in expense_kw):
                     total_gastos += val_f
-                elif any(p in col_lower for p in income_kw):
+                elif es_ingreso or any(p in col_lower for p in col_income_kw):
                     total_ingresos += val_f
+                # columna ambigua sin proposito claro → se omite
 
     if total_ingresos == 0 and total_gastos == 0:
         return ""
