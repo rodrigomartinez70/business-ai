@@ -189,7 +189,7 @@ async def agente_control_gastos(
 @router.get("/pnl-mensual")
 async def agente_pnl_mensual(
     mes:    int = Query(0,  ge=0, le=12, description="Mes (1-12). 0 = mes anterior."),
-    año:    int = Query(0,  ge=0,        description="Año. 0 = año actual."),
+    anio:   int = Query(0,  ge=0,        description="Año. 0 = año actual."),
     formato: str = Query("json",         description="json | markdown | discord_payload"),
     _rol:   str = Depends(get_role),
 ):
@@ -204,12 +204,12 @@ async def agente_pnl_mensual(
     - **discord_payload**: embed ejecutivo para el webhook de Discord
     """
     hoy = date.today()
-    if año == 0:
-        año = hoy.year
+    if anio == 0:
+        anio = hoy.year
     if mes == 0:
-        año_cal, mes_cal = (año - 1, 12) if hoy.month == 1 else (año, hoy.month - 1)
+        año_cal, mes_cal = (anio - 1, 12) if hoy.month == 1 else (anio, hoy.month - 1)
     else:
-        año_cal, mes_cal = año, mes
+        año_cal, mes_cal = anio, mes
 
     data = await calcular_pnl(año_cal, mes_cal)
 
