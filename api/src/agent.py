@@ -163,17 +163,27 @@ Los únicos JOINs seguros son los de dimensión (1-a-1).
         m = re.search(r"```(?:json)?\s*([\s\S]*?)```", texto)
         if m:
             texto = m.group(1).strip()
-        plan = json.loads(texto)
+
+        try:
+            plan = json.loads(texto)
+        except json.JSONDecodeError as e:
+            logger.warning(f"Plan: JSON inválido de Claude: {e}")
+            return None
+
+        if not isinstance(plan, dict):
+            logger.warning(f"Plan: respuesta no es dict ({type(plan).__name__})")
+            return None
 
         if plan.get("sin_datos"):
             raise HTTPException(status_code=422, detail=plan["sin_datos"])
 
         pasos = plan.get("pasos")
-        if not pasos:
+        if not isinstance(pasos, list) or not pasos:
             return None
 
         for paso in pasos:
-            if "sql" not in paso or "proposito" not in paso:
+            if not isinstance(paso, dict) or "sql" not in paso or "proposito" not in paso:
+                logger.warning(f"Plan: paso malformado ignorado: {paso}")
                 return None
             validar_sql(paso["sql"])
 

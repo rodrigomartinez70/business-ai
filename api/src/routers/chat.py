@@ -20,6 +20,13 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+async def _audit(*args, **kwargs) -> None:
+    try:
+        await registrar_auditoria(*args, **kwargs)
+    except Exception as e:
+        logger.error(f"Error registrando auditoría: {e}")
+
+
 class Message(BaseModel):
     role: str
     content: str
@@ -54,6 +61,7 @@ async def query_simple(request: QueryRequest, rol: str = Depends(get_role), _rl:
     error_msg = None
     sql = modelo = ""
     datos: list[dict] = []
+    respuesta = ""
     try:
         sql, modelo = await generar_sql(request.pregunta, rol)
         datos       = await ejecutar_sql(sql, rol, request.pregunta)
@@ -62,9 +70,14 @@ async def query_simple(request: QueryRequest, rol: str = Depends(get_role), _rl:
         respuesta = e.detail
         estado, error_msg = "error", e.detail
         raise
+    except Exception as e:
+        logger.error(f"Error inesperado en /api/query: {e}")
+        respuesta = "Ocurrió un error al procesar tu consulta."
+        estado, error_msg = "error", str(e)
+        raise HTTPException(status_code=500, detail=respuesta)
     finally:
         duracion_ms = int((time.monotonic() - t0) * 1000)
-        asyncio.create_task(registrar_auditoria(
+        asyncio.create_task(_audit(
             rol, request.pregunta, sql, len(datos),
             duracion_ms, estado, "simple", modelo, error_msg,
         ))
@@ -144,7 +157,7 @@ async def chat_completions(request: ChatRequest, rol: str = Depends(get_role), _
         estado, error_msg = "error", str(e)
 
     duracion_ms = int((time.monotonic() - t0) * 1000)
-    asyncio.create_task(registrar_auditoria(
+    asyncio.create_task(_audit(
         rol, pregunta, sql_log, filas_total,
         duracion_ms, estado, tipo_flujo, modelo_llm, error_msg,
     ))
