@@ -14,6 +14,7 @@ from ..agent import ejecutar_plan, ejecutar_sql, formatear_plan_python, generar_
 from ..audit import registrar_auditoria
 from ..auth import get_role
 from ..formatting import formatear_respuesta
+from ..ratelimit import rate_limit
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -47,7 +48,7 @@ async def health():
 
 
 @router.post("/api/query")
-async def query_simple(request: QueryRequest, rol: str = Depends(get_role)):
+async def query_simple(request: QueryRequest, rol: str = Depends(get_role), _rl: None = Depends(rate_limit)):
     t0        = time.monotonic()
     estado    = "ok"
     error_msg = None
@@ -85,7 +86,7 @@ async def _stream_respuesta(chat_id: str, model: str, respuesta: str) -> AsyncGe
 
 @router.post("/api/chat/completions")
 @router.post("/api/v1/chat/completions")
-async def chat_completions(request: ChatRequest, rol: str = Depends(get_role)):
+async def chat_completions(request: ChatRequest, rol: str = Depends(get_role), _rl: None = Depends(rate_limit)):
     if not request.messages:
         raise HTTPException(status_code=400, detail="No hay mensajes.")
 
