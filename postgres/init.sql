@@ -176,6 +176,7 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO negocio_ingest;
 
 CREATE INDEX idx_reservas_fechas        ON reservas(fecha_entrada, fecha_salida);
 CREATE INDEX idx_reservas_estado        ON reservas(estado);
+CREATE INDEX idx_reservas_estado_salida ON reservas(estado, fecha_salida);  -- agentes financieros
 CREATE INDEX idx_reservas_habitacion    ON reservas(habitacion_id);
 CREATE INDEX idx_reservas_huesped       ON reservas(huesped_id);
 CREATE INDEX idx_pagos_reserva          ON pagos(reserva_id);

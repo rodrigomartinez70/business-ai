@@ -80,6 +80,18 @@ async def _metricas_mes(conn, fi: date, ff: date) -> dict:
         WHERE fecha BETWEEN $1 AND $2 AND estado = 'pagado'
     """, fi, ff)
 
+    # ── Comisiones OTA devengadas (checkouts del período) ─────────────────
+    comisiones_ota = await conn.fetchval("""
+        SELECT COALESCE(
+            ROUND(SUM(r.total_hospedaje * cv.comision_pct / 100), 0), 0
+        )
+        FROM reservas r
+        JOIN canales_venta cv ON cv.id = r.canal_id
+        WHERE r.fecha_salida BETWEEN $1 AND $2
+          AND r.estado = 'checkout'
+          AND cv.comision_pct > 0
+    """, fi, ff)
+
     # ── Gastos por categoría ──────────────────────────────────────────────
     gastos_cat = [dict(r) for r in await conn.fetch("""
         SELECT
@@ -101,9 +113,12 @@ async def _metricas_mes(conn, fi: date, ff: date) -> dict:
     ing_serv   = _f(serv["ingresos"])
     total_ing  = ing_hosp + ing_frig + ing_serv
 
+    comis_ota  = _f(comisiones_ota)
     total_gast = sum(_f(c["monto"]) for c in gastos_cat)
-    gop        = total_ing - total_gast
-    margen_gop = round(gop * 100 / total_ing, 1) if total_ing > 0 else None
+    # GOP neto: descuenta comisiones OTA del lado de ingresos
+    ing_neto   = total_ing - comis_ota
+    gop        = ing_neto - total_gast
+    margen_gop = round(gop * 100 / ing_neto, 1) if ing_neto > 0 else None
 
     noches_vend = int(hosp["noches_vendidas"] or 0)
     ocupacion   = round(noches_vend * 100 / cap_noches, 1) if cap_noches > 0 else None
@@ -116,7 +131,9 @@ async def _metricas_mes(conn, fi: date, ff: date) -> dict:
     return {
         "periodo":  {"inicio": str(fi), "fin": str(ff), "dias": dias},
         "ingresos": {
-            "hospedaje": ing_hosp,
+            "hospedaje":    ing_hosp,
+            "comisiones_ota": comis_ota,
+            "neto":         ing_neto,
             "frigobar":  ing_frig,
             "servicios": ing_serv,
             "total":     total_ing,
@@ -223,17 +240,17 @@ async def calcular_pnl(año: int, mes: int) -> dict:
             },
             "ocupacion": {
                 "vs_mes_anterior": _var(
-                    actual["metricas"]["ocupacion_pct"] or 0,
-                    anterior["metricas"]["ocupacion_pct"] or 0
+                    actual["metricas"]["ocupacion_pct"],
+                    anterior["metricas"]["ocupacion_pct"],
                 ),
                 "vs_año_anterior": _var(
-                    actual["metricas"]["ocupacion_pct"] or 0,
-                    año_pasado["metricas"]["ocupacion_pct"] or 0
+                    actual["metricas"]["ocupacion_pct"],
+                    año_pasado["metricas"]["ocupacion_pct"],
                 ),
             },
             "revpar": {
-                "vs_mes_anterior": _var(actual["metricas"]["revpar"] or 0, anterior["metricas"]["revpar"] or 0),
-                "vs_año_anterior": _var(actual["metricas"]["revpar"] or 0, año_pasado["metricas"]["revpar"] or 0),
+                "vs_mes_anterior": _var(actual["metricas"]["revpar"], anterior["metricas"]["revpar"]),
+                "vs_año_anterior": _var(actual["metricas"]["revpar"], año_pasado["metricas"]["revpar"]),
             },
         },
     }

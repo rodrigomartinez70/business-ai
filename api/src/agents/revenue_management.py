@@ -33,17 +33,17 @@ async def calcular_revenue_management(horizon_dias: int = 30) -> dict:
         # ── Snapshot hoy ────────────────────────────────────────────────
         snapshot = dict(await conn.fetchrow("""
             SELECT
-                COUNT(*)                               AS ocupadas,
-                ROUND(AVG(r.tarifa_noche), 0)         AS adr,
-                COUNT(*) FILTER (WHERE r.estado = 'checkin'
-                    AND DATE(r.created_at) = CURRENT_DATE) AS checkins_hoy
+                COUNT(*)                                                   AS ocupadas,
+                ROUND(SUM(r.tarifa_noche * r.noches)
+                      / NULLIF(SUM(r.noches), 0), 0)                      AS adr,
+                COUNT(*) FILTER (WHERE r.fecha_entrada = CURRENT_DATE)    AS checkins_hoy
             FROM reservas r
             WHERE r.estado = 'checkin'
         """))
 
         # ── ADR histórico de referencia (últimos 30 días de checkout) ────
         adr_historico = await conn.fetchval("""
-            SELECT ROUND(AVG(tarifa_noche), 0)
+            SELECT ROUND(SUM(tarifa_noche * noches) / NULLIF(SUM(noches), 0), 0)
             FROM reservas
             WHERE fecha_salida BETWEEN CURRENT_DATE - 30 AND CURRENT_DATE
               AND estado = 'checkout'
@@ -60,8 +60,9 @@ async def calcular_revenue_management(horizon_dias: int = 30) -> dict:
             SELECT
                 d.fecha,
                 COUNT(r.id)                           AS reservas,
-                ROUND(COUNT(r.id) * 100.0 / $1, 1)   AS ocupacion_pct,
-                ROUND(AVG(r.tarifa_noche), 0)         AS adr
+                ROUND(COUNT(r.id) * 100.0 / $1, 1)                        AS ocupacion_pct,
+                ROUND(SUM(r.tarifa_noche * r.noches)
+                      / NULLIF(SUM(r.noches), 0), 0)                     AS adr
             FROM (
                 SELECT generate_series(
                     CURRENT_DATE,
@@ -80,7 +81,8 @@ async def calcular_revenue_management(horizon_dias: int = 30) -> dict:
         # ── Últimos 30 días: RevPAR, ADR, ocupación real ────────────────
         historico_30 = dict(await conn.fetchrow("""
             SELECT
-                ROUND(AVG(r.tarifa_noche), 0)                              AS adr_30d,
+                ROUND(SUM(r.tarifa_noche * r.noches)
+                      / NULLIF(SUM(r.noches), 0), 0)                      AS adr_30d,
                 ROUND(
                     SUM(r.noches * r.tarifa_noche)
                     / NULLIF($1 * 30.0, 0)
@@ -96,7 +98,8 @@ async def calcular_revenue_management(horizon_dias: int = 30) -> dict:
         # ── Últimos 7 días ───────────────────────────────────────────────
         historico_7 = dict(await conn.fetchrow("""
             SELECT
-                ROUND(AVG(r.tarifa_noche), 0)                             AS adr_7d,
+                ROUND(SUM(r.tarifa_noche * r.noches)
+                      / NULLIF(SUM(r.noches), 0), 0)                     AS adr_7d,
                 ROUND(
                     SUM(r.noches * r.tarifa_noche) / NULLIF($1 * 7.0, 0)
                 , 0)                                                      AS revpar_7d,

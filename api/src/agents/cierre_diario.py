@@ -131,7 +131,10 @@ async def calcular_cierre(fecha: date) -> dict:
     total_cobrado    = _f(cobros["cobrado"])
     total_gastos     = _f(gastos_total)
     total_comisiones = sum(_f(c["comision"]) for c in comisiones_ota)
-    gop              = total_cobrado - total_gastos
+    # GOP devengado: ingresos generados - gastos (base contable)
+    gop_devengado    = total_ingresos - total_gastos
+    # Resultado caja: lo efectivamente cobrado - gastos (base caja)
+    resultado_caja   = total_cobrado - total_gastos
 
     return {
         "fecha": str(fecha),
@@ -195,8 +198,9 @@ async def calcular_cierre(fecha: date) -> dict:
             "total_cobrado":    total_cobrado,
             "total_gastos":     total_gastos,
             "total_comisiones": total_comisiones,
-            "gop":              gop,
-            "gop_estado":       "positivo" if gop >= 0 else "negativo",
+            "gop_devengado":    gop_devengado,
+            "resultado_caja":   resultado_caja,
+            "gop_estado":       "positivo" if gop_devengado >= 0 else "negativo",
         },
     }
 
@@ -267,13 +271,14 @@ def renderizar_cierre_markdown(data: dict, cfg: dict) -> str:
         for c in data["comisiones_ota"]:
             lines.append(f"| {c['canal']} | {c['reservas']} | {fm(c['facturado'])} | {fm(c['comision'])} |")
 
-    gop_icono = "✅" if r["gop"] >= 0 else "🔴"
+    gop_icono = "✅" if r["gop_devengado"] >= 0 else "🔴"
     lines += [
         "",
-        "### 📈 Resultado del día (GOP)",
-        "| Cobrado | Gastos | GOP |",
+        "### 📈 Resultado del día",
+        "| | Monto | Base |",
         "|---|---|---|",
-        f"| {fm(r['total_cobrado'])} | {fm(r['total_gastos'])} | {gop_icono} **{fm(r['gop'])}** |",
+        f"| GOP devengado | {gop_icono} **{fm(r['gop_devengado'])}** | Ingresos - Gastos |",
+        f"| Resultado caja | {'✅' if r['resultado_caja'] >= 0 else '🔴'} **{fm(r['resultado_caja'])}** | Cobrado - Gastos |",
     ]
 
     return "\n".join(lines)
@@ -290,8 +295,8 @@ def build_discord_embed_cierre(data: dict, cfg: dict) -> dict:
     gas = data["gastos"]
     r   = data["resumen"]
 
-    color    = 0x2ECC71 if r["gop"] >= 0 else 0xE74C3C
-    gop_icon = "✅" if r["gop"] >= 0 else "🔴"
+    color    = 0x2ECC71 if r["gop_devengado"] >= 0 else 0xE74C3C
+    gop_icon = "✅" if r["gop_devengado"] >= 0 else "🔴"
 
     pm = cob["por_metodo"]
     metodos_txt = "\n".join(
@@ -344,8 +349,11 @@ def build_discord_embed_cierre(data: dict, cfg: dict) -> dict:
             "inline": True,
         },
         {
-            "name":   "📈 GOP",
-            "value":  f"{gop_icon} **{fm(r['gop'])}**\n(cobrado - gastos)",
+            "name":   "📈 Resultado",
+            "value":  (
+                f"GOP devengado: {gop_icon} **{fm(r['gop_devengado'])}**\n"
+                f"Resultado caja: {'✅' if r['resultado_caja'] >= 0 else '🔴'} {fm(r['resultado_caja'])}"
+            ),
             "inline": True,
         },
     ]

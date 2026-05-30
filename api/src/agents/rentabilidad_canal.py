@@ -34,18 +34,27 @@ async def _metricas_canales(conn, fi: date, ff: date) -> list[dict]:
                 * 100.0 / NULLIF(COUNT(r.id), 0), 1
             )                                                                     AS tasa_cancel_pct,
             COALESCE(SUM(r.total_hospedaje)
-                FILTER (WHERE r.estado = 'checkout'),                             0) AS ingresos_brutos,
+                FILTER (WHERE r.estado = 'checkout'),                             0) AS hosp_bruto,
+            COALESCE(SUM(cf.total),                                               0) AS frigobar,
+            COALESCE(SUM(cs.total),                                               0) AS servicios,
             COALESCE(ROUND(SUM(r.total_hospedaje * cv.comision_pct / 100)
                 FILTER (WHERE r.estado = 'checkout'), 0),                         0) AS comision,
-            COALESCE(ROUND(SUM(r.total_hospedaje * (1 - cv.comision_pct / 100))
-                FILTER (WHERE r.estado = 'checkout'), 0),                         0) AS ingresos_netos,
-            COALESCE(ROUND(AVG(r.tarifa_noche)
-                FILTER (WHERE r.estado = 'checkout'), 0),                         0) AS adr,
+            COALESCE(ROUND(
+                (SUM(r.total_hospedaje) FILTER (WHERE r.estado = 'checkout')
+                 + COALESCE(SUM(cf.total), 0) + COALESCE(SUM(cs.total), 0))
+                * (1 - cv.comision_pct / 100)
+            , 0),                                                                  0) AS ingresos_netos,
+            COALESCE(ROUND(SUM(r.tarifa_noche * r.noches)
+                / NULLIF(SUM(r.noches) FILTER (WHERE r.estado = 'checkout'), 0), 0), 0) AS adr,
             COALESCE(SUM(r.noches)
                 FILTER (WHERE r.estado = 'checkout'),                             0) AS noches_vendidas
         FROM canales_venta cv
         LEFT JOIN reservas r ON r.canal_id = cv.id
             AND r.fecha_salida BETWEEN $1 AND $2
+        LEFT JOIN consumos_frigobar cf ON cf.reserva_id = r.id
+            AND cf.fecha BETWEEN $1 AND $2
+        LEFT JOIN consumos_servicios cs ON cs.reserva_id = r.id
+            AND cs.fecha BETWEEN $1 AND $2
         WHERE cv.activo = TRUE
         GROUP BY cv.id, cv.nombre, cv.comision_pct
         ORDER BY ingresos_netos DESC
@@ -64,7 +73,10 @@ async def _metricas_canales(conn, fi: date, ff: date) -> list[dict]:
             "reservas_ok":      int(r["reservas_ok"] or 0),
             "canceladas":       int(r["canceladas"] or 0),
             "tasa_cancel_pct":  _f(r["tasa_cancel_pct"]),
-            "ingresos_brutos":  _f(r["ingresos_brutos"]),
+            "ingresos_brutos":  _f(r["hosp_bruto"]) + _f(r["frigobar"]) + _f(r["servicios"]),
+            "hospedaje":        _f(r["hosp_bruto"]),
+            "frigobar":         _f(r["frigobar"]),
+            "servicios":        _f(r["servicios"]),
             "comision":         _f(r["comision"]),
             "ingresos_netos":   _f(r["ingresos_netos"]),
             "adr":              _f(r["adr"]),
