@@ -138,9 +138,7 @@ async def agente_alertas(
         return PlainTextResponse(content=reporte, media_type="text/markdown; charset=utf-8")
 
     if formato == "discord_payload":
-        data_alertas = {"kpis": kpis, "alertas": alertas, "estado_general": estado_general}
-        insights = await generar_insights("alertas", data_alertas)
-        return _adjuntar_insights(_build_discord_embed(kpis, alertas, periodo_dias), insights)
+        return _build_discord_embed(kpis, alertas, periodo_dias)
 
     return {
         "alertas_activas": len(alertas),
@@ -177,8 +175,7 @@ async def agente_cierre_diario(
         return PlainTextResponse(content=md, media_type="text/markdown; charset=utf-8")
 
     if formato == "discord_payload":
-        insights = await generar_insights("cierre_diario", data)
-        return _adjuntar_insights(build_discord_embed_cierre(data, config.CONFIG), insights)
+        return build_discord_embed_cierre(data, config.CONFIG)
 
     return data
 
@@ -277,8 +274,7 @@ async def agente_revenue_management(
         return PlainTextResponse(content=md, media_type="text/markdown; charset=utf-8")
 
     if formato == "discord_payload":
-        insights = await generar_insights("revenue_management", data)
-        return _adjuntar_insights(build_discord_embed_revenue(data, config.CONFIG), insights)
+        return build_discord_embed_revenue(data, config.CONFIG)
 
     return data
 
