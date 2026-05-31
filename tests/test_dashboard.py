@@ -11,10 +11,18 @@ from unittest.mock import AsyncMock, patch
 from src.dashboard import _detectar_problemas
 
 
+_IPC_FAKE = {
+    "serie": [{"mes": f"2025-{m:02d}", "valor": v} for m, v in
+              enumerate([0.4, 0.0, 0.5, -0.1, 0.3, 0.2, 0.9, 0.0, 0.4, 0.0, 0.3, -0.2], start=1)],
+    "acumulado_pct": 3.1, "ultimo_mes": "2025-12", "fuente": "mindicador.cl",
+}
+
+
 @pytest.fixture(autouse=True)
-def _mock_insights():
-    """Evita llamadas a Claude/Ollama: insights deterministas y rápidos."""
-    with patch("src.dashboard.generar_insights", new=AsyncMock(return_value=["insight de prueba"])):
+def _mock_externos():
+    """Evita red externa: insights (Claude/Ollama) e IPC (mindicador) deterministas."""
+    with patch("src.dashboard.generar_insights", new=AsyncMock(return_value=["insight de prueba"])), \
+         patch("src.dashboard.obtener_ipc", new=AsyncMock(return_value=_IPC_FAKE)):
         yield
 
 
@@ -51,11 +59,50 @@ async def test_dashboard_insights_solo_pnl_y_rent(client, gerente_headers):
 async def test_dashboard_json(client, gerente_headers):
     data = (await client.get("/api/agents/dashboard-semanal?formato=json", headers=gerente_headers)).json()
     for campo in ("fecha_envio", "semana", "problemas", "pnl", "cash",
-                  "rent", "revenue", "gastos", "cierre"):
+                  "rent", "revenue", "gastos", "gastos_analitico", "cierre", "ipc"):
         assert campo in data
     assert "inicio" in data["semana"] and "fin" in data["semana"]
     # P&L YTD: el período empieza el 1 de enero
     assert data["pnl"]["periodo"]["inicio"].endswith("-01-01")
+
+
+@pytest.mark.asyncio
+async def test_dashboard_seccion_ipc(client, gerente_headers):
+    html = (await client.get("/api/agents/dashboard-semanal?formato=html", headers=gerente_headers)).text
+    assert "📉 Contexto económico — IPC Chile" in html
+    assert "mindicador.cl" in html
+    # gráfico con eje cero: 4 filas (positivos / eje / negativos / meses)
+    assert html.count('border-top:2px solid') >= 1
+
+
+@pytest.mark.asyncio
+async def test_dashboard_gastos_analitico(client, gerente_headers):
+    data = (await client.get("/api/agents/dashboard-semanal?formato=json", headers=gerente_headers)).json()
+    ana = data["gastos_analitico"]
+    for campo in ("serie_mensual", "gasto_prom_mensual", "crecimiento_pct",
+                  "ipc_acum_pct", "brecha_pp", "top_categorias", "top_proveedores"):
+        assert campo in ana
+    # el IPC acumulado se propagó al cálculo de gastos
+    assert ana["ipc_acum_pct"] == 3.1
+    # si hay crecimiento e IPC, la brecha = crecimiento - inflación
+    if ana["crecimiento_pct"] is not None:
+        assert ana["brecha_pp"] == round(ana["crecimiento_pct"] - ana["ipc_acum_pct"], 1)
+
+
+@pytest.mark.asyncio
+async def test_dashboard_vista_cfo_en_html(client, gerente_headers):
+    html = (await client.get("/api/agents/dashboard-semanal?formato=html", headers=gerente_headers)).text
+    assert "Vista CFO" in html
+    assert "Top categorías (12m)" in html
+    assert "Top proveedores (12m)" in html
+
+
+def test_ipc_acumulado_compuesto():
+    from src.economia import _acumulado_pct
+    # inflación compuesta de +1% y +1% = 2.01%, no 2%
+    assert _acumulado_pct([1.0, 1.0]) == 2.0
+    assert _acumulado_pct([0.5, -0.2, 0.3]) == round(((1.005*0.998*1.003)-1)*100, 1)
+    assert _acumulado_pct([]) == 0.0
 
 
 @pytest.mark.asyncio

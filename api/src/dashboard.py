@@ -16,10 +16,11 @@ import logging
 from datetime import date, timedelta
 
 from . import config
+from .economia import obtener_ipc
 from .agents._common import COLOR, fmt_moneda, var_txt
 from .agents.cash_flow import calcular_cash_flow
 from .agents.cierre_diario import calcular_cierre_semanal
-from .agents.control_gastos import calcular_control_gastos
+from .agents.control_gastos import calcular_control_gastos, calcular_gastos_analitico
 from .agents.insights import generar_insights
 from .agents.pnl_mensual import calcular_pnl_ytd
 from .agents.rentabilidad_canal import calcular_rentabilidad_canal
@@ -54,6 +55,13 @@ async def calcular_dashboard() -> dict:
     insights_pnl  = await generar_insights("pnl_mensual", pnl)
     insights_rent = await generar_insights("rentabilidad_canal", rent)
 
+    # Contexto económico (IPC Chile) — None si la fuente no responde
+    ipc = await obtener_ipc(12)
+    ipc_acum = ipc["acumulado_pct"] if ipc else None
+
+    # Vista analítica de gastos (12m) — gasto vs inflación, tendencia, proveedores
+    gastos_analitico = await calcular_gastos_analitico(corte, ipc_acum)
+
     problemas = _detectar_problemas(pnl, cash, gastos, rent, cierre)
 
     return {
@@ -67,7 +75,9 @@ async def calcular_dashboard() -> dict:
         "insights_rent": insights_rent,
         "revenue":     revenue,
         "gastos":      gastos,
+        "gastos_analitico": gastos_analitico,
         "cierre":      cierre,
+        "ipc":         ipc,
     }
 
 
@@ -248,7 +258,7 @@ def _sec_revenue(rev: dict, cfg) -> str:
     return _card("📊 Revenue Management", _kpis(rows))
 
 
-def _sec_gastos(g: dict, cfg) -> str:
+def _sec_gastos(g: dict, cfg, ana: dict | None = None) -> str:
     r = g["resumen"]
     var = var_txt(r.get("variacion_pct"))
     rows = [
@@ -258,7 +268,45 @@ def _sec_gastos(g: dict, cfg) -> str:
         ("Categorías en alerta", str(len(g.get("alertas", [])))),
         ("Sin clasificar",       str(g.get("sin_categoria", {}).get("n", 0))),
     ]
-    return _card("📋 Control de Gastos", _kpis(rows))
+    body = _kpis(rows)
+
+    if ana:
+        # Vista CFO: gasto vs inflación
+        cfo_rows = [("Gasto promedio mensual (12m)", _fm(ana["gasto_prom_mensual"], cfg))]
+        if ana["crecimiento_pct"] is not None:
+            cfo_rows.append(("Crecimiento del gasto (12m)", var_txt(ana["crecimiento_pct"])))
+        if ana["ipc_acum_pct"] is not None:
+            cfo_rows.append(("Inflación (IPC 12m)", f"{ana['ipc_acum_pct']:+.1f}%"))
+        if ana["brecha_pp"] is not None:
+            bp = ana["brecha_pp"]
+            cls = "neg" if bp > 0 else "pos"
+            signo = "por encima" if bp > 0 else "por debajo"
+            cfo_rows.append(("Gasto vs inflación",
+                             f'<span class="{cls}">{abs(bp):.1f} pp {signo}</span>'))
+        body += ('<div style="margin-top:10px;font-size:12px;font-weight:700;color:#374151;">'
+                 'Vista CFO — costos vs inflación</div>' + _kpis(cfo_rows))
+
+        # Top categorías (12m)
+        if ana["top_categorias"]:
+            filas = "".join(
+                f'<tr><td>{c["categoria"]}</td><td>{_fm(c["monto"], cfg)}</td><td>{c["pct"]:.0f}%</td></tr>'
+                for c in ana["top_categorias"]
+            )
+            body += ('<div style="margin-top:10px;font-size:12px;font-weight:700;color:#374151;">'
+                     'Top categorías (12m)</div>'
+                     f'<table class="dt"><tr><th>Categoría</th><th>Monto</th><th>%</th></tr>{filas}</table>')
+
+        # Top proveedores (12m)
+        if ana["top_proveedores"]:
+            filas = "".join(
+                f'<tr><td>{p["proveedor"]}</td><td>{_fm(p["monto"], cfg)}</td><td>{p["n"]}</td></tr>'
+                for p in ana["top_proveedores"]
+            )
+            body += ('<div style="margin-top:10px;font-size:12px;font-weight:700;color:#374151;">'
+                     'Top proveedores (12m)</div>'
+                     f'<table class="dt"><tr><th>Proveedor</th><th>Monto</th><th>Gastos</th></tr>{filas}</table>')
+
+    return _card("📋 Control de Gastos", body)
 
 
 def _sec_cierre(c: dict, cfg) -> str:
@@ -282,6 +330,66 @@ def _sec_cierre(c: dict, cfg) -> str:
     return _card("🧾 Cierre de la semana", _kpis(rows) + tabla)
 
 
+_MESES_ABBR = {1:"ene",2:"feb",3:"mar",4:"abr",5:"may",6:"jun",
+               7:"jul",8:"ago",9:"sep",10:"oct",11:"nov",12:"dic"}
+
+
+def _sec_economia(ipc: dict | None) -> str:
+    """
+    Gráfico de barras (CSS puro) de la variación mensual del IPC de Chile,
+    con eje cero real: los meses con inflación crecen hacia arriba y los de
+    deflación hacia abajo del eje.
+    """
+    if not ipc or not ipc.get("serie"):
+        return ""
+    serie    = ipc["serie"]
+    valores  = [p["valor"] for p in serie]
+    escala   = max((abs(v) for v in valores), default=0) or 1
+    alto_max = 46  # px por cada mitad (arriba del eje / abajo del eje)
+
+    pos_cells = neg_cells = eje_cells = mes_cells = ""
+    for p in serie:
+        v   = p["valor"]
+        mes = _MESES_ABBR.get(int(p["mes"][5:7]), p["mes"][5:7])
+        if v > 0:   # inflación → barra hacia arriba (celda superior, pegada al eje)
+            h = max(2, round(v / escala * alto_max))
+            pos_cells += (
+                '<td style="vertical-align:bottom;text-align:center;padding:0 2px;">'
+                f'<div style="font-size:9px;color:#6b7280;">{v:+.1f}</div>'
+                f'<div style="height:{h}px;background:#{COLOR.ALERTA:06x};border-radius:2px 2px 0 0;"></div></td>'
+            )
+            neg_cells += '<td></td>'
+        elif v < 0:  # deflación → barra hacia abajo (celda inferior, pegada al eje)
+            h = max(2, round(abs(v) / escala * alto_max))
+            pos_cells += '<td></td>'
+            neg_cells += (
+                '<td style="vertical-align:top;text-align:center;padding:0 2px;">'
+                f'<div style="height:{h}px;background:#3b82f6;border-radius:0 0 2px 2px;"></div>'
+                f'<div style="font-size:9px;color:#6b7280;">{v:+.1f}</div></td>'
+            )
+        else:        # 0.0 → marca sobre el eje
+            pos_cells += ('<td style="vertical-align:bottom;text-align:center;">'
+                          '<div style="font-size:9px;color:#9ca3af;">0.0</div></td>')
+            neg_cells += '<td></td>'
+        eje_cells += '<td style="border-top:2px solid #cbd5e1;font-size:0;line-height:0;">&nbsp;</td>'
+        mes_cells += f'<td style="text-align:center;font-size:9px;color:#9ca3af;padding-top:3px;">{mes}</td>'
+
+    acum = ipc.get("acumulado_pct")
+    sub  = (f"Inflación acumulada 12 meses: <b>{acum:+.1f}%</b> · "
+            if acum is not None else "")
+    body = (
+        f'<div style="font-size:12px;color:#6b7280;margin-bottom:8px;">'
+        f'{sub}variación mensual (%) · fuente: {ipc["fuente"]}</div>'
+        '<table style="width:100%;border-collapse:collapse;table-layout:fixed;">'
+        f'<tr style="height:{alto_max + 12}px">{pos_cells}</tr>'
+        f'<tr>{eje_cells}</tr>'
+        f'<tr style="height:{alto_max + 12}px">{neg_cells}</tr>'
+        f'<tr>{mes_cells}</tr>'
+        '</table>'
+    )
+    return _card("📉 Contexto económico — IPC Chile", body)
+
+
 def renderizar_dashboard_html(data: dict, cfg: dict) -> str:
     biz = cfg.get("business", {}).get("name", "Negocio")
     sem = data["semana"]
@@ -291,8 +399,9 @@ def renderizar_dashboard_html(data: dict, cfg: dict) -> str:
         + _sec_cash(data["cash"], cfg)
         + _sec_rent(data["rent"], data["insights_rent"], cfg)
         + _sec_revenue(data["revenue"], cfg)
-        + _sec_gastos(data["gastos"], cfg)
+        + _sec_gastos(data["gastos"], cfg, data.get("gastos_analitico"))
         + _sec_cierre(data["cierre"], cfg)
+        + _sec_economia(data.get("ipc"))
     )
     return f"""<!DOCTYPE html>
 <html lang="es"><head><meta charset="utf-8">

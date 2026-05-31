@@ -209,6 +209,84 @@ async def calcular_control_gastos(
     }
 
 
+async def calcular_gastos_analitico(hasta: date, ipc_acum_pct: float | None = None) -> dict:
+    """
+    Vista analítica de gastos (12 meses) para el CFO:
+      - serie mensual de gasto
+      - crecimiento del gasto (prom. últimos 3 meses vs primeros 3 de la ventana)
+        contrastado con la inflación acumulada (IPC) → ¿los costos suben sobre la inflación?
+      - top categorías y top proveedores del período
+
+    `ipc_acum_pct` es la inflación acumulada 12m (de economia.obtener_ipc); si se
+    pasa, se calcula la brecha gasto-vs-inflación.
+    """
+    async with config.db_pool.acquire() as conn:
+        serie_rows = [dict(r) for r in await conn.fetch("""
+            SELECT to_char(date_trunc('month', fecha), 'YYYY-MM') AS mes,
+                   SUM(monto)                                     AS total
+            FROM gastos
+            WHERE fecha > ($1::date - INTERVAL '12 months') AND fecha <= $1
+            GROUP BY 1 ORDER BY 1
+        """, hasta)]
+
+        cat_rows = [dict(r) for r in await conn.fetch("""
+            SELECT COALESCE(cg.nombre, 'Sin categoría') AS categoria,
+                   SUM(g.monto)                          AS monto
+            FROM gastos g
+            LEFT JOIN categorias_gasto cg ON cg.id = g.categoria_id
+            WHERE g.fecha > ($1::date - INTERVAL '12 months') AND g.fecha <= $1
+            GROUP BY 1 ORDER BY monto DESC
+        """, hasta)]
+
+        prov_rows = [dict(r) for r in await conn.fetch("""
+            SELECT proveedor,
+                   SUM(monto) AS monto,
+                   COUNT(*)   AS n
+            FROM gastos
+            WHERE fecha > ($1::date - INTERVAL '12 months') AND fecha <= $1
+              AND proveedor IS NOT NULL AND proveedor <> ''
+            GROUP BY proveedor ORDER BY monto DESC LIMIT 5
+        """, hasta)]
+
+    serie = [{"mes": r["mes"], "monto": to_float(r["total"])} for r in serie_rows]
+    montos = [s["monto"] for s in serie]
+    total_12m = sum(montos)
+    n = len(serie)
+    prom_mensual = round(total_12m / n, 2) if n else 0.0
+
+    # Crecimiento del gasto: promedio de los 3 meses más recientes vs los 3 más
+    # antiguos de la ventana (suaviza el ruido mensual). Requiere ≥6 meses.
+    crecimiento_pct = None
+    if n >= 6:
+        prom_ini = sum(montos[:3]) / 3
+        prom_fin = sum(montos[-3:]) / 3
+        if prom_ini > 0:
+            crecimiento_pct = round((prom_fin - prom_ini) * 100 / prom_ini, 1)
+
+    brecha_pp = None
+    if crecimiento_pct is not None and ipc_acum_pct is not None:
+        brecha_pp = round(crecimiento_pct - ipc_acum_pct, 1)
+
+    return {
+        "periodo":        {"fin": str(hasta), "meses": n},
+        "serie_mensual":  serie,
+        "gasto_total_12m": total_12m,
+        "gasto_prom_mensual": prom_mensual,
+        "crecimiento_pct": crecimiento_pct,
+        "ipc_acum_pct":    ipc_acum_pct,
+        "brecha_pp":       brecha_pp,   # gasto - inflación; >0 = costos suben sobre IPC
+        "top_categorias": [
+            {"categoria": r["categoria"], "monto": to_float(r["monto"]),
+             "pct": round(to_float(r["monto"]) * 100 / total_12m, 1) if total_12m else 0}
+            for r in cat_rows[:5]
+        ],
+        "top_proveedores": [
+            {"proveedor": r["proveedor"], "monto": to_float(r["monto"]), "n": int(r["n"])}
+            for r in prov_rows
+        ],
+    }
+
+
 # ─────────────────────────────────────────────────────────────
 # Renderizado
 # ─────────────────────────────────────────────────────────────
