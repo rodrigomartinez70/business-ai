@@ -4,7 +4,7 @@
 # ─────────────────────────────────────────────────────────────
 
 business:
-  name: "Mi Negocio"
+  name: "MBI"
   description: "Consultas sobre operaciones del negocio"
   language: "es"
   model_id: "asistente-ia"       # ID que expone el endpoint /api/v1/models
