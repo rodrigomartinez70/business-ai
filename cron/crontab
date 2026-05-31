@@ -1,23 +1,7 @@
-# P&L mensual — día 1 de cada mes a las 06:00
-0 6 1 * * /cron/pnl_mensual.sh >> /reportes/cron.log 2>&1
+# Dashboard semanal por correo — todos los lunes a las 08:00
+# Consolida P&L YTD, Cash Flow, Rentabilidad, Revenue, Control de Gastos y
+# el cierre de la semana en un único HTML enviado al dueño por email.
+0 8 * * 1 /cron/dashboard_semanal.sh >> /reportes/cron.log 2>&1
 
-# Rentabilidad por canal — día 1 de cada mes a las 06:30
-30 6 1 * * /cron/rentabilidad_canal.sh >> /reportes/cron.log 2>&1
-
-# Alertas diarias — todos los días a las 07:00
-0 7 * * * /cron/alertas_diarias.sh >> /reportes/cron.log 2>&1
-
-# Cash flow semanal — todos los lunes a las 07:30
-30 7 * * 1 /cron/cash_flow.sh >> /reportes/cron.log 2>&1
-
-# Revenue management diario — todos los días a las 08:00
-0 8 * * * /cron/revenue_management.sh >> /reportes/cron.log 2>&1
-
-# Cierre diario — todos los días a las 23:00
-0 23 * * * /cron/cierre_diario.sh >> /reportes/cron.log 2>&1
-
-# Control de gastos semanal — todos los lunes a las 08:30
-30 8 * * 1 /cron/control_gastos.sh >> /reportes/cron.log 2>&1
-
-# Reporte semanal — todos los lunes a las 09:00
+# Reporte de uso/auditoría del sistema (markdown local) — lunes a las 09:00
 0 9 * * 1 /cron/reporte_semanal.sh >> /reportes/cron.log 2>&1
