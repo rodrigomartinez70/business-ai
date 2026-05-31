@@ -90,7 +90,14 @@ async def _metricas_canales(conn, fi: date, ff: date) -> list[dict]:
 # Punto de entrada principal
 # ─────────────────────────────────────────────────────────────
 
-async def calcular_rentabilidad_canal(año: int, mes: int) -> dict:
+async def calcular_rentabilidad_canal(año: int, mes: int, hasta: date | None = None) -> dict:
+    """
+    Rentabilidad por canal del mes (año, mes).
+
+    Si `hasta` se pasa, recorta el período actual a esa fecha (p.ej. el domingo
+    anterior, para un acumulado mes-en-curso). Si no, recorta al día de ayer.
+    El período de referencia (mismo mes del año anterior) usa los mismos N días.
+    """
     ultimo_dia = calendar.monthrange(año, mes)[1]
     fi   = date(año, mes, 1)
     ff   = date(año, mes, ultimo_dia)
@@ -99,9 +106,9 @@ async def calcular_rentabilidad_canal(año: int, mes: int) -> dict:
     fi_ant = date(año - 1, mes, 1)
     ff_ant = date(año - 1, mes, calendar.monthrange(año - 1, mes)[1])
 
-    # Si el mes solicitado no cerró, recortar al día de ayer
-    hoy = date.today()
-    ff_ef    = min(ff,     hoy - timedelta(days=1))
+    # Corte: fecha explícita o el día de ayer si el mes no cerró
+    corte    = hasta if hasta is not None else (date.today() - timedelta(days=1))
+    ff_ef    = min(ff, corte)
     dias_ef  = (ff_ef - fi).days + 1
     ff_ef_ant = fi_ant + timedelta(days=dias_ef - 1)
 

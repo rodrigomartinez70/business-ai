@@ -204,6 +204,68 @@ async def calcular_cierre(fecha: date) -> dict:
     }
 
 
+async def calcular_cierre_semanal(desde: date, hasta: date) -> dict:
+    """
+    Agrega los cierres diarios del rango desde→hasta (una semana lun-dom).
+    Reutiliza calcular_cierre por día y consolida los totales.
+    """
+    from datetime import timedelta
+
+    dias = (hasta - desde).days + 1
+    cierres = []
+    d = desde
+    while d <= hasta:
+        cierres.append(await calcular_cierre(d))
+        d += timedelta(days=1)
+
+    def _suma(path):
+        # path: lista de claves anidadas, ej. ["resumen", "total_ingresos"]
+        tot = 0.0
+        for c in cierres:
+            v = c
+            for k in path:
+                v = v[k]
+            tot += v
+        return tot
+
+    ocup_validas = [c["ocupacion"]["pct_ocupacion"] for c in cierres]
+    ocup_prom    = round(sum(ocup_validas) / len(ocup_validas), 1) if ocup_validas else 0.0
+
+    total_ingresos = _suma(["resumen", "total_ingresos"])
+    total_gastos   = _suma(["resumen", "total_gastos"])
+    gop_devengado  = _suma(["resumen", "gop_devengado"])
+
+    return {
+        "periodo": {"inicio": str(desde), "fin": str(hasta), "dias": dias},
+        "totales": {
+            "ingresos":       total_ingresos,
+            "cobrado":        _suma(["resumen", "total_cobrado"]),
+            "gastos":         total_gastos,
+            "comisiones_ota": _suma(["resumen", "total_comisiones"]),
+            "gop_devengado":  gop_devengado,
+            "resultado_caja": _suma(["resumen", "resultado_caja"]),
+            "gop_estado":     "positivo" if gop_devengado >= 0 else "negativo",
+        },
+        "movimientos": {
+            "checkins":        int(_suma(["movimientos", "checkins"])),
+            "checkouts":       int(_suma(["movimientos", "checkouts"])),
+            "reservas_nuevas": int(_suma(["movimientos", "reservas_nuevas"])),
+            "cancelaciones":   int(_suma(["movimientos", "cancelaciones"])),
+        },
+        "ocupacion_promedio_pct": ocup_prom,
+        "por_dia": [
+            {
+                "fecha":          c["fecha"],
+                "ocupacion_pct":  c["ocupacion"]["pct_ocupacion"],
+                "ingresos":       c["resumen"]["total_ingresos"],
+                "cobrado":        c["resumen"]["total_cobrado"],
+                "gop_devengado":  c["resumen"]["gop_devengado"],
+            }
+            for c in cierres
+        ],
+    }
+
+
 # ─────────────────────────────────────────────────────────────
 # Renderizado
 # ─────────────────────────────────────────────────────────────

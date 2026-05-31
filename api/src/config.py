@@ -25,6 +25,24 @@ ANTHROPIC_KEY       = os.getenv("ANTHROPIC_API_KEY", "")
 CLAUDE_MODEL        = os.getenv("CLAUDE_MODEL", "claude-haiku-4-5")
 CONFIG_PATH         = os.getenv("BUSINESS_CONFIG_PATH", "/app/config.yaml")
 
+# ─── Canal de envío de reportes ──────────────────────────────
+# REPORT_CHANNEL: "email" (dashboard HTML por correo) o "none" (no enviar).
+REPORT_CHANNEL  = os.getenv("REPORT_CHANNEL", "email").strip().lower()
+
+# SMTP (envío del dashboard semanal por correo)
+SMTP_HOST       = os.getenv("SMTP_HOST", "")
+SMTP_PORT       = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USER       = os.getenv("SMTP_USER", "")
+SMTP_PASSWORD   = os.getenv("SMTP_PASSWORD", "")
+SMTP_USE_TLS    = os.getenv("SMTP_USE_TLS", "true").strip().lower() in ("1", "true", "yes")
+SMTP_FROM       = os.getenv("SMTP_FROM", "") or SMTP_USER
+REPORT_EMAIL_TO = os.getenv("REPORT_EMAIL_TO", "")   # coma-separado para varios destinatarios
+
+
+def email_disponible() -> bool:
+    """True si hay configuración SMTP mínima para enviar correos."""
+    return bool(SMTP_HOST and SMTP_FROM and REPORT_EMAIL_TO)
+
 # ─── Estado mutable (poblado en lifespan) ───────────────────
 
 db_pool:      Optional[asyncpg.Pool] = None

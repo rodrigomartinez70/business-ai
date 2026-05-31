@@ -252,6 +252,56 @@ async def calcular_pnl(año: int, mes: int) -> dict:
     }
 
 
+async def calcular_pnl_ytd(hasta: date) -> dict:
+    """
+    P&L acumulado del año (Year-To-Date): 1-ene → `hasta`, comparado contra
+    el mismo período del año anterior (1-ene → misma fecha del año pasado).
+
+    Devuelve la misma estructura que calcular_pnl pero con comparativa solo
+    contra el año anterior (vs_mes_anterior = None), compatible con el
+    renderizado y con generar_insights.
+    """
+    from datetime import timedelta
+
+    fi = date(hasta.year, 1, 1)
+    ff = hasta
+
+    # Mismo período del año anterior. Cubre el borde 29-feb cayendo a 28.
+    fi_aa = date(hasta.year - 1, 1, 1)
+    try:
+        ff_aa = date(hasta.year - 1, hasta.month, hasta.day)
+    except ValueError:
+        ff_aa = date(hasta.year - 1, hasta.month, 28)
+
+    async with config.db_pool.acquire() as conn:
+        actual     = await _metricas_mes(conn, fi,    ff)
+        año_pasado = await _metricas_mes(conn, fi_aa, ff_aa)
+
+    _var = var_pct
+
+    def _comp_aa(a_val, y_val):
+        return {"vs_mes_anterior": None, "vs_año_anterior": _var(a_val, y_val)}
+
+    return {
+        "mes":        None,
+        "año":        hasta.year,
+        "mes_nombre": f"YTD {hasta.year} (al {ff.strftime('%d/%m')})",
+        "parcial":    True,
+        "dias_comparados": (ff - fi).days + 1,
+        "actual":     actual,
+        "anterior":   None,
+        "año_pasado": año_pasado,
+        "periodo":    {"inicio": str(fi),    "fin": str(ff)},
+        "ref_anterior": {"inicio": str(fi_aa), "fin": str(ff_aa)},
+        "comparativas": {
+            "ingresos_total": _comp_aa(actual["ingresos"]["total"],       año_pasado["ingresos"]["total"]),
+            "gop":            _comp_aa(actual["resultado"]["gop"],         año_pasado["resultado"]["gop"]),
+            "ocupacion":      _comp_aa(actual["metricas"]["ocupacion_pct"],año_pasado["metricas"]["ocupacion_pct"]),
+            "revpar":         _comp_aa(actual["metricas"]["revpar"],       año_pasado["metricas"]["revpar"]),
+        },
+    }
+
+
 # ─────────────────────────────────────────────────────────────
 # Renderizado
 # ─────────────────────────────────────────────────────────────

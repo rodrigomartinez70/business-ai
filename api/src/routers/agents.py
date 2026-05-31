@@ -38,6 +38,8 @@ from ..agents.revenue_management import (
     renderizar_revenue_markdown,
 )
 from ..auth import get_role
+from ..dashboard import calcular_dashboard, renderizar_dashboard_html
+from ..delivery import enviar_dashboard_email
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
@@ -337,3 +339,34 @@ async def agente_rentabilidad_canal(
         return _adjuntar_insights(build_discord_embed_rentabilidad_canal(data, config.CONFIG), insights)
 
     return data
+
+
+@router.get("/dashboard-semanal")
+async def agente_dashboard_semanal(
+    formato: str = Query("html", description="html | email | json"),
+    _rol:    str = Depends(get_role),
+):
+    """
+    Dashboard semanal consolidado (lunes).
+
+    Reúne P&L YTD, Cash Flow, Rentabilidad por canal (mes en curso), Revenue,
+    Control de Gastos y el cierre de la última semana en un único HTML tipo
+    dashboard, con los problemas destacados arriba. P&L y Rentabilidad
+    incluyen insights IA.
+
+    - **html**: devuelve el dashboard renderizado (para previsualizar)
+    - **email**: genera y envía el dashboard por correo (SMTP)
+    - **json**: estructura completa de datos (sin render)
+    """
+    data = await calcular_dashboard()
+
+    if formato == "json":
+        return data
+
+    html = renderizar_dashboard_html(data, config.CONFIG)
+
+    if formato == "email":
+        resultado = enviar_dashboard_email(html, config.CONFIG)
+        return resultado
+
+    return PlainTextResponse(content=html, media_type="text/html; charset=utf-8")
