@@ -295,9 +295,9 @@ def _sec_gastos(g: dict, cfg, ana: dict | None = None) -> str:
                 if vp is None:
                     vsipc = "—"
                 elif vp > 0:
-                    vsipc = f'<span class="neg">▲ +{vp:.1f} pp sobre IPC</span>'
+                    vsipc = f'<span class="neg">+{vp:.1f}%</span>'
                 else:
-                    vsipc = f'<span class="pos">▼ {abs(vp):.1f} pp bajo IPC</span>'
+                    vsipc = f'<span class="pos">{vp:.1f}%</span>'
                 filas += (f'<tr><td>{c["categoria"]}</td><td>{_fm(c["monto"], cfg)}</td>'
                           f'<td>{c["pct"]:.0f}%</td><td>{crec}</td><td>{vsipc}</td></tr>')
             ipc_ref = (f' · IPC 12m: {ana["ipc_acum_pct"]:+.1f}%'
@@ -316,7 +316,7 @@ def _sec_gastos(g: dict, cfg, ana: dict | None = None) -> str:
             )
             body += ('<div style="margin-top:10px;font-size:12px;font-weight:700;color:#374151;">'
                      'Top proveedores (12m)</div>'
-                     f'<table class="dt"><tr><th>Proveedor</th><th>Monto</th><th>Gastos</th></tr>{filas}</table>')
+                     f'<table class="dt"><tr><th>Proveedor</th><th>Monto</th><th>N° gastos</th></tr>{filas}</table>')
 
     return _card("📋 Control de Gastos", body)
 
