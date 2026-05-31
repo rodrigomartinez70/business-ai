@@ -10,6 +10,7 @@ import yaml
 import logging
 from typing import Optional
 
+import anthropic
 import asyncpg
 
 logger = logging.getLogger(__name__)
@@ -31,6 +32,28 @@ ingest_pool:  Optional[asyncpg.Pool] = None   # pool con permisos INSERT para el
 CONFIG:       dict          = {}
 API_KEYS:     dict[str, str] = {}
 SCHEMA_CACHE: dict[str, str] = {}
+
+
+# ─── Cliente LLM (Claude) ────────────────────────────────────
+
+_PLACEHOLDER_KEY = "sk-ant-tu-clave-aqui"
+_anthropic_client: Optional[anthropic.AsyncAnthropic] = None
+
+
+def claude_disponible() -> bool:
+    """True si hay una API key de Claude real configurada (no el placeholder)."""
+    return bool(ANTHROPIC_KEY) and ANTHROPIC_KEY != _PLACEHOLDER_KEY
+
+
+def get_anthropic_client() -> anthropic.AsyncAnthropic:
+    """
+    Cliente Anthropic singleton — reutiliza el pool httpx y el keep-alive TLS
+    entre requests en vez de recrearlo en cada llamada.
+    """
+    global _anthropic_client
+    if _anthropic_client is None:
+        _anthropic_client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_KEY)
+    return _anthropic_client
 
 
 # ─── Carga de config ─────────────────────────────────────────

@@ -9,8 +9,6 @@ nunca los números crudos del negocio.
 import logging
 from typing import Optional
 
-import anthropic
-
 from .. import config
 
 logger = logging.getLogger(__name__)
@@ -283,9 +281,9 @@ async def generar_insights(tipo: str, data: dict) -> list[str]:
     respuesta = None
 
     # Intentar Claude primero
-    if config.ANTHROPIC_KEY and config.ANTHROPIC_KEY != "sk-ant-tu-clave-aqui":
+    if config.claude_disponible():
         try:
-            client  = anthropic.AsyncAnthropic(api_key=config.ANTHROPIC_KEY)
+            client  = config.get_anthropic_client()
             message = await client.messages.create(
                 model=config.CLAUDE_MODEL,
                 max_tokens=_MAX_TOKENS,

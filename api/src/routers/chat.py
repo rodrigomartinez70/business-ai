@@ -137,7 +137,7 @@ async def chat_completions(request: ChatRequest, rol: str = Depends(get_role), _
         pasos = await generar_plan(pregunta, rol)
         if pasos:
             tipo_flujo  = "plan"
-            modelo_llm  = "claude" if (config.ANTHROPIC_KEY and config.ANTHROPIC_KEY != "sk-ant-tu-clave-aqui") else "local"
+            modelo_llm  = "claude" if config.claude_disponible() else "local"
             sql_log     = f"[plan:{len(pasos)} pasos]"
             logger.info(f"Ejecutando plan de {len(pasos)} pasos")
             resultados  = await ejecutar_plan(pasos, rol, pregunta)

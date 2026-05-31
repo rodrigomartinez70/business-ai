@@ -13,7 +13,6 @@ from typing import Optional
 
 import httpx
 import asyncpg
-import anthropic
 from fastapi import HTTPException
 
 from . import config
@@ -146,11 +145,11 @@ Los únicos JOINs seguros son los de dimensión (1-a-1).
 
     prompt = f"Schema:\n{schema}\n\nPregunta: {pregunta}"
 
-    if not (config.ANTHROPIC_KEY and config.ANTHROPIC_KEY != "sk-ant-tu-clave-aqui"):
+    if not config.claude_disponible():
         return None
 
     try:
-        client  = anthropic.AsyncAnthropic(api_key=config.ANTHROPIC_KEY)
+        client  = config.get_anthropic_client()
         message = await client.messages.create(
             model=config.CLAUDE_MODEL,
             max_tokens=1024,
@@ -362,9 +361,9 @@ INSTRUCCIONES ESTRICTAS:
         "Si no tienes datos, lo dices claramente. NUNCA inventas números."
     )
 
-    if config.ANTHROPIC_KEY and config.ANTHROPIC_KEY != "sk-ant-tu-clave-aqui":
+    if config.claude_disponible():
         try:
-            client = anthropic.AsyncAnthropic(api_key=config.ANTHROPIC_KEY)
+            client = config.get_anthropic_client()
             message = await client.messages.create(
                 model=config.CLAUDE_MODEL,
                 max_tokens=2048,
@@ -408,9 +407,9 @@ Reglas:
     schema_prompt = f"Schema:\n{schema}"
     user_content  = f"{schema_prompt}\n\nPregunta: {pregunta}\n\nSQL:"
 
-    if config.ANTHROPIC_KEY and config.ANTHROPIC_KEY != "sk-ant-tu-clave-aqui":
+    if config.claude_disponible():
         try:
-            client = anthropic.AsyncAnthropic(api_key=config.ANTHROPIC_KEY)
+            client = config.get_anthropic_client()
 
             # Incluir historial reciente para preguntas de seguimiento ("el mismo cuadro anterior", etc.)
             messages: list[dict] = []
@@ -461,9 +460,9 @@ async def ejecutar_sql(sql: str, rol: str, pregunta: str = "", intentos: int = 2
                     f"SQL con error:\n{sql}\n\nError:\n{error_msg}\n\n"
                     f"Schema:\n{schema}\n\nDevuelve SOLO el SQL corregido: ```sql ... ```"
                 )
-                if config.ANTHROPIC_KEY and config.ANTHROPIC_KEY != "sk-ant-tu-clave-aqui":
+                if config.claude_disponible():
                     try:
-                        client = anthropic.AsyncAnthropic(api_key=config.ANTHROPIC_KEY)
+                        client = config.get_anthropic_client()
                         message = await client.messages.create(
                             model=config.CLAUDE_MODEL,
                             max_tokens=512,
