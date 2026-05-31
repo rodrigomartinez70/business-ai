@@ -27,6 +27,19 @@ async def _audit(*args, **kwargs) -> None:
         logger.error(f"Error registrando auditoría: {e}")
 
 
+# Referencias fuertes a las tasks de auditoría en vuelo. Sin esto, asyncio solo
+# guarda una referencia débil y el GC puede destruir la task antes de que termine,
+# perdiendo registros de auditoría de forma silenciosa bajo carga.
+_audit_tasks: set = set()
+
+
+def _fire_audit(*args, **kwargs) -> None:
+    """Lanza la auditoría en segundo plano reteniendo la referencia a la task."""
+    task = asyncio.create_task(_audit(*args, **kwargs))
+    _audit_tasks.add(task)
+    task.add_done_callback(_audit_tasks.discard)
+
+
 class Message(BaseModel):
     role: str
     content: str
@@ -77,10 +90,10 @@ async def query_simple(request: QueryRequest, rol: str = Depends(get_role), _rl:
         raise HTTPException(status_code=500, detail=respuesta)
     finally:
         duracion_ms = int((time.monotonic() - t0) * 1000)
-        asyncio.create_task(_audit(
+        _fire_audit(
             rol, request.pregunta, sql, len(datos),
             duracion_ms, estado, "simple", modelo, error_msg,
-        ))
+        )
     return {"respuesta": respuesta, "filas": len(datos), "datos": datos}
 
 
@@ -160,10 +173,10 @@ async def chat_completions(request: ChatRequest, rol: str = Depends(get_role), _
         estado, error_msg = "error", str(e)
 
     duracion_ms = int((time.monotonic() - t0) * 1000)
-    asyncio.create_task(_audit(
+    _fire_audit(
         rol, pregunta, sql_log, filas_total,
         duracion_ms, estado, tipo_flujo, modelo_llm, error_msg,
-    ))
+    )
 
     chat_id = f"chatcmpl-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
 
