@@ -108,7 +108,7 @@ def _mock_claude_message(text: str) -> MagicMock:
 async def test_generar_sql_usa_claude_cuando_disponible():
     sql_esperado = "SELECT COUNT(*) FROM reservas LIMIT 100"
     with patch("src.agent.config.ANTHROPIC_KEY", "sk-ant-real-key"), \
-         patch("src.agent.anthropic.AsyncAnthropic") as mock_cls:
+         patch("src.config.get_anthropic_client") as mock_cls:
         mock_cls.return_value.messages.create = AsyncMock(
             return_value=_mock_claude_message(f"```sql\n{sql_esperado}\n```")
         )
@@ -123,7 +123,7 @@ async def test_generar_sql_usa_claude_cuando_disponible():
 async def test_generar_sql_fallback_a_ollama_si_claude_falla():
     sql_esperado = "SELECT COUNT(*) FROM reservas LIMIT 100"
     with patch("src.agent.config.ANTHROPIC_KEY", "sk-ant-real-key"), \
-         patch("src.agent.anthropic.AsyncAnthropic") as mock_cls, \
+         patch("src.config.get_anthropic_client") as mock_cls, \
          patch("src.agent.llamar_ollama", new_callable=AsyncMock) as mock_ollama:
         mock_cls.return_value.messages.create = AsyncMock(side_effect=Exception("timeout"))
         mock_ollama.return_value = f"```sql\n{sql_esperado}\n```"
@@ -147,7 +147,7 @@ async def test_generar_sql_sin_anthropic_key_usa_ollama():
 @pytest.mark.asyncio
 async def test_generar_sql_lanza_422_para_sin_datos():
     with patch("src.agent.config.ANTHROPIC_KEY", "sk-ant-real-key"), \
-         patch("src.agent.anthropic.AsyncAnthropic") as mock_cls:
+         patch("src.config.get_anthropic_client") as mock_cls:
         mock_cls.return_value.messages.create = AsyncMock(
             return_value=_mock_claude_message("SIN_DATOS: No tengo información de inventario.")
         )
@@ -163,7 +163,7 @@ async def test_generar_sql_lanza_422_para_sin_datos():
 @pytest.mark.asyncio
 async def test_generar_plan_retorna_none_para_pregunta_simple():
     with patch("src.agent.config.ANTHROPIC_KEY", "sk-ant-real-key"), \
-         patch("src.agent.anthropic.AsyncAnthropic") as mock_cls:
+         patch("src.config.get_anthropic_client") as mock_cls:
         mock_cls.return_value.messages.create = AsyncMock(
             return_value=_mock_claude_message('{"pasos": null}')
         )
@@ -181,7 +181,7 @@ async def test_generar_plan_retorna_pasos_validos():
         ']}'
     )
     with patch("src.agent.config.ANTHROPIC_KEY", "sk-ant-real-key"), \
-         patch("src.agent.anthropic.AsyncAnthropic") as mock_cls:
+         patch("src.config.get_anthropic_client") as mock_cls:
         mock_cls.return_value.messages.create = AsyncMock(
             return_value=_mock_claude_message(plan)
         )
@@ -203,7 +203,7 @@ async def test_generar_plan_retorna_none_sin_anthropic_key():
 async def test_generar_plan_rechaza_sql_con_mutaciones():
     plan = '{"pasos": [{"id": 1, "proposito": "hack", "sql": "DELETE FROM reservas"}]}'
     with patch("src.agent.config.ANTHROPIC_KEY", "sk-ant-real-key"), \
-         patch("src.agent.anthropic.AsyncAnthropic") as mock_cls:
+         patch("src.config.get_anthropic_client") as mock_cls:
         mock_cls.return_value.messages.create = AsyncMock(
             return_value=_mock_claude_message(plan)
         )
@@ -216,7 +216,7 @@ async def test_generar_plan_rechaza_sql_con_mutaciones():
 @pytest.mark.asyncio
 async def test_generar_plan_lanza_422_para_sin_datos():
     with patch("src.agent.config.ANTHROPIC_KEY", "sk-ant-real-key"), \
-         patch("src.agent.anthropic.AsyncAnthropic") as mock_cls:
+         patch("src.config.get_anthropic_client") as mock_cls:
         mock_cls.return_value.messages.create = AsyncMock(
             return_value=_mock_claude_message('{"pasos": null, "sin_datos": "No hay datos de stock."}')
         )
@@ -234,7 +234,7 @@ async def test_generar_plan_trunca_a_4_pasos():
     )
     plan = f'{{"pasos": [{pasos_json}]}}'
     with patch("src.agent.config.ANTHROPIC_KEY", "sk-ant-real-key"), \
-         patch("src.agent.anthropic.AsyncAnthropic") as mock_cls:
+         patch("src.config.get_anthropic_client") as mock_cls:
         mock_cls.return_value.messages.create = AsyncMock(
             return_value=_mock_claude_message(plan)
         )
