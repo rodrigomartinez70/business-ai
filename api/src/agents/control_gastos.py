@@ -209,16 +209,30 @@ async def calcular_control_gastos(
     }
 
 
+def _crecimiento_serie(serie: list[float]) -> float | None:
+    """
+    Crecimiento % de una serie mensual: promedio de los 3 meses más recientes
+    vs los 3 más antiguos de la ventana (suaviza el ruido). None si <6 meses o
+    si la base inicial es 0 (no se puede medir crecimiento sin base).
+    """
+    if len(serie) < 6:
+        return None
+    prom_ini = sum(serie[:3]) / 3
+    prom_fin = sum(serie[-3:]) / 3
+    if prom_ini <= 0:
+        return None
+    return round((prom_fin - prom_ini) * 100 / prom_ini, 1)
+
+
 async def calcular_gastos_analitico(hasta: date, ipc_acum_pct: float | None = None) -> dict:
     """
     Vista analítica de gastos (12 meses) para el CFO:
-      - serie mensual de gasto
-      - crecimiento del gasto (prom. últimos 3 meses vs primeros 3 de la ventana)
-        contrastado con la inflación acumulada (IPC) → ¿los costos suben sobre la inflación?
-      - top categorías y top proveedores del período
+      - serie mensual de gasto y crecimiento agregado vs inflación (IPC)
+      - POR CATEGORÍA: crecimiento de 12 meses y brecha vs IPC, para detectar
+        qué costos suben por encima de la inflación
+      - top categorías (con fila "Otras" para cerrar 100%) y top proveedores
 
-    `ipc_acum_pct` es la inflación acumulada 12m (de economia.obtener_ipc); si se
-    pasa, se calcula la brecha gasto-vs-inflación.
+    `ipc_acum_pct` es la inflación acumulada 12m (de economia.obtener_ipc).
     """
     async with config.db_pool.acquire() as conn:
         serie_rows = [dict(r) for r in await conn.fetch("""
@@ -229,19 +243,19 @@ async def calcular_gastos_analitico(hasta: date, ipc_acum_pct: float | None = No
             GROUP BY 1 ORDER BY 1
         """, hasta)]
 
-        cat_rows = [dict(r) for r in await conn.fetch("""
-            SELECT COALESCE(cg.nombre, 'Sin categoría') AS categoria,
-                   SUM(g.monto)                          AS monto
+        # Gasto por (mes, categoría) — para crecimiento por categoría
+        mc_rows = [dict(r) for r in await conn.fetch("""
+            SELECT to_char(date_trunc('month', g.fecha), 'YYYY-MM') AS mes,
+                   COALESCE(cg.nombre, 'Sin categoría')            AS categoria,
+                   SUM(g.monto)                                    AS monto
             FROM gastos g
             LEFT JOIN categorias_gasto cg ON cg.id = g.categoria_id
             WHERE g.fecha > ($1::date - INTERVAL '12 months') AND g.fecha <= $1
-            GROUP BY 1 ORDER BY monto DESC
+            GROUP BY 1, 2
         """, hasta)]
 
         prov_rows = [dict(r) for r in await conn.fetch("""
-            SELECT proveedor,
-                   SUM(monto) AS monto,
-                   COUNT(*)   AS n
+            SELECT proveedor, SUM(monto) AS monto, COUNT(*) AS n
             FROM gastos
             WHERE fecha > ($1::date - INTERVAL '12 months') AND fecha <= $1
               AND proveedor IS NOT NULL AND proveedor <> ''
@@ -249,37 +263,58 @@ async def calcular_gastos_analitico(hasta: date, ipc_acum_pct: float | None = No
         """, hasta)]
 
     serie = [{"mes": r["mes"], "monto": to_float(r["total"])} for r in serie_rows]
+    meses = [s["mes"] for s in serie]            # etiquetas de los 12 meses, cronológico
     montos = [s["monto"] for s in serie]
     total_12m = sum(montos)
     n = len(serie)
     prom_mensual = round(total_12m / n, 2) if n else 0.0
 
-    # Crecimiento del gasto: promedio de los 3 meses más recientes vs los 3 más
-    # antiguos de la ventana (suaviza el ruido mensual). Requiere ≥6 meses.
-    crecimiento_pct = None
-    if n >= 6:
-        prom_ini = sum(montos[:3]) / 3
-        prom_fin = sum(montos[-3:]) / 3
-        if prom_ini > 0:
-            crecimiento_pct = round((prom_fin - prom_ini) * 100 / prom_ini, 1)
+    crecimiento_pct = _crecimiento_serie(montos)
+    brecha_pp = (round(crecimiento_pct - ipc_acum_pct, 1)
+                 if crecimiento_pct is not None and ipc_acum_pct is not None else None)
 
-    brecha_pp = None
-    if crecimiento_pct is not None and ipc_acum_pct is not None:
-        brecha_pp = round(crecimiento_pct - ipc_acum_pct, 1)
+    # ── Por categoría: monto total + serie mensual (rellena 0) + crecimiento ──
+    por_cat: dict[str, dict[str, float]] = {}
+    for r in mc_rows:
+        por_cat.setdefault(r["categoria"], {})[r["mes"]] = to_float(r["monto"])
+
+    cats = []
+    for cat, mensual in por_cat.items():
+        serie_cat = [mensual.get(m, 0.0) for m in meses]
+        monto_cat = sum(serie_cat)
+        crec_cat  = _crecimiento_serie(serie_cat)
+        vs_ipc    = (round(crec_cat - ipc_acum_pct, 1)
+                     if crec_cat is not None and ipc_acum_pct is not None else None)
+        cats.append({
+            "categoria":       cat,
+            "monto":           monto_cat,
+            "pct":             round(monto_cat * 100 / total_12m, 1) if total_12m else 0,
+            "crecimiento_pct": crec_cat,
+            "vs_ipc_pp":       vs_ipc,   # crecimiento - inflación; >0 = sube sobre IPC
+        })
+    cats.sort(key=lambda c: c["monto"], reverse=True)
+
+    top = cats[:5]
+    resto = cats[5:]
+    if resto:
+        monto_otras = sum(c["monto"] for c in resto)
+        top.append({
+            "categoria":       "Otras",
+            "monto":           monto_otras,
+            "pct":             round(monto_otras * 100 / total_12m, 1) if total_12m else 0,
+            "crecimiento_pct": None,   # agregado heterogéneo, no se mide crecimiento
+            "vs_ipc_pp":       None,
+        })
 
     return {
-        "periodo":        {"fin": str(hasta), "meses": n},
-        "serie_mensual":  serie,
-        "gasto_total_12m": total_12m,
+        "periodo":            {"fin": str(hasta), "meses": n},
+        "serie_mensual":      serie,
+        "gasto_total_12m":    total_12m,
         "gasto_prom_mensual": prom_mensual,
-        "crecimiento_pct": crecimiento_pct,
-        "ipc_acum_pct":    ipc_acum_pct,
-        "brecha_pp":       brecha_pp,   # gasto - inflación; >0 = costos suben sobre IPC
-        "top_categorias": [
-            {"categoria": r["categoria"], "monto": to_float(r["monto"]),
-             "pct": round(to_float(r["monto"]) * 100 / total_12m, 1) if total_12m else 0}
-            for r in cat_rows[:5]
-        ],
+        "crecimiento_pct":    crecimiento_pct,
+        "ipc_acum_pct":       ipc_acum_pct,
+        "brecha_pp":          brecha_pp,
+        "top_categorias":     top,
         "top_proveedores": [
             {"proveedor": r["proveedor"], "monto": to_float(r["monto"]), "n": int(r["n"])}
             for r in prov_rows

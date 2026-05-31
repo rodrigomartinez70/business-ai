@@ -286,15 +286,27 @@ def _sec_gastos(g: dict, cfg, ana: dict | None = None) -> str:
         body += ('<div style="margin-top:10px;font-size:12px;font-weight:700;color:#374151;">'
                  'Vista CFO — costos vs inflación</div>' + _kpis(cfo_rows))
 
-        # Top categorías (12m)
+        # Gasto por categoría (12m): crecimiento y comparación vs IPC
         if ana["top_categorias"]:
-            filas = "".join(
-                f'<tr><td>{c["categoria"]}</td><td>{_fm(c["monto"], cfg)}</td><td>{c["pct"]:.0f}%</td></tr>'
-                for c in ana["top_categorias"]
-            )
+            filas = ""
+            for c in ana["top_categorias"]:
+                crec = var_txt(c["crecimiento_pct"]) if c["crecimiento_pct"] is not None else "—"
+                vp = c["vs_ipc_pp"]
+                if vp is None:
+                    vsipc = "—"
+                elif vp > 0:
+                    vsipc = f'<span class="neg">▲ +{vp:.1f} pp sobre IPC</span>'
+                else:
+                    vsipc = f'<span class="pos">▼ {abs(vp):.1f} pp bajo IPC</span>'
+                filas += (f'<tr><td>{c["categoria"]}</td><td>{_fm(c["monto"], cfg)}</td>'
+                          f'<td>{c["pct"]:.0f}%</td><td>{crec}</td><td>{vsipc}</td></tr>')
+            ipc_ref = (f' · IPC 12m: {ana["ipc_acum_pct"]:+.1f}%'
+                       if ana.get("ipc_acum_pct") is not None else "")
             body += ('<div style="margin-top:10px;font-size:12px;font-weight:700;color:#374151;">'
-                     'Top categorías (12m)</div>'
-                     f'<table class="dt"><tr><th>Categoría</th><th>Monto</th><th>%</th></tr>{filas}</table>')
+                     f'Gasto por categoría (12m){ipc_ref}</div>'
+                     '<table class="dt"><tr><th>Categoría</th><th>Monto</th><th>%</th>'
+                     '<th>Crec. 12m</th><th>vs IPC</th></tr>'
+                     f'{filas}</table>')
 
         # Top proveedores (12m)
         if ana["top_proveedores"]:

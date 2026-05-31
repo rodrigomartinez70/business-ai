@@ -88,12 +88,27 @@ async def test_dashboard_gastos_analitico(client, gerente_headers):
     if ana["crecimiento_pct"] is not None:
         assert ana["brecha_pp"] == round(ana["crecimiento_pct"] - ana["ipc_acum_pct"], 1)
 
+    # cada categoría trae crecimiento y comparación vs IPC
+    cats = ana["top_categorias"]
+    assert cats, "debe haber categorías"
+    for c in cats:
+        for campo in ("categoria", "monto", "pct", "crecimiento_pct", "vs_ipc_pp"):
+            assert campo in c
+        # vs_ipc_pp = crecimiento - inflación cuando ambos existen
+        if c["crecimiento_pct"] is not None:
+            assert c["vs_ipc_pp"] == round(c["crecimiento_pct"] - ana["ipc_acum_pct"], 1)
+    # con 7 categorías en el seed, debe aparecer la fila "Otras" y el total cerrar ~100%
+    nombres = [c["categoria"] for c in cats]
+    if "Otras" in nombres:
+        assert abs(sum(c["pct"] for c in cats) - 100) < 1.5
+
 
 @pytest.mark.asyncio
 async def test_dashboard_vista_cfo_en_html(client, gerente_headers):
     html = (await client.get("/api/agents/dashboard-semanal?formato=html", headers=gerente_headers)).text
     assert "Vista CFO" in html
-    assert "Top categorías (12m)" in html
+    assert "Gasto por categoría (12m)" in html
+    assert "vs IPC" in html
     assert "Top proveedores (12m)" in html
 
 
