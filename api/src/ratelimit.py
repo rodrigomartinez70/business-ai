@@ -1,6 +1,12 @@
 """
 Rate limiter por API key — sliding window en memoria.
 Configurable con RATE_LIMIT_RPM (default: 20 requests/minuto).
+
+SUPUESTO: 1 solo worker/proceso. El estado vive en memoria del proceso, así que
+con varios workers o réplicas cada uno tendría su propia ventana y el límite real
+se multiplicaría por N. Para la escala actual (pocos usuarios, 1 contenedor) es
+correcto. Si algún día se escala horizontalmente, mover el contador a Redis para
+que sea global entre procesos.
 """
 
 import os
