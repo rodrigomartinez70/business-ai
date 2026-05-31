@@ -9,9 +9,9 @@ Sin LLM — SQL puro.
 
 import logging
 from datetime import date, timedelta
-from decimal import Decimal
 
 from .. import config
+from ._common import SEMAFORO_COLOR, SEMAFORO_ICONO, fmt_moneda, to_float
 
 logger = logging.getLogger(__name__)
 
@@ -107,8 +107,7 @@ async def calcular_cash_flow() -> dict:
         """) or 0)
 
     # ── Construir tabla semanal ────────────────────────────────────────
-    def _f(v):
-        return float(v) if isinstance(v, Decimal) else float(v or 0)
+    _f = to_float
 
     promedio_gastos = _f(gasto_stats["promedio_semanal"])
 
@@ -183,23 +182,12 @@ async def calcular_cash_flow() -> dict:
 # Renderizado
 # ─────────────────────────────────────────────────────────────
 
-def _fmt(v: float, cfg: dict) -> str:
-    cur = cfg.get("currency", {})
-    sym = cur.get("symbol", "$")
-    sep = cur.get("thousands_separator", ".")
-    return f"{sym}{v:,.0f}".replace(",", sep)
-
-
-_SEMAFORO_ICONO = {"ok": "✅", "alerta": "⚠️", "critico": "🚨"}
-_SEMAFORO_COLOR = {"ok": 0x2ECC71, "alerta": 0xF39C12, "critico": 0xE74C3C}
-
-
 def renderizar_cash_flow_markdown(data: dict, cfg: dict) -> str:
     biz = cfg.get("business", {}).get("name", "Negocio")
-    fm  = lambda v: _fmt(v, cfg)
+    fm  = lambda v: fmt_moneda(v, cfg)
     r   = data["resumen"]
     sem = data["semaforo"]
-    ico = _SEMAFORO_ICONO[sem]
+    ico = SEMAFORO_ICONO[sem]
 
     cobertura_txt = (
         f"{r['semanas_cobertura']:.1f} semanas de gastos"
@@ -245,10 +233,10 @@ def renderizar_cash_flow_markdown(data: dict, cfg: dict) -> str:
 
 def build_discord_embed_cash_flow(data: dict, cfg: dict) -> dict:
     biz = cfg.get("business", {}).get("name", "Negocio")
-    fm  = lambda v: _fmt(v, cfg)
+    fm  = lambda v: fmt_moneda(v, cfg)
     r   = data["resumen"]
     sem = data["semaforo"]
-    ico = _SEMAFORO_ICONO[sem]
+    ico = SEMAFORO_ICONO[sem]
 
     cobertura_txt = (
         f"{r['semanas_cobertura']:.1f} sem."
@@ -315,7 +303,7 @@ def build_discord_embed_cash_flow(data: dict, cfg: dict) -> dict:
     return {
         "embeds": [{
             "title":  f"💵 Cash Flow — {biz} · {data['fecha']}",
-            "color":  _SEMAFORO_COLOR[sem],
+            "color":  SEMAFORO_COLOR[sem],
             "fields": fields,
         }]
     }

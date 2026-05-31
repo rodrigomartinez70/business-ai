@@ -8,9 +8,9 @@ Sin LLM — SQL puro sobre datos reales.
 
 import logging
 from datetime import date
-from decimal import Decimal
 
 from .. import config
+from ._common import COLOR, fmt_moneda, to_float
 
 logger = logging.getLogger(__name__)
 
@@ -116,8 +116,7 @@ async def calcular_cierre(fecha: date) -> dict:
         """, fecha)]
 
     # ─── Cálculos derivados ────────────────────────────────────
-    def _f(v):
-        return float(v) if isinstance(v, Decimal) else float(v or 0)
+    _f = to_float
 
     en_casa       = int(ocupacion["en_casa"]            or 0)
     total_hab     = int(ocupacion["total_habitaciones"] or 1)
@@ -209,16 +208,9 @@ async def calcular_cierre(fecha: date) -> dict:
 # Renderizado
 # ─────────────────────────────────────────────────────────────
 
-def _fmt(v: float, cfg: dict) -> str:
-    cur = cfg.get("currency", {})
-    sym = cur.get("symbol", "$")
-    sep = cur.get("thousands_separator", ".")
-    return f"{sym}{v:,.0f}".replace(",", sep)
-
-
 def renderizar_cierre_markdown(data: dict, cfg: dict) -> str:
     biz = cfg.get("business", {}).get("name", "Negocio")
-    fm  = lambda v: _fmt(v, cfg)
+    fm  = lambda v: fmt_moneda(v, cfg)
 
     ocu = data["ocupacion"]
     mov = data["movimientos"]
@@ -286,7 +278,7 @@ def renderizar_cierre_markdown(data: dict, cfg: dict) -> str:
 
 def build_discord_embed_cierre(data: dict, cfg: dict) -> dict:
     biz = cfg.get("business", {}).get("name", "Negocio")
-    fm  = lambda v: _fmt(v, cfg)
+    fm  = lambda v: fmt_moneda(v, cfg)
 
     ocu = data["ocupacion"]
     mov = data["movimientos"]
@@ -295,7 +287,7 @@ def build_discord_embed_cierre(data: dict, cfg: dict) -> dict:
     gas = data["gastos"]
     r   = data["resumen"]
 
-    color    = 0x2ECC71 if r["gop_devengado"] >= 0 else 0xE74C3C
+    color    = COLOR.OK if r["gop_devengado"] >= 0 else COLOR.CRITICO
     gop_icon = "✅" if r["gop_devengado"] >= 0 else "🔴"
 
     pm = cob["por_metodo"]

@@ -10,9 +10,9 @@ Sin LLM — SQL puro.
 import calendar
 import logging
 from datetime import date, timedelta
-from decimal import Decimal
 
 from .. import config
+from ._common import COLOR, fmt_moneda, to_float, var_pct, var_txt
 
 logger = logging.getLogger(__name__)
 
@@ -60,8 +60,7 @@ async def _metricas_canales(conn, fi: date, ff: date) -> list[dict]:
         ORDER BY ingresos_netos DESC
     """, fi, ff)]
 
-    def _f(v):
-        return float(v) if isinstance(v, Decimal) else float(v or 0)
+    _f = to_float
 
     total_neto = sum(_f(r["ingresos_netos"]) for r in rows) or 1
 
@@ -113,10 +112,7 @@ async def calcular_rentabilidad_canal(año: int, mes: int) -> dict:
     # Índice anterior por canal para variaciones
     ant_idx = {c["canal"]: c for c in anterior}
 
-    def _var(v_a, v_r):
-        if v_r and v_r != 0:
-            return round((v_a - v_r) * 100 / abs(v_r), 1)
-        return None
+    _var = var_pct
 
     canales_con_var = []
     for c in actual:
@@ -182,23 +178,12 @@ async def calcular_rentabilidad_canal(año: int, mes: int) -> dict:
 # Renderizado
 # ─────────────────────────────────────────────────────────────
 
-def _fmt(v: float, cfg: dict) -> str:
-    cur = cfg.get("currency", {})
-    sym = cur.get("symbol", "$")
-    sep = cur.get("thousands_separator", ".")
-    return f"{sym}{v:,.0f}".replace(",", sep)
-
-
-def _var_txt(pct) -> str:
-    if pct is None:
-        return "—"
-    arrow = "▲" if pct > 0 else "▼"
-    return f"{arrow} {abs(pct):.1f}%"
+_var_txt = var_txt
 
 
 def renderizar_rentabilidad_canal_markdown(data: dict, cfg: dict) -> str:
     biz = cfg.get("business", {}).get("name", "Negocio")
-    fm  = lambda v: _fmt(v, cfg)
+    fm  = lambda v: fmt_moneda(v, cfg)
     t   = data["totales"]
     ins = data["insights"]
 
@@ -242,13 +227,13 @@ def renderizar_rentabilidad_canal_markdown(data: dict, cfg: dict) -> str:
 
 def build_discord_embed_rentabilidad_canal(data: dict, cfg: dict) -> dict:
     biz = cfg.get("business", {}).get("name", "Negocio")
-    fm  = lambda v: _fmt(v, cfg)
+    fm  = lambda v: fmt_moneda(v, cfg)
     t   = data["totales"]
     ins = data["insights"]
 
     # Color según tasa de cancelación global
     tasa = t["tasa_cancel_pct"]
-    color = 0x2ECC71 if tasa < 10 else (0xF39C12 if tasa < 20 else 0xE74C3C)
+    color = COLOR.OK if tasa < 10 else (COLOR.ALERTA if tasa < 20 else COLOR.CRITICO)
 
     # Tabla de canales compacta
     canales_lines = []

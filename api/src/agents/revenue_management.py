@@ -9,9 +9,9 @@ Sin LLM — SQL puro.
 
 import logging
 from datetime import date, timedelta
-from decimal import Decimal
 
 from .. import config
+from ._common import COLOR, fmt_moneda, to_float
 
 logger = logging.getLogger(__name__)
 
@@ -129,8 +129,7 @@ async def calcular_revenue_management(horizon_dias: int = 30) -> dict:
         """)]
 
     # ── Cálculos derivados ─────────────────────────────────────────────
-    def _f(v):
-        return float(v) if isinstance(v, Decimal) else float(v or 0)
+    _f = to_float
 
     ocupadas_hoy  = int(snapshot["ocupadas"] or 0)
     adr_hoy       = _f(snapshot["adr"])
@@ -217,16 +216,9 @@ async def calcular_revenue_management(horizon_dias: int = 30) -> dict:
 # Renderizado
 # ─────────────────────────────────────────────────────────────
 
-def _fmt(v: float, cfg: dict) -> str:
-    cur = cfg.get("currency", {})
-    sym = cur.get("symbol", "$")
-    sep = cur.get("thousands_separator", ".")
-    return f"{sym}{v:,.0f}".replace(",", sep)
-
-
 def renderizar_revenue_markdown(data: dict, cfg: dict) -> str:
     biz = cfg.get("business", {}).get("name", "Negocio")
-    fm  = lambda v: _fmt(v, cfg)
+    fm  = lambda v: fmt_moneda(v, cfg)
     s   = data["snapshot"]
     h7  = data["historico"]["7d"]
     h30 = data["historico"]["30d"]
@@ -284,7 +276,7 @@ def renderizar_revenue_markdown(data: dict, cfg: dict) -> str:
 
 def build_discord_embed_revenue(data: dict, cfg: dict) -> dict:
     biz = cfg.get("business", {}).get("name", "Negocio")
-    fm  = lambda v: _fmt(v, cfg)
+    fm  = lambda v: fmt_moneda(v, cfg)
     s   = data["snapshot"]
     h7  = data["historico"]["7d"]
     h30 = data["historico"]["30d"]
@@ -292,7 +284,7 @@ def build_discord_embed_revenue(data: dict, cfg: dict) -> dict:
 
     # Color según ocupación
     ocu = s["ocupacion_pct"]
-    color = 0x2ECC71 if ocu >= 70 else (0xF39C12 if ocu >= 40 else 0xE74C3C)
+    color = COLOR.OK if ocu >= 70 else (COLOR.ALERTA if ocu >= 40 else COLOR.CRITICO)
 
     # Próximos 7 días como mini-tabla
     cal7 = data["proyeccion"]["calendario"][:7]

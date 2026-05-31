@@ -8,9 +8,9 @@ Sin LLM — SQL puro.
 
 import logging
 from datetime import date, timedelta
-from decimal import Decimal
 
 from .. import config
+from ._common import COLOR, fmt_moneda, to_float, var_txt
 
 logger = logging.getLogger(__name__)
 
@@ -126,8 +126,7 @@ async def calcular_control_gastos(
         """, fecha_inicio, fecha_fin)]
 
     # ─── Cálculos derivados ────────────────────────────────────
-    def _f(v):
-        return float(v) if isinstance(v, Decimal) else float(v or 0)
+    _f = to_float
 
     total_actual   = _f(totales["total_actual"])
     total_anterior = _f(totales["total_anterior"])
@@ -214,18 +213,8 @@ async def calcular_control_gastos(
 # Renderizado
 # ─────────────────────────────────────────────────────────────
 
-def _fmt(v: float, cfg: dict) -> str:
-    cur = cfg.get("currency", {})
-    sym = cur.get("symbol", "$")
-    sep = cur.get("thousands_separator", ".")
-    return f"{sym}{v:,.0f}".replace(",", sep)
-
-
-def _variacion_txt(pct) -> str:
-    if pct is None:
-        return "nuevo"
-    arrow = "▲" if pct > 0 else "▼"
-    return f"{arrow} {abs(pct):.1f}%"
+def _variacion_txt(pct):
+    return var_txt(pct, "nuevo")
 
 
 def _nivel_icono(nivel: str) -> str:
@@ -234,7 +223,7 @@ def _nivel_icono(nivel: str) -> str:
 
 def renderizar_control_gastos_markdown(data: dict, cfg: dict) -> str:
     biz = cfg.get("business", {}).get("name", "Negocio")
-    fm  = lambda v: _fmt(v, cfg)
+    fm  = lambda v: fmt_moneda(v, cfg)
     p   = data["periodo"]
     r   = data["resumen"]
 
@@ -297,13 +286,13 @@ def renderizar_control_gastos_markdown(data: dict, cfg: dict) -> str:
 
 def build_discord_embed_control_gastos(data: dict, cfg: dict) -> dict:
     biz = cfg.get("business", {}).get("name", "Negocio")
-    fm  = lambda v: _fmt(v, cfg)
+    fm  = lambda v: fmt_moneda(v, cfg)
     p   = data["periodo"]
     r   = data["resumen"]
 
     tiene_critico = any(a["nivel"] == "critico" for a in data["alertas"])
     tiene_alerta  = bool(data["alertas"])
-    color = 0xE74C3C if tiene_critico else (0xF39C12 if tiene_alerta else 0x2ECC71)
+    color = COLOR.CRITICO if tiene_critico else (COLOR.ALERTA if tiene_alerta else COLOR.OK)
 
     var_txt = _variacion_txt(r["variacion_pct"])
 

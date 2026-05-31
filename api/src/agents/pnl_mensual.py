@@ -10,9 +10,9 @@ Sin LLM — SQL puro.
 import calendar
 import logging
 from datetime import date
-from decimal import Decimal
 
 from .. import config
+from ._common import COLOR, fmt_moneda, to_float, var_pct, var_txt
 
 logger = logging.getLogger(__name__)
 
@@ -105,8 +105,7 @@ async def _metricas_mes(conn, fi: date, ff: date) -> dict:
     """, fi, ff)]
 
     # ── Cálculos derivados ────────────────────────────────────────────────
-    def _f(v):
-        return float(v) if isinstance(v, Decimal) else float(v or 0)
+    _f = to_float
 
     ing_hosp   = _f(hosp["ingresos"])
     ing_frig   = _f(frig["ingresos"])
@@ -206,10 +205,7 @@ async def calcular_pnl(año: int, mes: int) -> dict:
         anterior  = await _metricas_mes(conn, fi_ant, ff_ant)
         año_pasado= await _metricas_mes(conn, fi_aa,  ff_aa)
 
-    def _var(v_actual, v_ref):
-        if v_ref and v_ref != 0:
-            return round((v_actual - v_ref) * 100 / abs(v_ref), 1)
-        return None
+    _var = var_pct
 
     def _comp(campo, sub=None):
         a = actual[campo]    if sub is None else actual[campo][sub]
@@ -260,23 +256,12 @@ async def calcular_pnl(año: int, mes: int) -> dict:
 # Renderizado
 # ─────────────────────────────────────────────────────────────
 
-def _fmt(v: float, cfg: dict) -> str:
-    cur = cfg.get("currency", {})
-    sym = cur.get("symbol", "$")
-    sep = cur.get("thousands_separator", ".")
-    return f"{sym}{v:,.0f}".replace(",", sep)
-
-
-def _var_txt(pct) -> str:
-    if pct is None:
-        return "—"
-    arrow = "▲" if pct > 0 else "▼"
-    return f"{arrow} {abs(pct):.1f}%"
+_var_txt = var_txt
 
 
 def renderizar_pnl_markdown(data: dict, cfg: dict) -> str:
     biz = cfg.get("business", {}).get("name", "Negocio")
-    fm  = lambda v: _fmt(v, cfg)
+    fm  = lambda v: fmt_moneda(v, cfg)
     a   = data["actual"]
     ant = data["anterior"]
     ay  = data["año_pasado"]
@@ -366,7 +351,7 @@ def renderizar_pnl_markdown(data: dict, cfg: dict) -> str:
 
 def build_discord_embed_pnl(data: dict, cfg: dict) -> dict:
     biz = cfg.get("business", {}).get("name", "Negocio")
-    fm  = lambda v: _fmt(v, cfg)
+    fm  = lambda v: fmt_moneda(v, cfg)
     a   = data["actual"]
     ant = data["anterior"]
     ay  = data["año_pasado"]
@@ -376,7 +361,7 @@ def build_discord_embed_pnl(data: dict, cfg: dict) -> dict:
     ing = a["ingresos"]
     gas = a["gastos"]
 
-    color = 0x2ECC71 if res["estado"] == "positivo" else 0xE74C3C
+    color = COLOR.OK if res["estado"] == "positivo" else COLOR.CRITICO
     gop_icon = "✅" if res["estado"] == "positivo" else "🔴"
 
     top_gastos = gas["por_categoria"][:3]
