@@ -24,8 +24,12 @@ async def calcular_cierre(fecha: date) -> dict:
 
         ocupacion = dict(await conn.fetchrow("""
             SELECT
+                -- Ocupación real de esa noche: cuenta las reservas que efectivamente
+                -- ocuparon la habitación, sin importar su estado ACTUAL. Para días
+                -- pasados las reservas ya están en 'checkout'; filtrar solo por
+                -- 'checkin' daba 0 en el cierre semanal.
                 (SELECT COUNT(*) FROM reservas
-                 WHERE estado = 'checkin'
+                 WHERE estado IN ('checkin', 'checkout')
                    AND fecha_entrada <= $1 AND fecha_salida > $1)   AS en_casa,
                 (SELECT COUNT(*) FROM habitaciones WHERE activa = TRUE) AS total_habitaciones
         """, fecha))
