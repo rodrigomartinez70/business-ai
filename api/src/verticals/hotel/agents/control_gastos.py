@@ -9,8 +9,8 @@ Sin LLM — SQL puro.
 import logging
 from datetime import date, timedelta
 
-from .. import config
-from ._common import COLOR, fmt_moneda, to_float, var_txt
+from .... import config
+from ....agents._common import COLOR, fmt_moneda, to_float, var_txt
 
 logger = logging.getLogger(__name__)
 

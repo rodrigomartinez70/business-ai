@@ -27,7 +27,8 @@ CONFIG_PATH         = os.getenv("BUSINESS_CONFIG_PATH", "/app/config.yaml")
 
 # ─── Canal de envío de reportes ──────────────────────────────
 # REPORT_CHANNEL: "email" (dashboard HTML por correo) o "none" (no enviar).
-REPORT_CHANNEL  = os.getenv("REPORT_CHANNEL", "email").strip().lower()
+REPORT_CHANNEL      = os.getenv("REPORT_CHANNEL", "email").strip().lower()
+BUSINESS_VERTICAL   = os.getenv("BUSINESS_VERTICAL", "hotel").strip().lower()
 
 # SMTP (envío del dashboard semanal por correo)
 SMTP_HOST       = os.getenv("SMTP_HOST", "")

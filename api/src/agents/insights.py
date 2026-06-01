@@ -1,11 +1,13 @@
 """
-Generación de insights accionables con IA para agentes financieros.
+Motor genérico de insights accionables con IA.
 
-Los datos se procesan internamente (Claude API / Ollama local).
-Lo que sale al exterior son únicamente recomendaciones en texto,
-nunca los números crudos del negocio.
+Los prompts y resumidores específicos del negocio viven en
+src/verticals/<vertical>/insights_prompts.py y se cargan según
+BUSINESS_VERTICAL del entorno. Lo que sale al exterior son únicamente
+recomendaciones en texto, nunca los números crudos del negocio.
 """
 
+import importlib
 import logging
 from typing import Optional
 
@@ -13,231 +15,27 @@ from .. import config
 
 logger = logging.getLogger(__name__)
 
-# Máx tokens para los insights — respuesta corta y accionable
 _MAX_TOKENS = 512
 
 
-# ─────────────────────────────────────────────────────────────
-# Prompts por tipo de agente
-# ─────────────────────────────────────────────────────────────
-
-_SYSTEM = (
-    "Eres un consultor de gestión hotelera. Tu rol es convertir datos operativos "
-    "en recomendaciones concretas para el dueño. Nunca repitas los números del contexto — "
-    "usá términos relativos ('por encima del promedio', 'tendencia negativa', etc.). "
-    "Respondé SOLO con una lista de bullets en español, sin introducción ni cierre."
-)
-
-_PROMPTS: dict[str, str] = {
-    "cierre_diario": """
-Analizá el resumen del día de hoy de un hotel:
-{resumen}
-
-Generá exactamente 3 insights accionables para el dueño:
-- Uno sobre la operación del día (ocupación, movimientos)
-- Uno sobre la caja y cobros pendientes
-- Uno sobre el resultado y qué palanca tiene para mejorar mañana
-""",
-    "control_gastos": """
-Analizá el reporte de control de gastos semanal de un hotel:
-{resumen}
-
-Generá exactamente 3 insights accionables:
-- Uno sobre la categoría de gasto más preocupante
-- Uno sobre proveedores o gastos sin clasificar si los hay
-- Uno sobre una acción concreta para reducir o controlar costos
-""",
-    "pnl_mensual": """
-Analizá el P&L mensual de un hotel:
-{resumen}
-
-Generá exactamente 3 insights accionables:
-- Uno sobre el desempeño vs períodos anteriores
-- Uno sobre la estructura de ingresos o gastos que más impacta el margen
-- Uno sobre una acción estratégica para mejorar el GOP el próximo mes
-""",
-    "revenue_management": """
-Analizá el reporte de revenue management de un hotel:
-{resumen}
-
-Generá exactamente 3 insights accionables:
-- Uno sobre la estrategia de precios para los próximos días
-- Uno sobre el canal de venta más conveniente o a potenciar
-- Uno sobre una oportunidad concreta de ingreso adicional
-""",
-    "cash_flow": """
-Analizá la proyección de cash flow de un hotel para las próximas semanas:
-{resumen}
-
-Generá exactamente 3 insights accionables:
-- Uno sobre el riesgo de liquidez identificado (si existe)
-- Uno sobre cómo adelantar cobros o diferir gastos para mejorar el flujo
-- Uno sobre una acción preventiva si el flujo proyectado es insuficiente
-""",
-    "rentabilidad_canal": """
-Analizá el ranking de rentabilidad por canal de venta de un hotel:
-{resumen}
-
-Generá exactamente 3 insights accionables:
-- Uno sobre el canal más rentable y cómo potenciarlo
-- Uno sobre el canal con mayor tasa de cancelación y cómo reducirla
-- Uno sobre el mix de canales óptimo para el próximo mes
-""",
-    "alertas": """
-Analizá los KPIs operativos de un hotel con sus alertas activas:
-{resumen}
-
-Generá exactamente 3 insights accionables:
-- Uno sobre la causa probable de las alertas activas
-- Uno sobre la acción más urgente que debe tomar el dueño hoy
-- Uno sobre cómo prevenir que estas alertas se repitan la semana próxima
-""",
-}
+def _cargar_prompts() -> tuple[str, dict, dict]:
+    """Carga SYSTEM, PROMPTS y RESUMIDORES del vertical activo."""
+    vertical = config.BUSINESS_VERTICAL
+    module_path = f"src.verticals.{vertical}.insights_prompts"
+    try:
+        mod = importlib.import_module(module_path)
+        return mod.SYSTEM, mod.PROMPTS, mod.RESUMIDORES
+    except (ImportError, AttributeError) as e:
+        logger.error(f"No se pudo cargar insights_prompts para vertical '{vertical}': {e}")
+        return "", {}, {}
 
 
-# ─────────────────────────────────────────────────────────────
-# Serialización de métricas para el LLM
-# ─────────────────────────────────────────────────────────────
-
-def _resumir_cierre(data: dict) -> str:
-    r   = data["resumen"]
-    ocu = data["ocupacion"]
-    cob = data["cobros"]
-    gas = data["gastos"]
-    return (
-        f"Ocupación: {ocu['pct_ocupacion']}% ({ocu['en_casa']}/{ocu['total_habitaciones']} hab)\n"
-        f"Check-ins hoy: {data['movimientos']['checkins']}, Check-outs: {data['movimientos']['checkouts']}\n"
-        f"Estado GOP: {r['gop_estado']} (devengado vs caja)\n"
-        f"Cobros pendientes: {'hay' if cob['pendiente'] > 0 else 'ninguno'}\n"
-        f"Gastos del día: {'registrados' if gas['total'] > 0 else 'sin gastos registrados'}\n"
-        f"Comisiones OTA del día: {'hay' if data['comisiones_ota'] else 'ninguna'}"
-    )
-
-
-def _resumir_control_gastos(data: dict) -> str:
-    r   = data["resumen"]
-    var = r.get("variacion_pct")
-    var_txt = f"{var:+.1f}%" if var is not None else "sin referencia"
-    alertas = data.get("alertas", [])
-    sin_cat = data.get("sin_categoria", {})
-    top_cat = data["categorias"][:3] if data.get("categorias") else []
-    return (
-        f"Variación total de gastos vs período anterior: {var_txt}\n"
-        f"Categorías en alerta ({[a['nivel'] for a in alertas]}): "
-        f"{', '.join(a['categoria'] for a in alertas) or 'ninguna'}\n"
-        f"Top categorías por monto: {', '.join(c['categoria'] for c in top_cat)}\n"
-        f"Gastos sin categoría: {sin_cat.get('n', 0)} registros\n"
-        f"Proveedores nuevos: {len(data.get('proveedores_nuevos', []))}"
-    )
-
-
-def _resumir_pnl(data: dict) -> str:
-    a   = data["actual"]
-    c   = data["comparativas"]
-    res = a["resultado"]
-    met = a["metricas"]
-    var_ing = c["ingresos_total"].get("vs_mes_anterior")
-    var_gop = c["gop"].get("vs_mes_anterior")
-    var_ocu = c["ocupacion"].get("vs_mes_anterior")
-    var_aa  = c["gop"].get("vs_año_anterior")
-
-    ing_txt = f"{var_ing:+.1f}%" if var_ing is not None else "sin dato"
-    gop_txt = f"{var_gop:+.1f}%" if var_gop is not None else "sin dato"
-    aa_txt  = f"{var_aa:+.1f}%" if var_aa is not None else "sin dato"
-    ocu_txt = "mejora" if var_ocu and var_ocu > 0 else "cae" if var_ocu and var_ocu < 0 else "estable"
-
-    return (
-        f"Mes: {data['mes_nombre']} ({'parcial' if data['parcial'] else 'completo'})\n"
-        f"Estado GOP: {res['estado']}, margen: {res['margen_pct'] or 0:.1f}%\n"
-        f"Ingresos vs mes anterior: {ing_txt}\n"
-        f"GOP vs mes anterior: {gop_txt}\n"
-        f"GOP vs año anterior: {aa_txt}\n"
-        f"Ocupación: {met['ocupacion_pct'] or 0:.1f}% ({ocu_txt} vs mes ant)\n"
-        f"RevPAR: {met['revpar'] or 0:.0f}"
-    )
-
-
-def _resumir_revenue(data: dict) -> str:
-    s   = data["snapshot"]
-    h30 = data["historico"]["30d"]
-    oport = data["oportunidades_precio"]
-    canales = sorted(data["canales"], key=lambda c: c["ingresos_netos"], reverse=True)
-    return (
-        f"Ocupación hoy: {s['ocupacion_pct']:.1f}% vs promedio 30d: {h30['ocupacion_pct']:.1f}%\n"
-        f"ADR hoy vs promedio 30d: {'por encima' if s['adr'] > h30['adr'] else 'por debajo'}\n"
-        f"RevPAR 30d: {h30['revpar']:.0f}\n"
-        f"Oportunidades de precio próximos días: {len(oport)} "
-        f"({'días con alta ocupación y tarifa baja' if oport else 'ninguna detectada'})\n"
-        f"Canal más rentable (30d): {canales[0]['canal'] if canales else '—'}\n"
-        f"Proyección 7d: ocupación promedio {data['proyeccion']['ocupacion_prom_7d']:.1f}%"
-    )
-
-
-def _resumir_cash_flow(data: dict) -> str:
-    r   = data["resumen"]
-    sem = data["semaforo"]
-    cob = r["cobros_pendientes"]
-    cob_txt = f"{r['semanas_cobertura']:.1f} semanas" if r['semanas_cobertura'] is not None else "sin datos"
-    flujo_txt = "positivo" if r['flujo_neto_proyectado'] >= 0 else "negativo"
-    pend_txt = "hay" if cob > 0 else "ninguno"
-    ing_txt = "hay reservas confirmadas" if r['ingresos_proyectados'] > 0 else "sin reservas confirmadas"
-    return (
-        f"Semáforo de liquidez: {sem.upper()}\n"
-        f"Cobertura mínima proyectada: {cob_txt}\n"
-        f"Flujo neto proyectado 8 semanas: {flujo_txt}\n"
-        f"Cobros pendientes: {pend_txt}\n"
-        f"Ingresos proyectados: {ing_txt}"
-    )
-
-
-def _resumir_rentabilidad_canal(data: dict) -> str:
-    t   = data["totales"]
-    ins = data["insights"]
-    canales = data["canales"]
-    cancel_alto = [c for c in canales if c["tasa_cancel_pct"] > 15]
-    return (
-        f"Canal más rentable: {ins['canal_mas_rentable'] or '—'}\n"
-        f"Canal más confiable: {ins['canal_mas_confiable'] or '—'}\n"
-        f"Tasa de cancelación global: {t['tasa_cancel_pct']:.1f}%\n"
-        f"Canales con cancelación >15%: {', '.join(c['canal'] for c in cancel_alto) or 'ninguno'}\n"
-        f"Mix: {len([c for c in canales if c['ingresos_netos'] > 0])} canales activos"
-    )
-
-
-def _resumir_alertas(data: dict) -> str:
-    alertas = data.get("alertas", [])
-    kpis    = data.get("kpis", [])
-    criticos = [a for a in alertas if a["nivel"] == "critico"]
-    return (
-        f"Estado general: {data.get('estado_general', 'ok').upper()}\n"
-        f"Alertas activas: {len(alertas)} "
-        f"({len(criticos)} críticas)\n"
-        f"KPIs en alerta: {', '.join(a['kpi'] for a in alertas) or 'ninguno'}\n"
-        f"KPIs OK: {', '.join(k['name'] for k in kpis if k.get('valor') is not None and k['name'] not in [a['kpi'] for a in alertas])}"
-    )
-
-
-_RESUMIDORES = {
-    "cierre_diario":      _resumir_cierre,
-    "control_gastos":     _resumir_control_gastos,
-    "pnl_mensual":        _resumir_pnl,
-    "revenue_management": _resumir_revenue,
-    "cash_flow":          _resumir_cash_flow,
-    "rentabilidad_canal": _resumir_rentabilidad_canal,
-    "alertas":            _resumir_alertas,
-}
-
-
-# ─────────────────────────────────────────────────────────────
-# Generación de insights
-# ─────────────────────────────────────────────────────────────
-
-async def _llamar_ollama_insights(prompt: str) -> Optional[str]:
+async def _llamar_ollama_insights(prompt: str, system: str) -> Optional[str]:
     import httpx
     payload = {
         "model":  config.OLLAMA_MODEL,
         "prompt": prompt,
-        "system": _SYSTEM,
+        "system": system,
         "stream": False,
         "options": {"temperature": 0.3, "num_predict": 400},
     }
@@ -262,10 +60,12 @@ async def generar_insights(tipo: str, data: dict) -> list[str]:
 
     Retorna lista de bullets (strings). Lista vacía si falla ambos LLMs.
     """
-    resumidor = _RESUMIDORES.get(tipo)
-    template  = _PROMPTS.get(tipo)
+    system, prompts, resumidores = _cargar_prompts()
+
+    resumidor = resumidores.get(tipo)
+    template  = prompts.get(tipo)
     if not resumidor or not template:
-        logger.warning(f"Tipo de agente desconocido para insights: {tipo}")
+        logger.warning(f"Tipo de agente desconocido para insights en vertical '{config.BUSINESS_VERTICAL}': {tipo}")
         return []
 
     try:
@@ -274,40 +74,36 @@ async def generar_insights(tipo: str, data: dict) -> list[str]:
         logger.warning(f"Error al resumir datos para insights ({tipo}): {e}")
         return []
 
-    biz_name = config.biz("name", "hotel")
+    biz_name = config.biz("name", "negocio")
     prompt   = template.format(resumen=resumen).strip()
     prompt  += f"\n\nNegocio: {biz_name}. Respondé en español con bullets (•)."
 
     respuesta = None
 
-    # Intentar Claude primero
     if config.claude_disponible():
         try:
             client  = config.get_anthropic_client()
             message = await client.messages.create(
                 model=config.CLAUDE_MODEL,
                 max_tokens=_MAX_TOKENS,
-                system=_SYSTEM,
+                system=system,
                 messages=[{"role": "user", "content": prompt}],
             )
             respuesta = message.content[0].text.strip()
         except Exception as e:
             logger.warning(f"Claude insights falló ({tipo}), usando Ollama: {e}")
 
-    # Fallback a Ollama
     if not respuesta:
-        respuesta = await _llamar_ollama_insights(prompt)
+        respuesta = await _llamar_ollama_insights(prompt, system)
 
     if not respuesta:
         return []
 
-    # Parsear bullets: líneas que empiezan con •, -, *, 1., 2., etc.
     bullets = []
     for line in respuesta.splitlines():
         line = line.strip()
         if not line:
             continue
-        # Quitar prefijos de bullet/número
         for prefix in ("• ", "- ", "* ", "1. ", "2. ", "3. ", "4. ", "5. "):
             if line.startswith(prefix):
                 line = line[len(prefix):]
@@ -315,4 +111,4 @@ async def generar_insights(tipo: str, data: dict) -> list[str]:
         if len(line) > 10:
             bullets.append(line)
 
-    return bullets[:3]  # máximo 3 insights
+    return bullets[:3]

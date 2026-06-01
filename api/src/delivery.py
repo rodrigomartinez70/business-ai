@@ -57,9 +57,18 @@ def enviar_dashboard_email(html: str, cfg: dict, asunto: str | None = None) -> d
 
 
 def _entregar(msg: EmailMessage, to: list[str]) -> None:
-    """Abre la conexión SMTP y entrega el mensaje."""
-    if config.SMTP_USE_TLS:
-        ctx = ssl.create_default_context()
+    """Abre la conexión SMTP y entrega el mensaje.
+
+    Puerto 465 → SSL directo (SMTPS).
+    Puerto 587 / resto → STARTTLS si SMTP_USE_TLS=true.
+    """
+    ctx = ssl.create_default_context()
+    if config.SMTP_PORT == 465:
+        with smtplib.SMTP_SSL(config.SMTP_HOST, config.SMTP_PORT, context=ctx, timeout=30) as srv:
+            if config.SMTP_USER:
+                srv.login(config.SMTP_USER, config.SMTP_PASSWORD)
+            srv.send_message(msg, from_addr=config.SMTP_FROM, to_addrs=to)
+    elif config.SMTP_USE_TLS:
         with smtplib.SMTP(config.SMTP_HOST, config.SMTP_PORT, timeout=30) as srv:
             srv.starttls(context=ctx)
             if config.SMTP_USER:

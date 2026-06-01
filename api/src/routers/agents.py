@@ -7,38 +7,38 @@ from fastapi.responses import PlainTextResponse
 from .. import config
 from ..agents.alertas import calcular_kpis, evaluar_umbrales, renderizar_reporte, _fmt_kpi
 from ..agents.insights import generar_insights
-from ..agents.cierre_diario import (
+from ..verticals.hotel.agents.cierre_diario import (
     build_discord_embed_cierre,
     calcular_cierre,
     renderizar_cierre_markdown,
 )
-from ..agents.control_gastos import (
+from ..verticals.hotel.agents.control_gastos import (
     build_discord_embed_control_gastos,
     calcular_control_gastos,
     renderizar_control_gastos_markdown,
 )
-from ..agents.pnl_mensual import (
+from ..verticals.hotel.agents.pnl_mensual import (
     build_discord_embed_pnl,
     calcular_pnl,
     renderizar_pnl_markdown,
 )
-from ..agents.rentabilidad_canal import (
+from ..verticals.hotel.agents.rentabilidad_canal import (
     build_discord_embed_rentabilidad_canal,
     calcular_rentabilidad_canal,
     renderizar_rentabilidad_canal_markdown,
 )
-from ..agents.cash_flow import (
+from ..verticals.hotel.agents.cash_flow import (
     build_discord_embed_cash_flow,
     calcular_cash_flow,
     renderizar_cash_flow_markdown,
 )
-from ..agents.revenue_management import (
+from ..verticals.hotel.agents.revenue_management import (
     build_discord_embed_revenue,
     calcular_revenue_management,
     renderizar_revenue_markdown,
 )
 from ..auth import get_role
-from ..dashboard import calcular_dashboard, renderizar_dashboard_html
+from ..verticals.hotel.dashboard import calcular_dashboard, renderizar_dashboard_html
 from ..delivery import enviar_dashboard_email
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
