@@ -102,11 +102,17 @@ async def obtener_ipc(meses: int = 12) -> dict | None:
         return _cache["data"] if _cache else None
 
     # Extraer y ordenar: tomar últimos N meses, ordenar cronológicamente ascendente
-    serie = [
-        {"mes": p["indexDateString"][:7], "valor": float(p["value"])}
-        for p in series_data
-        if p.get("value") and p.get("statusCode") == "OK"
-    ]
+    # indexDateString viene en formato "DD-MM-YYYY"
+    serie = []
+    for p in series_data:
+        if p.get("value") and p.get("statusCode") == "OK":
+            date_str = p["indexDateString"]  # "01-04-2026"
+            # Convertir DD-MM-YYYY a YYYY-MM
+            parts = date_str.split("-")
+            if len(parts) == 3:
+                mes = f"{parts[2]}-{parts[1]}"  # "2026-04"
+                serie.append({"mes": mes, "valor": float(p["value"])})
+
     serie = sorted(serie, key=lambda x: x["mes"])[-meses:]
 
     if not serie:
