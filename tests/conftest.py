@@ -3,7 +3,12 @@ Fixtures compartidas para todos los tests.
 
 Separación de scopes para evitar el "attached to a different loop" de asyncpg:
   - Config/API_KEYS: sync, session — no tiene event loop, se puede compartir.
-  - DB pools: async, function — se crean en el mismo loop que el test que los usa.
+  - DB pools + TenantContext: async, function — se crean en el mismo loop que el test.
+
+Multi-tenancy en tests:
+  - tenant_id = "hotel_mbi" (si el schema existe post-migración, se usa directamente;
+    si todavía está en public, PostgreSQL lo ignora silenciosamente y usa public).
+  - El registry se carga con las keys de test antes de cada test.
 """
 
 import os
@@ -23,9 +28,13 @@ import pytest_asyncio
 import asyncpg
 from httpx import ASGITransport, AsyncClient
 
-from src import config
+from src import config, tenant_registry
+from src.db import TenantAwarePool
 from src.main import app
-from src.schema import build_schema_cache
+from src.schema import build_schema_cache, build_schema_cache_for_tenant
+from src.tenant import TenantContext, reset_tenant, set_tenant
+
+_TEST_TENANT_ID = "hotel_mbi"
 
 
 # ── Config: sync, session ─────────────────────────────────────────────────────
@@ -37,28 +46,70 @@ def _load_config():
     config.API_KEYS = config.build_api_keys(config.CONFIG)
 
 
-# ── DB pools: async, function ─────────────────────────────────────────────────
-# Se crean en el mismo event loop que el test → no hay mismatch.
+# ── DB pools + TenantContext: async, function ─────────────────────────────────
 
 @pytest_asyncio.fixture(autouse=True)
 async def _db_pools(_load_config):
-    """Crea y destruye los pools para cada test."""
-    config.db_pool = await asyncpg.create_pool(
+    """
+    Crea el raw pool, buildea el schema cache, setea el TenantContext
+    y wrapea los pools con TenantAwarePool para cada test.
+
+    TenantAwarePool emite SET search_path = hotel_mbi, public.
+    Si hotel_mbi no existe (pre-migración), PostgreSQL lo ignora
+    silenciosamente y resuelve las tablas desde public.
+    """
+    raw_pool = await asyncpg.create_pool(
         config.DATABASE_URL, min_size=1, max_size=3
     )
-    config.SCHEMA_CACHE = await build_schema_cache(config.db_pool, config.CONFIG)
 
+    # Schema cache — intenta hotel_mbi, cae a public si no existe
+    try:
+        schema_cache = await build_schema_cache_for_tenant(
+            raw_pool, config.CONFIG, _TEST_TENANT_ID
+        )
+    except Exception:
+        schema_cache = await build_schema_cache(raw_pool, config.CONFIG)
+
+    config.SCHEMA_CACHE = schema_cache
+
+    # TenantContext de test
+    test_ctx = TenantContext(
+        tenant_id    = _TEST_TENANT_ID,
+        rol          = "gerente",
+        vertical     = config.CONFIG.get("business", {}).get("vertical", "hotel"),
+        config       = config.CONFIG,
+        schema_cache = schema_cache,
+    )
+
+    # Setear el contextvar para que get_tenant() funcione en el código llamado
+    tenant_token = set_tenant(test_ctx)
+
+    # Wrapear pool — a partir de aquí acquire() inyecta SET search_path
+    config.db_pool = TenantAwarePool(raw_pool)
+
+    # Poblar el registry con las keys de test para que auth.py resuelva correctamente
+    await tenant_registry.load_all_tenants(
+        pool             = raw_pool,
+        legacy_api_keys  = config.API_KEYS,
+        legacy_config    = config.CONFIG,
+        legacy_tenant_id = _TEST_TENANT_ID,
+    )
+
+    raw_ingest_pool = None
     if config.INGEST_DATABASE_URL:
-        config.ingest_pool = await asyncpg.create_pool(
+        raw_ingest_pool = await asyncpg.create_pool(
             config.INGEST_DATABASE_URL, min_size=1, max_size=3
         )
+        config.ingest_pool = TenantAwarePool(raw_ingest_pool)
 
     yield
 
-    await config.db_pool.close()
+    reset_tenant(tenant_token)
+
+    await raw_pool.close()
     config.db_pool = None
-    if config.ingest_pool:
-        await config.ingest_pool.close()
+    if raw_ingest_pool:
+        await raw_ingest_pool.close()
         config.ingest_pool = None
 
 
