@@ -71,6 +71,10 @@ services:
       - SMTP_USE_TLS=${SMTP_USE_TLS:-true}
       - SMTP_FROM=${SMTP_FROM:-}
       - REPORT_EMAIL_TO=${REPORT_EMAIL_TO:-}
+      # API BDE Banco Central de Chile — IPC
+      - BCENTRAL_IPC_USER=${BCENTRAL_IPC_USER:-}
+      - BCENTRAL_IPC_PASS=${BCENTRAL_IPC_PASS:-}
+      - BCENTRAL_IPC_SERIES=${BCENTRAL_IPC_SERIES:-}
     volumes:
       # config.yaml montado como volumen: cambios de negocio sin rebuild
       - ./api/config.yaml:/app/config.yaml:ro
