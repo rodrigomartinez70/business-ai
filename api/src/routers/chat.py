@@ -60,7 +60,9 @@ class QueryRequest(BaseModel):
 @router.get("/api/health")
 async def health():
     try:
-        async with config.db_pool.acquire() as conn:
+        # Usar el pool raw para el ping — el health check no tiene contexto de tenant
+        pool = getattr(config.db_pool, "_pool", config.db_pool)
+        async with pool.acquire() as conn:
             await conn.fetchval("SELECT 1")
         return {"status": "ok", "db": "conectada", "modelo": config.OLLAMA_MODEL}
     except Exception:
