@@ -32,7 +32,7 @@ from src import config, tenant_registry
 from src.db import TenantAwarePool
 from src.main import app
 from src.schema import build_schema_cache, build_schema_cache_for_tenant
-from src.tenant import TenantContext, reset_tenant, set_tenant
+from src.tenant import TenantContext, clear_tenant, set_tenant
 from src.tenant_registry import _schema_exists
 
 _TEST_TENANT_ID = "hotel_mbi"
@@ -83,7 +83,7 @@ async def _db_pools(_load_config):
     )
 
     # Setear el contextvar para que get_tenant() funcione en el código llamado
-    tenant_token = set_tenant(test_ctx)
+    set_tenant(test_ctx)
 
     # Wrapear pool — a partir de aquí acquire() inyecta SET search_path
     config.db_pool = TenantAwarePool(raw_pool)
@@ -105,7 +105,7 @@ async def _db_pools(_load_config):
 
     yield
 
-    reset_tenant(tenant_token)
+    clear_tenant()
 
     await raw_pool.close()
     config.db_pool = None

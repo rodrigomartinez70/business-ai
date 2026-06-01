@@ -97,8 +97,21 @@ def set_tenant(ctx: TenantContext) -> contextvars.Token:
 
 
 def reset_tenant(token: contextvars.Token) -> None:
-    """Restaura el contextvar al estado anterior al set_tenant(). Usar en tests."""
+    """
+    Restaura el contextvar al estado anterior al set_tenant().
+    Solo válido si se llama desde el mismo asyncio Context que creó el token.
+    Para fixtures de pytest-asyncio usar clear_tenant() en su lugar.
+    """
     _current_tenant.reset(token)
+
+
+def clear_tenant() -> None:
+    """
+    Limpia el TenantContext activo sin necesitar el token original.
+    Seguro para usar en teardown de fixtures pytest-asyncio donde setup
+    y teardown pueden correr en distintos asyncio Context.
+    """
+    _current_tenant.set(None)
 
 
 def get_tenant_or_none() -> Optional[TenantContext]:
