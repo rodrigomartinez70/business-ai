@@ -35,7 +35,10 @@ from src.schema import build_schema_cache, build_schema_cache_for_tenant
 from src.tenant import TenantContext, clear_tenant, set_tenant
 from src.tenant_registry import _schema_exists
 
-_TEST_TENANT_ID = "hotel_mbi"
+# En el test DB las tablas viven en 'public' (antes de ejecutar las migrations).
+# Con tenant_id="public", TenantAwarePool hace SET search_path = public, public
+# y las queries de información_schema también filtran por 'public'.
+_TEST_TENANT_ID = "public"
 
 
 # ── Config: sync, session ─────────────────────────────────────────────────────

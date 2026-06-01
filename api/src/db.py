@@ -36,7 +36,9 @@ class TenantAwarePool:
 
     @asynccontextmanager
     async def acquire(self):
-        tenant_id = get_tenant().tenant_id
+        from .tenant import get_tenant_or_none
+        ctx = get_tenant_or_none()
+        tenant_id = ctx.tenant_id if ctx is not None else "public"
         async with self._pool.acquire() as conn:
             await conn.execute(f"SET search_path = {tenant_id}, public")
             yield conn
