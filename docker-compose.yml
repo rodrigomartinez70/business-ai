@@ -33,6 +33,10 @@ services:
       - SCARF_NO_ANALYTICS=true
       - DO_NOT_TRACK=true
       - ANONYMIZED_TELEMETRY=false
+      # Branding
+      - WEBUI_NAME=${WEBUI_NAME:-MBI Business AI}
+      - WEBUI_FAVICON_URL=${WEBUI_FAVICON_URL:-}
+      - WEBUI_BANNER_CONTENT=${WEBUI_BANNER_CONTENT:-}
     volumes:
       - open_webui_data:/app/backend/data
     depends_on:
