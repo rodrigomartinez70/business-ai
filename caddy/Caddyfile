@@ -11,3 +11,7 @@
         reverse_proxy negocio_open_webui:8080
     }
 }
+
+# Rutas por subdominio — un bloque por tenant.
+# Generado por scripts/provision_tenant.py, no editar manualmente.
+import /etc/caddy/tenants/*.caddy
