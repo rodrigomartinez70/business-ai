@@ -58,9 +58,10 @@ async def obtener_ipc(meses: int = 12) -> dict | None:
     if not serie_raw:
         return _cache["data"] if _cache else None
 
-    # La serie viene de más reciente a más antigua: tomar N y ordenar cronológico
+    # La serie viene de más reciente a más antigua: tomar N últimos, invertir a cronológico ascendente
     ultimos = serie_raw[:meses][::-1]
-    serie = [{"mes": p["fecha"][:7], "valor": float(p["valor"])} for p in ultimos]
+    serie = sorted([{"mes": p["fecha"][:7], "valor": float(p["valor"])} for p in ultimos],
+                   key=lambda x: x["mes"])
 
     data = {
         "serie":         serie,
