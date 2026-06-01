@@ -8,7 +8,16 @@ MODO COMPLETO (DB + Open WebUI + Caddy):
         --tenant-id restaurante_xyz \\
         --nombre "Restaurante XYZ" \\
         --vertical restaurante \\
-        --dominio restaurante.tuapp.com \\
+        --base-domain majorbi.com \\
+        --api-key-gerente $(openssl rand -hex 32)
+    # → genera subdominio: restaurante-xyz.majorbi.com
+
+    # O con dominio explícito:
+    python scripts/provision_tenant.py \\
+        --tenant-id restaurante_xyz \\
+        --nombre "Restaurante XYZ" \\
+        --vertical restaurante \\
+        --dominio restaurante-xyz.majorbi.com \\
         --api-key-gerente $(openssl rand -hex 32)
 
 SOLO DB (sin levantar Open WebUI):
@@ -338,8 +347,11 @@ def main() -> None:
 
     # Open WebUI
     parser.add_argument("--dominio",      default=None,
-                        help="Subdominio para Open WebUI (ej. restaurante.tuapp.com). "
-                             "Sin este parámetro no se levanta Open WebUI.")
+                        help="Subdominio completo (ej. restaurante-xyz.majorbi.com). "
+                             "Si se omite pero se pasa --base-domain, se genera automáticamente.")
+    parser.add_argument("--base-domain",  default=None,
+                        help="Dominio base de la plataforma (ej. majorbi.com). "
+                             "Genera el subdominio como {tenant-id}.{base-domain}.")
     parser.add_argument("--webui-secret", default=None,
                         help="Secret key para Open WebUI (auto-generado si no se indica)")
     parser.add_argument("--webui-image",  default="ghcr.io/open-webui/open-webui:v0.9.5",
@@ -349,6 +361,11 @@ def main() -> None:
 
     if not args.insert_keys_only and not args.nombre:
         parser.error("--nombre es requerido en modo completo.")
+
+    # Auto-generar subdominio desde --base-domain si no se pasó --dominio
+    if args.base_domain and not args.dominio:
+        slug = args.tenant_id.replace("_", "-")
+        args.dominio = f"{slug}.{args.base_domain}"
 
     asyncio.run(run(args))
 

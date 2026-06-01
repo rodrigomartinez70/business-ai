@@ -1,17 +1,17 @@
-:81 {
-    handle /app/* {
-        uri strip_prefix /app
-        reverse_proxy negocio_api:8000
-    }
-    handle /adminer/* {
-        uri strip_prefix /adminer
-        reverse_proxy adminer:8080
-    }
-    handle {
-        reverse_proxy negocio_open_webui:8080
-    }
+# ── Hotel MBI ─────────────────────────────────────────────────
+hotel-mbi.majorbi.com {
+    reverse_proxy negocio_open_webui:8080
 }
 
-# Rutas por subdominio — un bloque por tenant.
-# Generado por scripts/provision_tenant.py, no editar manualmente.
+# ── API (acceso externo para integraciones y CLI) ─────────────
+api.majorbi.com {
+    reverse_proxy negocio_api:8000
+}
+
+# ── Adminer (herramienta de DB interna) ───────────────────────
+admin.majorbi.com {
+    reverse_proxy adminer:8080
+}
+
+# ── Por tenant — generado por scripts/provision_tenant.py ─────
 import /etc/caddy/tenants/*.caddy

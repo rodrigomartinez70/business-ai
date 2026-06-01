@@ -6,8 +6,8 @@ services:
     environment:
       - ADMINER_HASH=${ADMINER_HASH}
     ports:
-      - "81:81"
-      - "444:444"
+      - "80:80"
+      - "443:443"
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - ./caddy/tenants:/etc/caddy/tenants:ro
