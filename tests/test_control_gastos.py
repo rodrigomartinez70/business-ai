@@ -115,21 +115,6 @@ async def test_control_gastos_formato_markdown(client, gerente_headers):
 
 
 @pytest.mark.asyncio
-async def test_control_gastos_formato_discord_payload(client, gerente_headers):
-    resp = await client.get(
-        f"/api/agents/control-gastos?fecha_inicio={FECHA_INICIO}&fecha_fin={FECHA_FIN}&formato=discord_payload",
-        headers=gerente_headers,
-    )
-    assert resp.status_code == 200
-    data = resp.json()
-    assert "embeds" in data
-    embed = data["embeds"][0]
-    assert "title"  in embed
-    assert "color"  in embed
-    assert "fields" in embed
-
-
-@pytest.mark.asyncio
 async def test_control_gastos_requiere_auth(client):
     resp = await client.get("/api/agents/control-gastos")
     assert resp.status_code == 403

@@ -12,7 +12,7 @@ import logging
 from datetime import date
 
 from .... import config
-from ....agents._common import COLOR, fmt_moneda, to_float, var_pct, var_txt
+from ....agents._common import fmt_moneda, to_float, var_pct, var_txt
 
 logger = logging.getLogger(__name__)
 
@@ -398,91 +398,3 @@ def renderizar_pnl_markdown(data: dict, cfg: dict) -> str:
 
     return "\n".join(lines)
 
-
-def build_discord_embed_pnl(data: dict, cfg: dict) -> dict:
-    biz = cfg.get("business", {}).get("name", "Negocio")
-    fm  = lambda v: fmt_moneda(v, cfg)
-    a   = data["actual"]
-    ant = data["anterior"]
-    ay  = data["año_pasado"]
-    c   = data["comparativas"]
-    res = a["resultado"]
-    met = a["metricas"]
-    ing = a["ingresos"]
-    gas = a["gastos"]
-
-    color = COLOR.OK if res["estado"] == "positivo" else COLOR.CRITICO
-    gop_icon = "✅" if res["estado"] == "positivo" else "🔴"
-
-    top_gastos = gas["por_categoria"][:3]
-    gastos_txt = "\n".join(f"{g['categoria']}: {fm(g['monto'])}" for g in top_gastos)
-    if len(gas["por_categoria"]) > 3:
-        resto = gas["total"] - sum(g["monto"] for g in top_gastos)
-        gastos_txt += f"\nOtros: {fm(resto)}"
-    gastos_txt += f"\n**Total: {fm(gas['total'])}**"
-
-    fields = [
-        {
-            "name":   "💰 Ingresos",
-            "value":  (
-                f"Hospedaje: {fm(ing['hospedaje'])}\n"
-                f"Frigobar: {fm(ing['frigobar'])}\n"
-                f"Servicios: {fm(ing['servicios'])}\n"
-                f"**Total: {fm(ing['total'])}**"
-            ),
-            "inline": True,
-        },
-        {
-            "name":   "📋 Gastos",
-            "value":  gastos_txt,
-            "inline": True,
-        },
-        {
-            "name":   f"{gop_icon} GOP",
-            "value":  (
-                f"**{fm(res['gop'])}**\n"
-                f"Margen: {res['margen_pct'] or 0:.1f}%\n"
-                f"vs mes ant: {_var_txt(c['gop']['vs_mes_anterior'])}\n"
-                f"vs año ant: {_var_txt(c['gop']['vs_año_anterior'])}"
-            ),
-            "inline": True,
-        },
-        {
-            "name":   "🏨 Métricas",
-            "value":  (
-                f"Ocupación: **{met['ocupacion_pct'] or 0:.1f}%** "
-                f"({_var_txt(c['ocupacion']['vs_mes_anterior'])})\n"
-                f"ADR: {fm(met['adr'] or 0)}\n"
-                f"RevPAR: {fm(met['revpar'] or 0)} "
-                f"({_var_txt(c['revpar']['vs_mes_anterior'])})"
-            ),
-            "inline": True,
-        },
-        {
-            "name":   "📊 Comparativa mes anterior",
-            "value":  (
-                f"Ingresos: {_var_txt(c['ingresos_total']['vs_mes_anterior'])}\n"
-                f"GOP: {_var_txt(c['gop']['vs_mes_anterior'])}\n"
-                f"Referencia: {ant['periodo']['inicio'][:7]}"
-            ),
-            "inline": True,
-        },
-        {
-            "name":   "📅 Comparativa año anterior",
-            "value":  (
-                f"Ingresos: {_var_txt(c['ingresos_total']['vs_año_anterior'])}\n"
-                f"GOP: {_var_txt(c['gop']['vs_año_anterior'])}\n"
-                f"Referencia: {ay['periodo']['inicio'][:7]}"
-            ),
-            "inline": True,
-        },
-    ]
-
-    sufijo = f" · {data['dias_comparados']}d c/u" if data["parcial"] else ""
-    return {
-        "embeds": [{
-            "title":  f"📑 P&L — {biz} · {data['mes_nombre']}{sufijo}",
-            "color":  color,
-            "fields": fields,
-        }]
-    }

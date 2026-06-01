@@ -10,7 +10,7 @@ import logging
 from datetime import date
 
 from .... import config
-from ....agents._common import COLOR, fmt_moneda, to_float
+from ....agents._common import fmt_moneda, to_float
 
 logger = logging.getLogger(__name__)
 
@@ -341,91 +341,3 @@ def renderizar_cierre_markdown(data: dict, cfg: dict) -> str:
 
     return "\n".join(lines)
 
-
-def build_discord_embed_cierre(data: dict, cfg: dict) -> dict:
-    biz = cfg.get("business", {}).get("name", "Negocio")
-    fm  = lambda v: fmt_moneda(v, cfg)
-
-    ocu = data["ocupacion"]
-    mov = data["movimientos"]
-    ing = data["ingresos"]
-    cob = data["cobros"]
-    gas = data["gastos"]
-    r   = data["resumen"]
-
-    color    = COLOR.OK if r["gop_devengado"] >= 0 else COLOR.CRITICO
-    gop_icon = "✅" if r["gop_devengado"] >= 0 else "🔴"
-
-    pm = cob["por_metodo"]
-    metodos_txt = "\n".join(
-        f"{m.capitalize()}: {fm(v)}" for m, v in pm.items() if v > 0
-    ) or "—"
-
-    gastos_txt = fm(gas["total"])
-    if gas["por_categoria"]:
-        top = gas["por_categoria"][:3]
-        gastos_txt += "\n" + "\n".join(f"{g['categoria']}: {fm(g['monto'])}" for g in top)
-
-    fields = [
-        {
-            "name":   "🏨 Ocupación",
-            "value":  f"**{ocu['pct_ocupacion']}%**\n{ocu['en_casa']} / {ocu['total_habitaciones']} hab.",
-            "inline": True,
-        },
-        {
-            "name":   "🚪 Movimientos",
-            "value":  (
-                f"↓ {mov['checkins']} check-ins\n"
-                f"↑ {mov['checkouts']} check-outs\n"
-                f"📋 {mov['reservas_nuevas']} nuevas"
-                + (f"\n❌ {mov['cancelaciones']} cancel." if mov["cancelaciones"] else "")
-            ),
-            "inline": True,
-        },
-        {
-            "name":   "💰 Ingresos devengados",
-            "value":  (
-                f"Hospedaje: {fm(ing['hospedaje'])}\n"
-                f"Frigobar: {fm(ing['frigobar'])}\n"
-                f"Servicios: {fm(ing['servicios'])}\n"
-                f"**Total: {fm(ing['total'])}**"
-            ),
-            "inline": True,
-        },
-        {
-            "name":   "🏧 Caja",
-            "value":  (
-                f"Cobrado: **{fm(cob['cobrado'])}**\n"
-                f"Pendiente: {fm(cob['pendiente'])}\n"
-                + metodos_txt
-            ),
-            "inline": True,
-        },
-        {
-            "name":   "📋 Gastos",
-            "value":  gastos_txt or "—",
-            "inline": True,
-        },
-        {
-            "name":   "📈 Resultado",
-            "value":  (
-                f"GOP devengado: {gop_icon} **{fm(r['gop_devengado'])}**\n"
-                f"Resultado caja: {'✅' if r['resultado_caja'] >= 0 else '🔴'} {fm(r['resultado_caja'])}"
-            ),
-            "inline": True,
-        },
-    ]
-
-    embed: dict = {
-        "title":  f"📊 Cierre Diario — {biz} · {data['fecha']}",
-        "color":  color,
-        "fields": fields,
-    }
-
-    if data["comisiones_ota"]:
-        ota = " · ".join(
-            f"{c['canal']} {fm(c['comision'])}" for c in data["comisiones_ota"]
-        )
-        embed["footer"] = {"text": f"🏪 Comisiones OTA: {ota}"}
-
-    return {"embeds": [embed]}

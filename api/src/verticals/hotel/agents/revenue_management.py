@@ -11,7 +11,7 @@ import logging
 from datetime import date, timedelta
 
 from .... import config
-from ....agents._common import COLOR, fmt_moneda, to_float
+from ....agents._common import fmt_moneda, to_float
 
 logger = logging.getLogger(__name__)
 
@@ -273,80 +273,3 @@ def renderizar_revenue_markdown(data: dict, cfg: dict) -> str:
 
     return "\n".join(lines)
 
-
-def build_discord_embed_revenue(data: dict, cfg: dict) -> dict:
-    biz = cfg.get("business", {}).get("name", "Negocio")
-    fm  = lambda v: fmt_moneda(v, cfg)
-    s   = data["snapshot"]
-    h7  = data["historico"]["7d"]
-    h30 = data["historico"]["30d"]
-    oport = data["oportunidades_precio"]
-
-    # Color según ocupación
-    ocu = s["ocupacion_pct"]
-    color = COLOR.OK if ocu >= 70 else (COLOR.ALERTA if ocu >= 40 else COLOR.CRITICO)
-
-    # Próximos 7 días como mini-tabla
-    cal7 = data["proyeccion"]["calendario"][:7]
-    cal_txt = "\n".join(
-        f"`{r['fecha'][5:]}` {r['ocupacion_pct']:.0f}% "
-        + (f"· {fm(r['adr'])}" if r["adr"] else "· —")
-        for r in cal7
-    ) or "Sin reservas"
-
-    # Canales top 3
-    canales_txt = "\n".join(
-        f"{c['canal']}: {fm(c['ingresos_netos'])} neto ({c['comision_pct']:.0f}% com.)"
-        for c in data["canales"][:3]
-    ) or "—"
-
-    fields = [
-        {
-            "name":   "📍 Hoy",
-            "value":  (
-                f"Ocupación: **{s['ocupacion_pct']:.1f}%** ({s['ocupadas']}/{data['hab_activas']})\n"
-                f"ADR: **{fm(s['adr'])}**\n"
-                f"RevPAR: **{fm(s['revpar'])}**"
-            ),
-            "inline": True,
-        },
-        {
-            "name":   "📈 Tendencia",
-            "value":  (
-                f"7d: ocu {h7['ocupacion_pct']:.1f}% · ADR {fm(h7['adr'])}\n"
-                f"30d: ocu {h30['ocupacion_pct']:.1f}% · ADR {fm(h30['adr'])}\n"
-                f"RevPAR 30d: {fm(h30['revpar'])}"
-            ),
-            "inline": True,
-        },
-        {
-            "name":   "📅 Próximos 7 días",
-            "value":  cal_txt,
-            "inline": False,
-        },
-        {
-            "name":   "🏪 Canales (30d)",
-            "value":  canales_txt,
-            "inline": True,
-        },
-    ]
-
-    if oport:
-        oport_txt = "\n".join(
-            f"💡 {o['fecha'][5:]}: {o['ocupacion_pct']:.0f}% ocup. · "
-            f"ADR {fm(o['adr_actual'])} (-{o['diferencia_pct']:.1f}% vs ref.)"
-            for o in oport[:3]
-        )
-        fields.append({
-            "name":   "💡 Oportunidades de precio",
-            "value":  oport_txt,
-            "inline": False,
-        })
-
-    return {
-        "embeds": [{
-            "title":  f"📊 Revenue Management — {biz} · {data['fecha']}",
-            "color":  color,
-            "fields": fields,
-        }]
-    }

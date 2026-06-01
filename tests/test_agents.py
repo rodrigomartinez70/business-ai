@@ -58,21 +58,6 @@ async def test_alertas_formato_markdown(client, gerente_headers):
 
 
 @pytest.mark.asyncio
-async def test_alertas_formato_discord_payload(client, gerente_headers):
-    resp = await client.get("/api/agents/alertas?formato=discord_payload", headers=gerente_headers)
-    assert resp.status_code == 200
-    data = resp.json()
-    assert "embeds" in data
-    assert isinstance(data["embeds"], list)
-    assert len(data["embeds"]) == 1
-    embed = data["embeds"][0]
-    assert "title" in embed
-    assert "color" in embed
-    assert "fields" in embed
-    assert isinstance(embed["fields"], list)
-
-
-@pytest.mark.asyncio
 async def test_alertas_periodo_personalizado(client, gerente_headers):
     resp = await client.get("/api/agents/alertas?periodo_dias=30", headers=gerente_headers)
     assert resp.status_code == 200

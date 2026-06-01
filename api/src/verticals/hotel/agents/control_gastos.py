@@ -10,7 +10,7 @@ import logging
 from datetime import date, timedelta
 
 from .... import config
-from ....agents._common import COLOR, fmt_moneda, to_float, var_txt
+from ....agents._common import fmt_moneda, to_float, var_txt
 
 logger = logging.getLogger(__name__)
 
@@ -396,71 +396,3 @@ def renderizar_control_gastos_markdown(data: dict, cfg: dict) -> str:
 
     return "\n".join(lines)
 
-
-def build_discord_embed_control_gastos(data: dict, cfg: dict) -> dict:
-    biz = cfg.get("business", {}).get("name", "Negocio")
-    fm  = lambda v: fmt_moneda(v, cfg)
-    p   = data["periodo"]
-    r   = data["resumen"]
-
-    tiene_critico = any(a["nivel"] == "critico" for a in data["alertas"])
-    tiene_alerta  = bool(data["alertas"])
-    color = COLOR.CRITICO if tiene_critico else (COLOR.ALERTA if tiene_alerta else COLOR.OK)
-
-    var_txt = _variacion_txt(r["variacion_pct"])
-
-    # Campo de categorías (máx 3 para no saturar)
-    cat_lines = []
-    for c in data["categorias"][:6]:
-        if c["monto_actual"] == 0 and c["monto_anterior"] == 0:
-            continue
-        var = _variacion_txt(c["variacion_pct"])
-        cat_lines.append(f"{c['categoria']}: **{fm(c['monto_actual'])}** ({var})")
-    categorias_txt = "\n".join(cat_lines) or "—"
-
-    fields = [
-        {
-            "name":   "💰 Gasto total",
-            "value":  (
-                f"Actual: **{fm(r['total_actual'])}**\n"
-                f"Anterior: {fm(r['total_anterior'])}\n"
-                f"Variación: **{var_txt}**"
-            ),
-            "inline": True,
-        },
-        {
-            "name":   "📊 Por categoría",
-            "value":  categorias_txt,
-            "inline": True,
-        },
-    ]
-
-    if data["alertas"]:
-        alerta_lines = [
-            f"{_nivel_icono(a['nivel'])} **{a['categoria']}**: "
-            f"{fm(a['monto_actual'])} ({_variacion_txt(a['variacion_pct'])})"
-            for a in data["alertas"]
-        ]
-        fields.append({
-            "name":   "🔔 Alertas",
-            "value":  "\n".join(alerta_lines),
-            "inline": False,
-        })
-
-    footer_parts = []
-    if data["sin_categoria"]["n"] > 0:
-        sc = data["sin_categoria"]
-        footer_parts.append(f"⚠️ {sc['n']} sin categoría ({fm(sc['total'])})")
-    if data["proveedores_nuevos"]:
-        pvs = ", ".join(pv["proveedor"] for pv in data["proveedores_nuevos"][:3])
-        footer_parts.append(f"🆕 Nuevos: {pvs}")
-
-    embed: dict = {
-        "title":  f"📋 Control de Gastos — {biz} · {p['inicio']} → {p['fin']}",
-        "color":  color,
-        "fields": fields,
-    }
-    if footer_parts:
-        embed["footer"] = {"text": " · ".join(footer_parts)}
-
-    return {"embeds": [embed]}

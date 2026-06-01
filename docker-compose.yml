@@ -92,22 +92,6 @@ services:
     image: adminer
     restart: unless-stopped
 
-  discord_bot:
-    build: ./discord_bot
-    container_name: negocio_discord_bot
-    restart: unless-stopped
-    environment:
-      - DISCORD_TOKEN=${DISCORD_TOKEN}
-      - DISCORD_CHANNEL_ID=${DISCORD_CHANNEL_ID}
-      - DISCORD_API_KEY=${API_KEY_GERENTE}
-      - API_URL=http://negocio_api:8000
-      - DISCORD_MODEL_ID=${WEBUI_DEFAULT_MODEL:-asistente-ia}
-      - DISCORD_MAX_HISTORY=10
-    volumes:
-      - discord_history:/app/data
-    depends_on:
-      - api
-
   cron:
     image: alpine:3.19
     restart: unless-stopped
@@ -133,4 +117,3 @@ volumes:
   open_webui_data:
   postgres_data:
   reportes_data:
-  discord_history:

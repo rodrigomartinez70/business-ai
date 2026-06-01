@@ -11,7 +11,7 @@ import logging
 from datetime import date, timedelta
 
 from .... import config
-from ....agents._common import SEMAFORO_COLOR, SEMAFORO_ICONO, fmt_moneda, to_float
+from ....agents._common import SEMAFORO_ICONO, fmt_moneda, to_float
 
 logger = logging.getLogger(__name__)
 
@@ -230,80 +230,3 @@ def renderizar_cash_flow_markdown(data: dict, cfg: dict) -> str:
 
     return "\n".join(lines)
 
-
-def build_discord_embed_cash_flow(data: dict, cfg: dict) -> dict:
-    biz = cfg.get("business", {}).get("name", "Negocio")
-    fm  = lambda v: fmt_moneda(v, cfg)
-    r   = data["resumen"]
-    sem = data["semaforo"]
-    ico = SEMAFORO_ICONO[sem]
-
-    cobertura_txt = (
-        f"{r['semanas_cobertura']:.1f} sem."
-        if r["semanas_cobertura"] is not None else "—"
-    )
-
-    # Proyección: próximas 4 semanas en texto compacto
-    proy_lines = []
-    for s in data["semanas"][:4]:
-        signo = "▼" if s["flujo_neto"] < 0 else "▲"
-        proy_lines.append(
-            f"`{s['semana_inicio'][5:]}` {signo} {fm(s['flujo_neto'])} "
-            f"→ acum. {fm(s['acumulado'])}"
-        )
-    proy_txt = "\n".join(proy_lines) or "Sin reservas confirmadas"
-
-    # Gastos top 3
-    gas_txt = "\n".join(
-        f"{g['categoria']}: {fm(g['promedio_semanal'])}/sem"
-        for g in data["gastos_por_categoria"][:3]
-    ) or "—"
-
-    fields = [
-        {
-            "name":   f"{ico} Liquidez",
-            "value":  (
-                f"Estado: **{sem.upper()}**\n"
-                f"Cobertura mínima: **{cobertura_txt}**\n"
-                f"Acumulado mín.: {fm(r['min_acumulado'])}"
-            ),
-            "inline": True,
-        },
-        {
-            "name":   "💰 Situación actual",
-            "value":  (
-                f"Cobrado 30d: {fm(r['cobrado_30d'])}\n"
-                f"Gastado 4s: {fm(r['gastado_4s'])}\n"
-                f"Pendiente cobro: **{fm(r['cobros_pendientes'])}**\n"
-                f"Vence 14d: {fm(r['pendiente_vence_14d'])}"
-            ),
-            "inline": True,
-        },
-        {
-            "name":   "📅 Próximas 4 semanas",
-            "value":  proy_txt,
-            "inline": False,
-        },
-        {
-            "name":   "📋 Gastos estimados/semana",
-            "value":  f"**Total: {fm(r['promedio_gastos_semanal'])}**\n" + gas_txt,
-            "inline": True,
-        },
-        {
-            "name":   "📊 Proyección 8 semanas",
-            "value":  (
-                f"Ingresos: {fm(r['ingresos_proyectados'])}\n"
-                f"Gastos est.: {fm(r['gastos_estimados'])}\n"
-                f"Flujo neto: **{fm(r['flujo_neto_proyectado'])}**"
-            ),
-            "inline": True,
-        },
-    ]
-
-    return {
-        "embeds": [{
-            "title":  f"💵 Cash Flow — {biz} · {data['fecha']}",
-            "color":  SEMAFORO_COLOR[sem],
-            "fields": fields,
-        }]
-    }

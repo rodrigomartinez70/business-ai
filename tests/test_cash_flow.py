@@ -66,18 +66,6 @@ async def test_cash_flow_formato_markdown(client, gerente_headers):
 
 
 @pytest.mark.asyncio
-async def test_cash_flow_formato_discord_payload(client, gerente_headers):
-    resp = await client.get("/api/agents/cash-flow?formato=discord_payload", headers=gerente_headers)
-    assert resp.status_code == 200
-    data = resp.json()
-    assert "embeds" in data
-    embed = data["embeds"][0]
-    assert "title" in embed
-    assert "color" in embed
-    assert len(embed["fields"]) == 5
-
-
-@pytest.mark.asyncio
 async def test_cash_flow_requiere_auth(client):
     resp = await client.get("/api/agents/cash-flow")
     assert resp.status_code == 403

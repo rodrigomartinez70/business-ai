@@ -12,7 +12,7 @@ import logging
 from datetime import date, timedelta
 
 from .... import config
-from ....agents._common import COLOR, fmt_moneda, to_float, var_pct, var_txt
+from ....agents._common import fmt_moneda, to_float, var_pct, var_txt
 
 logger = logging.getLogger(__name__)
 
@@ -231,59 +231,3 @@ def renderizar_rentabilidad_canal_markdown(data: dict, cfg: dict) -> str:
 
     return "\n".join(lines)
 
-
-def build_discord_embed_rentabilidad_canal(data: dict, cfg: dict) -> dict:
-    biz = cfg.get("business", {}).get("name", "Negocio")
-    fm  = lambda v: fmt_moneda(v, cfg)
-    t   = data["totales"]
-    ins = data["insights"]
-
-    # Color según tasa de cancelación global
-    tasa = t["tasa_cancel_pct"]
-    color = COLOR.OK if tasa < 10 else (COLOR.ALERTA if tasa < 20 else COLOR.CRITICO)
-
-    # Tabla de canales compacta
-    canales_lines = []
-    for i, c in enumerate(data["canales"], 1):
-        var = _var_txt(c["vs_año_anterior"]["ingresos_netos"])
-        canales_lines.append(
-            f"**{i}. {c['canal']}** — {fm(c['ingresos_netos'])} neto "
-            f"({c['mix_pct']:.0f}% mix) · cancel. {c['tasa_cancel_pct']:.1f}% · {var}"
-        )
-    canales_txt = "\n".join(canales_lines) or "—"
-
-    nota = f" · {data['dias_comparados']}d" if data["parcial"] else ""
-
-    fields = [
-        {
-            "name":   "💰 Totales del período",
-            "value":  (
-                f"Brutos: {fm(t['ingresos_brutos'])}\n"
-                f"Comisiones: {fm(t['comisiones'])}\n"
-                f"**Netos: {fm(t['ingresos_netos'])}**\n"
-                f"Reservas: {t['reservas']} · Cancel.: {t['canceladas']} ({t['tasa_cancel_pct']:.1f}%)"
-            ),
-            "inline": True,
-        },
-        {
-            "name":   "💡 Insights",
-            "value":  (
-                f"🏆 Más rentable: **{ins['canal_mas_rentable'] or '—'}**\n"
-                f"✅ Más confiable: **{ins['canal_mas_confiable'] or '—'}**"
-            ),
-            "inline": True,
-        },
-        {
-            "name":   "📊 Ranking por ingreso neto",
-            "value":  canales_txt,
-            "inline": False,
-        },
-    ]
-
-    return {
-        "embeds": [{
-            "title":  f"🏪 Rentabilidad por Canal — {biz} · {data['mes_nombre']}{nota}",
-            "color":  color,
-            "fields": fields,
-        }]
-    }

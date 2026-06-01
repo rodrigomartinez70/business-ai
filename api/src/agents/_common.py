@@ -2,24 +2,14 @@
 Helpers compartidos de los agentes financieros.
 
 Una sola fuente de verdad para: formato de moneda, conversión numérica,
-cálculo de variaciones porcentuales y la paleta de colores de Discord.
-Antes estaban duplicados (idénticos) en cada agente.
+cálculo de variaciones porcentuales y semáforos de estado.
 """
 
 from decimal import Decimal
 
 
-# ── Paleta de colores Discord (decimal) ──────────────────────
-
-class COLOR:
-    OK      = 0x2ECC71   # verde
-    ALERTA  = 0xF39C12   # naranja
-    CRITICO = 0xE74C3C   # rojo
-
-
-# Semáforo de estado → icono / color
+# Semáforo de estado → icono
 SEMAFORO_ICONO = {"ok": "✅", "alerta": "⚠️", "critico": "🚨"}
-SEMAFORO_COLOR = {"ok": COLOR.OK, "alerta": COLOR.ALERTA, "critico": COLOR.CRITICO}
 
 
 # ── Conversión y formato ─────────────────────────────────────

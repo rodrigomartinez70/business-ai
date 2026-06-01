@@ -8,32 +8,26 @@ from .. import config
 from ..agents.alertas import calcular_kpis, evaluar_umbrales, renderizar_reporte, _fmt_kpi
 from ..agents.insights import generar_insights
 from ..verticals.hotel.agents.cierre_diario import (
-    build_discord_embed_cierre,
     calcular_cierre,
     renderizar_cierre_markdown,
 )
 from ..verticals.hotel.agents.control_gastos import (
-    build_discord_embed_control_gastos,
     calcular_control_gastos,
     renderizar_control_gastos_markdown,
 )
 from ..verticals.hotel.agents.pnl_mensual import (
-    build_discord_embed_pnl,
     calcular_pnl,
     renderizar_pnl_markdown,
 )
 from ..verticals.hotel.agents.rentabilidad_canal import (
-    build_discord_embed_rentabilidad_canal,
     calcular_rentabilidad_canal,
     renderizar_rentabilidad_canal_markdown,
 )
 from ..verticals.hotel.agents.cash_flow import (
-    build_discord_embed_cash_flow,
     calcular_cash_flow,
     renderizar_cash_flow_markdown,
 )
 from ..verticals.hotel.agents.revenue_management import (
-    build_discord_embed_revenue,
     calcular_revenue_management,
     renderizar_revenue_markdown,
 )
@@ -44,80 +38,10 @@ from ..delivery import enviar_dashboard_email
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
 
-def _adjuntar_insights(embed_payload: dict, insights: list[str]) -> dict:
-    """Agrega el campo de insights IA al primer embed del payload, si hay insights."""
-    if not insights or not embed_payload.get("embeds"):
-        return embed_payload
-    texto = "\n".join(f"• {i}" for i in insights)
-    embed_payload["embeds"][0]["fields"].append({
-        "name":   "💡 Insights IA",
-        "value":  texto,
-        "inline": False,
-    })
-    return embed_payload
-
-# Colores Discord (decimal)
-_COLOR_OK      = 0x2ECC71   # verde
-_COLOR_ALERTA  = 0xF39C12   # naranja
-_COLOR_CRITICO = 0xE74C3C   # rojo
-
-
-def _build_discord_embed(kpis: list[dict], alertas: list[dict], periodo_dias: int) -> dict:
-    tiene_critico = any(a["nivel"] == "critico" for a in alertas)
-    biz_name      = config.biz("name", "Negocio")
-    fecha_fin     = date.today()
-    fecha_inicio  = fecha_fin - timedelta(days=periodo_dias - 1)
-
-    if tiene_critico:
-        icono, color, estado = "🚨", _COLOR_CRITICO, "CRÍTICO"
-    elif alertas:
-        icono, color, estado = "⚠️", _COLOR_ALERTA, "ALERTA"
-    else:
-        icono, color, estado = "✅", _COLOR_OK, "OK"
-
-    fields = []
-    alerta_por_kpi = {a["kpi"]: a for a in alertas}
-
-    for kpi in kpis:
-        valor_fmt = _fmt_kpi(kpi, config.CONFIG)
-        alerta    = alerta_por_kpi.get(kpi["name"])
-        if alerta:
-            nivel_icono = "🚨" if alerta["nivel"] == "critico" else "⚠️"
-            estado_kpi  = f"{nivel_icono} umbral: {alerta['umbral']}"
-        else:
-            estado_kpi  = "✅ OK" if kpi.get("valor") is not None else "— sin datos"
-
-        fields.append({
-            "name":   kpi["name"],
-            "value":  f"**{valor_fmt}**\n{estado_kpi}",
-            "inline": True,
-        })
-
-    # Separador visual si hay número impar de campos (Discord alinea de a 3)
-    if len(fields) % 3 == 2:
-        fields.append({"name": "​", "value": "​", "inline": True})
-
-    embed = {
-        "title":       f"{icono} KPIs — {biz_name} · {estado}",
-        "description": f"📅 {fecha_inicio.strftime('%d/%m')} → {fecha_fin.strftime('%d/%m/%Y')} · últimos {periodo_dias} días",
-        "color":       color,
-        "fields":      fields,
-    }
-
-    if alertas:
-        lineas = []
-        for a in alertas:
-            ni = "🚨" if a["nivel"] == "critico" else "⚠️"
-            lineas.append(f"{ni} **{a['kpi']}** — valor: {a['valor']} · umbral: {a['umbral']}")
-        embed["footer"] = {"text": "\n".join(lineas)}
-
-    return {"embeds": [embed]}
-
-
 @router.get("/alertas")
 async def agente_alertas(
     periodo_dias: int = Query(7, ge=1, le=90, description="Días hacia atrás para calcular KPIs"),
-    formato:      str = Query("json", description="json | markdown | discord_payload"),
+    formato:      str = Query("json", description="json | markdown"),
     _rol:         str = Depends(get_role),
 ):
     """
@@ -127,7 +51,6 @@ async def agente_alertas(
 
     - **json**: estructura completa con kpis, alertas y reporte
     - **markdown**: reporte listo para leer o guardar
-    - **discord_payload**: embed de Discord listo para POST al webhook
     """
     kpis    = await calcular_kpis(periodo_dias)
     alertas = evaluar_umbrales(kpis)
@@ -138,9 +61,6 @@ async def agente_alertas(
 
     if formato == "markdown":
         return PlainTextResponse(content=reporte, media_type="text/markdown; charset=utf-8")
-
-    if formato == "discord_payload":
-        return _build_discord_embed(kpis, alertas, periodo_dias)
 
     return {
         "alertas_activas": len(alertas),
@@ -154,7 +74,7 @@ async def agente_alertas(
 @router.get("/cierre-diario")
 async def agente_cierre_diario(
     fecha:   Optional[date] = Query(None, description="Fecha del cierre (default: hoy)"),
-    formato: str            = Query("json", description="json | markdown | discord_payload"),
+    formato: str            = Query("json", description="json | markdown"),
     _rol:    str            = Depends(get_role),
 ):
     """
@@ -165,7 +85,6 @@ async def agente_cierre_diario(
 
     - **json**: estructura completa
     - **markdown**: reporte listo para leer
-    - **discord_payload**: embed listo para POST al webhook de Discord
     """
     if fecha is None:
         fecha = date.today()
@@ -176,9 +95,6 @@ async def agente_cierre_diario(
         md = renderizar_cierre_markdown(data, config.CONFIG)
         return PlainTextResponse(content=md, media_type="text/markdown; charset=utf-8")
 
-    if formato == "discord_payload":
-        return build_discord_embed_cierre(data, config.CONFIG)
-
     return data
 
 
@@ -186,7 +102,7 @@ async def agente_cierre_diario(
 async def agente_control_gastos(
     fecha_inicio: Optional[date] = Query(None, description="Inicio del período (default: 7 días atrás)"),
     fecha_fin:    Optional[date] = Query(None, description="Fin del período (default: ayer)"),
-    formato:      str            = Query("json", description="json | markdown | discord_payload"),
+    formato:      str            = Query("json", description="json | markdown"),
     _rol:         str            = Depends(get_role),
 ):
     """
@@ -198,7 +114,6 @@ async def agente_control_gastos(
 
     - **json**: estructura completa
     - **markdown**: reporte listo para leer
-    - **discord_payload**: embed listo para POST al webhook de Discord
     """
     if fecha_fin is None:
         fecha_fin = date.today() - timedelta(days=1)
@@ -211,10 +126,6 @@ async def agente_control_gastos(
         md = renderizar_control_gastos_markdown(data, config.CONFIG)
         return PlainTextResponse(content=md, media_type="text/markdown; charset=utf-8")
 
-    if formato == "discord_payload":
-        insights = await generar_insights("control_gastos", data)
-        return _adjuntar_insights(build_discord_embed_control_gastos(data, config.CONFIG), insights)
-
     return data
 
 
@@ -222,7 +133,7 @@ async def agente_control_gastos(
 async def agente_pnl_mensual(
     mes:    int = Query(0,  ge=0, le=12, description="Mes (1-12). 0 = mes anterior."),
     anio:   int = Query(0,  ge=0,        description="Año. 0 = año actual."),
-    formato: str = Query("json",         description="json | markdown | discord_payload"),
+    formato: str = Query("json",         description="json | markdown"),
     _rol:   str = Depends(get_role),
 ):
     """
@@ -233,7 +144,6 @@ async def agente_pnl_mensual(
 
     - **json**: estructura completa con los tres períodos
     - **markdown**: informe P&L listo para contabilidad
-    - **discord_payload**: embed ejecutivo para el webhook de Discord
     """
     hoy = date.today()
     if anio == 0:
@@ -249,17 +159,13 @@ async def agente_pnl_mensual(
         md = renderizar_pnl_markdown(data, config.CONFIG)
         return PlainTextResponse(content=md, media_type="text/markdown; charset=utf-8")
 
-    if formato == "discord_payload":
-        insights = await generar_insights("pnl_mensual", data)
-        return _adjuntar_insights(build_discord_embed_pnl(data, config.CONFIG), insights)
-
     return data
 
 
 @router.get("/revenue-management")
 async def agente_revenue_management(
     horizon_dias: int = Query(30, ge=7, le=90, description="Días de proyección hacia adelante"),
-    formato:      str = Query("json", description="json | markdown | discord_payload"),
+    formato:      str = Query("json", description="json | markdown"),
     _rol:         str = Depends(get_role),
 ):
     """
@@ -275,15 +181,12 @@ async def agente_revenue_management(
         md = renderizar_revenue_markdown(data, config.CONFIG)
         return PlainTextResponse(content=md, media_type="text/markdown; charset=utf-8")
 
-    if formato == "discord_payload":
-        return build_discord_embed_revenue(data, config.CONFIG)
-
     return data
 
 
 @router.get("/cash-flow")
 async def agente_cash_flow(
-    formato: str = Query("json", description="json | markdown | discord_payload"),
+    formato: str = Query("json", description="json | markdown"),
     _rol:    str = Depends(get_role),
 ):
     """
@@ -299,10 +202,6 @@ async def agente_cash_flow(
         md = renderizar_cash_flow_markdown(data, config.CONFIG)
         return PlainTextResponse(content=md, media_type="text/markdown; charset=utf-8")
 
-    if formato == "discord_payload":
-        insights = await generar_insights("cash_flow", data)
-        return _adjuntar_insights(build_discord_embed_cash_flow(data, config.CONFIG), insights)
-
     return data
 
 
@@ -310,7 +209,7 @@ async def agente_cash_flow(
 async def agente_rentabilidad_canal(
     mes:    int = Query(0, ge=0, le=12, description="Mes (1-12). 0 = mes anterior."),
     anio:   int = Query(0, ge=0,        description="Año. 0 = año actual."),
-    formato: str = Query("json",        description="json | markdown | discord_payload"),
+    formato: str = Query("json",        description="json | markdown"),
     _rol:   str = Depends(get_role),
 ):
     """
@@ -334,10 +233,6 @@ async def agente_rentabilidad_canal(
         md = renderizar_rentabilidad_canal_markdown(data, config.CONFIG)
         return PlainTextResponse(content=md, media_type="text/markdown; charset=utf-8")
 
-    if formato == "discord_payload":
-        insights = await generar_insights("rentabilidad_canal", data)
-        return _adjuntar_insights(build_discord_embed_rentabilidad_canal(data, config.CONFIG), insights)
-
     return data
 
 
@@ -351,8 +246,7 @@ async def agente_dashboard_semanal(
 
     Reúne P&L YTD, Cash Flow, Rentabilidad por canal (mes en curso), Revenue,
     Control de Gastos y el cierre de la última semana en un único HTML tipo
-    dashboard, con los problemas destacados arriba. P&L y Rentabilidad
-    incluyen insights IA.
+    dashboard, con los problemas destacados arriba.
 
     - **html**: devuelve el dashboard renderizado (para previsualizar)
     - **email**: genera y envía el dashboard por correo (SMTP)

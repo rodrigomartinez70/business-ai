@@ -17,7 +17,7 @@ from datetime import date, timedelta
 
 from ... import config
 from .economia import obtener_ipc
-from .agents._common import COLOR, fmt_moneda, var_txt
+from .agents._common import fmt_moneda, var_txt
 from .agents.cash_flow import calcular_cash_flow
 from .agents.cierre_diario import calcular_cierre_semanal
 from .agents.control_gastos import calcular_control_gastos, calcular_gastos_analitico
@@ -368,7 +368,7 @@ def _sec_economia(ipc: dict | None) -> str:
             pos_cells += (
                 '<td style="vertical-align:bottom;text-align:center;padding:0 2px;">'
                 f'<div style="font-size:9px;color:#6b7280;">{v:+.1f}</div>'
-                f'<div style="height:{h}px;background:#{COLOR.ALERTA:06x};border-radius:2px 2px 0 0;"></div></td>'
+                f'<div style="height:{h}px;background:#F39C12;border-radius:2px 2px 0 0;"></div></td>'
             )
             neg_cells += '<td></td>'
         elif v < 0:  # deflación → barra hacia abajo (celda inferior, pegada al eje)
