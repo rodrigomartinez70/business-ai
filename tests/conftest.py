@@ -33,6 +33,7 @@ from src.db import TenantAwarePool
 from src.main import app
 from src.schema import build_schema_cache, build_schema_cache_for_tenant
 from src.tenant import TenantContext, reset_tenant, set_tenant
+from src.tenant_registry import _schema_exists
 
 _TEST_TENANT_ID = "hotel_mbi"
 
@@ -62,12 +63,12 @@ async def _db_pools(_load_config):
         config.DATABASE_URL, min_size=1, max_size=3
     )
 
-    # Schema cache — intenta hotel_mbi, cae a public si no existe
-    try:
+    # Schema cache — usa hotel_mbi si existe (post-migración), si no public
+    if await _schema_exists(raw_pool, _TEST_TENANT_ID):
         schema_cache = await build_schema_cache_for_tenant(
             raw_pool, config.CONFIG, _TEST_TENANT_ID
         )
-    except Exception:
+    else:
         schema_cache = await build_schema_cache(raw_pool, config.CONFIG)
 
     config.SCHEMA_CACHE = schema_cache

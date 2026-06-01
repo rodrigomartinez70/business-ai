@@ -46,8 +46,8 @@ def email_disponible() -> bool:
 
 # ─── Estado mutable (poblado en lifespan) ───────────────────
 
-db_pool:      Optional[asyncpg.Pool] = None
-ingest_pool:  Optional[asyncpg.Pool] = None   # pool con permisos INSERT para el endpoint /ingest
+db_pool:      Optional[object] = None   # TenantAwarePool en runtime, asyncpg.Pool en tests/legado
+ingest_pool:  Optional[object] = None   # ídem, con permisos INSERT para el endpoint /ingest
 CONFIG:       dict          = {}
 API_KEYS:     dict[str, str] = {}
 SCHEMA_CACHE: dict[str, str] = {}

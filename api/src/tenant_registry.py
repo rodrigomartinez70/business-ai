@@ -69,9 +69,17 @@ async def load_all_tenants(
     _KEY_INDEX    = {}
     _TENANT_INDEX = {}
 
-    rows = await pool.fetch(
-        "SELECT id, nombre, vertical, config_path FROM public.tenants WHERE activo = TRUE"
-    )
+    try:
+        rows = await pool.fetch(
+            "SELECT id, nombre, vertical, config_path FROM public.tenants WHERE activo = TRUE"
+        )
+    except asyncpg.UndefinedTableError:
+        logger.warning(
+            "public.tenants no existe — modo legado. "
+            "Ejecutar postgres/migrations/001_control.sql para migrar."
+        )
+        await _load_legacy_tenant(pool, legacy_api_keys, legacy_config, legacy_tenant_id)
+        return
 
     if not rows:
         logger.warning(
@@ -125,6 +133,15 @@ async def load_all_tenants(
     )
 
 
+async def _schema_exists(pool: asyncpg.Pool, schema_name: str) -> bool:
+    """Verifica si un schema existe en la base de datos."""
+    count = await pool.fetchval(
+        "SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name = $1",
+        schema_name,
+    )
+    return bool(count)
+
+
 async def _load_legacy_tenant(
     pool: asyncpg.Pool,
     api_keys: dict[str, str],
@@ -136,12 +153,15 @@ async def _load_legacy_tenant(
 
     vertical = cfg.get("business", {}).get("vertical", "hotel")
 
-    try:
+    # Usar schema del tenant si existe (post-migración), si no public (pre-migración)
+    if await _schema_exists(pool, tenant_id):
         schema_cache = await build_schema_cache_for_tenant(pool, cfg, tenant_id)
-    except Exception:
-        # Si el schema todavía está en public (pre-migración), usar build_schema_cache
+    else:
         from .schema import build_schema_cache
         schema_cache = await build_schema_cache(pool, cfg)
+        logger.info(
+            f"Schema '{tenant_id}' no existe — usando 'public' para el schema cache."
+        )
 
     base_ctx = TenantContext(
         tenant_id    = tenant_id,
