@@ -151,6 +151,8 @@ non_money_columns:
   - registro
   - count
   - noches
+  - crecimiento
+  - pct_
 
 # ─── Keywords para calcular GOP en síntesis local ────────────
 # El pre-cálculo Python usa estas palabras para clasificar filas
