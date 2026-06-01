@@ -7,7 +7,7 @@ Se cachea en memoria para no llamarla en cada request y para resistir caídas pu
 Variables de entorno requeridas:
   - BCENTRAL_IPC_USER: usuario API BDE (rodrigo.martinez@majorbi.com)
   - BCENTRAL_IPC_PASS: contraseña API BDE
-  - BCENTRAL_IPC_SERIES: código de serie (G073.IPC.V12.2023.M = variación anual del IPC)
+  - BCENTRAL_IPC_SERIES: código de serie (G073.IPC.VAR.2023.M = variación mensual del IPC)
 """
 
 import logging
