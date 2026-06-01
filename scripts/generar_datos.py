@@ -135,6 +135,9 @@ def redondear_tarifa(tarifa: float) -> int:
 async def generar_periodo(conn, desde: date, hasta: date):
     hoy = date.today()
 
+    # Apuntar al schema del tenant (multi-tenant)
+    await conn.execute("SET search_path = hotel_mbi, public")
+
     # ── Datos maestros ──────────────────────────────────────────────────────
     habitaciones = await conn.fetch(
         "SELECT id, numero, tipo, tarifa_base FROM habitaciones WHERE activa = true"
