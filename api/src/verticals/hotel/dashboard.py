@@ -17,7 +17,7 @@ from datetime import date, timedelta
 
 from ... import config
 from .economia import obtener_ipc
-from .agents._common import fmt_moneda, var_txt
+from ...agents._common import fmt_moneda, var_txt
 from .agents.cash_flow import calcular_cash_flow
 from .agents.cierre_diario import calcular_cierre_semanal
 from .agents.control_gastos import calcular_control_gastos, calcular_gastos_analitico
