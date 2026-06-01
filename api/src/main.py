@@ -16,7 +16,8 @@ import asyncpg
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import config
+from . import config, tenant_registry
+from .db import TenantAwarePool
 from .routers import agents, chat, ingest, reports
 from .schema import build_schema_cache
 
@@ -49,9 +50,12 @@ async def lifespan(app: FastAPI):
     config.CONFIG   = config.load_config()
     config.API_KEYS = config.build_api_keys(config.CONFIG)
 
+    # Pool raw — solo para lifespan (registry, schema cache).
+    # Los requests usan config.db_pool que es un TenantAwarePool sobre este mismo pool.
+    raw_pool = None
     for i in range(10):
         try:
-            config.db_pool = await asyncpg.create_pool(
+            raw_pool = await asyncpg.create_pool(
                 config.DATABASE_URL, min_size=2, max_size=10
             )
             logger.info("Conexión a PostgreSQL establecida.")
@@ -62,25 +66,38 @@ async def lifespan(app: FastAPI):
     else:
         raise RuntimeError("No se pudo conectar a PostgreSQL.")
 
-    config.SCHEMA_CACHE = await build_schema_cache(config.db_pool, config.CONFIG)
+    # Schema cache global — fallback para tests sin fixture y modo legado
+    config.SCHEMA_CACHE = await build_schema_cache(raw_pool, config.CONFIG)
     logger.info(f"Schema cache construido para roles: {list(config.SCHEMA_CACHE.keys())}")
+
+    # Registry de tenants — usa raw_pool para queries a public.tenants / public.api_keys
+    await tenant_registry.load_all_tenants(
+        pool             = raw_pool,
+        legacy_api_keys  = config.API_KEYS,
+        legacy_config    = config.CONFIG,
+        legacy_tenant_id = "hotel_mbi",
+    )
+
+    # Wrapear el pool: a partir de aquí todos los acquire() inyectan search_path
+    config.db_pool = TenantAwarePool(raw_pool)
 
     _warn_placeholders(config.CONFIG)
 
+    raw_ingest_pool = None
     if config.INGEST_DATABASE_URL:
-        config.ingest_pool = await asyncpg.create_pool(
+        raw_ingest_pool = await asyncpg.create_pool(
             config.INGEST_DATABASE_URL, min_size=1, max_size=3
         )
+        config.ingest_pool = TenantAwarePool(raw_ingest_pool)
         logger.info("Pool de ingest conectado.")
     else:
         logger.warning("INGEST_DATABASE_URL no configurada — /api/ingest/* deshabilitado.")
 
     yield
 
-    if config.db_pool:
-        await config.db_pool.close()
-    if config.ingest_pool:
-        await config.ingest_pool.close()
+    await raw_pool.close()
+    if raw_ingest_pool:
+        await raw_ingest_pool.close()
 
 
 app = FastAPI(
