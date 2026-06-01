@@ -118,9 +118,12 @@ async def obtener_ipc(meses: int = 12) -> dict | None:
     if not serie:
         return _cache["data"] if _cache else None
 
+    # Usar variación mensual más reciente, no acumulada
+    ultimo_valor = serie[-1]["valor"] if serie else None
+
     data = {
         "serie":         serie,
-        "acumulado_pct": _acumulado_pct([p["valor"] for p in serie]),
+        "acumulado_pct": ultimo_valor,  # Variación mensual del último mes disponible
         "ultimo_mes":    serie[-1]["mes"] if serie else None,
         "fuente":        "Banco Central de Chile",
     }
