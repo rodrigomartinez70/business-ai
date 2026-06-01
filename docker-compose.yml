@@ -71,6 +71,7 @@ services:
     volumes:
       # config.yaml montado como volumen: cambios de negocio sin rebuild
       - ./api/config.yaml:/app/config.yaml:ro
+      - ./api/tenants:/app/tenants:ro
     depends_on:
       postgres:
         condition: service_healthy

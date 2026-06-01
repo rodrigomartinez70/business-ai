@@ -25,3 +25,5 @@ reportes_data/
 *.log
 cron.log
 docker-compose.tenants.yml
+api/tenants/*/config.yaml
+api/tenants/
