@@ -21,8 +21,8 @@ _IPC_FAKE = {
 @pytest.fixture(autouse=True)
 def _mock_externos():
     """Evita red externa: insights (Claude/Ollama) e IPC (mindicador) deterministas."""
-    with patch("src.dashboard.generar_insights", new=AsyncMock(return_value=["insight de prueba"])), \
-         patch("src.dashboard.obtener_ipc", new=AsyncMock(return_value=_IPC_FAKE)):
+    with patch("src.verticals.hotel.dashboard.generar_insights", new=AsyncMock(return_value=["insight de prueba"])), \
+         patch("src.verticals.hotel.dashboard.obtener_ipc", new=AsyncMock(return_value=_IPC_FAKE)):
         yield
 
 
