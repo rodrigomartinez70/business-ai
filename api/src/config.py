@@ -95,17 +95,37 @@ def build_api_keys(cfg: dict) -> dict[str, str]:
     }
 
 
-# ─── Accessors del config (lectura en caliente) ──────────────
+# ─── Accessors del config (tenant-aware) ────────────────────
+# Dentro de un request delegan al TenantContext activo.
+# Fuera de request (lifespan, tests sin fixture) usan el CONFIG global.
+
+def get_config() -> dict:
+    from .tenant import get_tenant_or_none
+    ctx = get_tenant_or_none()
+    return ctx.config if ctx is not None else CONFIG
+
 
 def biz(key: str, default: str = "") -> str:
+    from .tenant import get_tenant_or_none
+    ctx = get_tenant_or_none()
+    if ctx is not None:
+        return ctx.biz(key, default)
     return CONFIG.get("business", {}).get(key, default)
 
 
 def schema_for(rol: str) -> str:
+    from .tenant import get_tenant_or_none
+    ctx = get_tenant_or_none()
+    if ctx is not None:
+        return ctx.schema_for(rol)
     return SCHEMA_CACHE.get(rol, SCHEMA_CACHE.get("default", ""))
 
 
 def aliases_text() -> str:
+    from .tenant import get_tenant_or_none
+    ctx = get_tenant_or_none()
+    if ctx is not None:
+        return ctx.aliases_text()
     aliases = CONFIG.get("table_aliases", {})
     if not aliases:
         return ""
@@ -113,6 +133,10 @@ def aliases_text() -> str:
 
 
 def kpis_text() -> str:
+    from .tenant import get_tenant_or_none
+    ctx = get_tenant_or_none()
+    if ctx is not None:
+        return ctx.kpis_text()
     kpis = CONFIG.get("kpis", [])
     if not kpis:
         return ""
@@ -120,6 +144,10 @@ def kpis_text() -> str:
 
 
 def currency_hint() -> str:
+    from .tenant import get_tenant_or_none
+    ctx = get_tenant_or_none()
+    if ctx is not None:
+        return ctx.currency_hint()
     cur  = CONFIG.get("currency", {})
     sym  = cur.get("symbol", "$")
     tsep = cur.get("thousands_separator", ".")

@@ -20,7 +20,9 @@ _MAX_TOKENS = 512
 
 def _cargar_prompts() -> tuple[str, dict, dict]:
     """Carga SYSTEM, PROMPTS y RESUMIDORES del vertical activo."""
-    vertical = config.BUSINESS_VERTICAL
+    from ..tenant import get_tenant_or_none
+    ctx = get_tenant_or_none()
+    vertical = ctx.vertical if ctx is not None else config.BUSINESS_VERTICAL
     module_path = f"src.verticals.{vertical}.insights_prompts"
     try:
         mod = importlib.import_module(module_path)
@@ -65,7 +67,7 @@ async def generar_insights(tipo: str, data: dict) -> list[str]:
     resumidor = resumidores.get(tipo)
     template  = prompts.get(tipo)
     if not resumidor or not template:
-        logger.warning(f"Tipo de agente desconocido para insights en vertical '{config.BUSINESS_VERTICAL}': {tipo}")
+        logger.warning(f"Tipo de agente desconocido para insights en vertical '{vertical}': {tipo}")
         return []
 
     try:

@@ -285,8 +285,8 @@ def formatear_plan_python(resultados: list[dict]) -> str:
 
 
 def _calcular_resumen_numerico(resultados: list[dict]) -> str:
-    income_kw  = set(config.CONFIG.get("income_keywords",  []))
-    expense_kw = set(config.CONFIG.get("expense_keywords", []))
+    income_kw  = set(config.get_config().get("income_keywords",  []))
+    expense_kw = set(config.get_config().get("expense_keywords", []))
     # "total" es demasiado genérico a nivel de columna: aparece en pasos de gastos
     # e ingresos por igual. Solo se usa para clasificar por proposito, no por columna.
     col_income_kw = income_kw - {"total"}

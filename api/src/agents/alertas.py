@@ -27,7 +27,7 @@ async def calcular_kpis(periodo_dias: int) -> list[dict]:
     fecha_fin    = date.today()
     fecha_inicio = fecha_fin - timedelta(days=periodo_dias - 1)
 
-    kpis_cfg = [k for k in config.CONFIG.get("kpis", []) if "sql" in k]
+    kpis_cfg = [k for k in config.get_config().get("kpis", []) if "sql" in k]
     resultados: list[dict] = []
 
     for kpi in kpis_cfg:

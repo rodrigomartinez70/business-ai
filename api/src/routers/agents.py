@@ -54,7 +54,7 @@ async def agente_alertas(
     """
     kpis    = await calcular_kpis(periodo_dias)
     alertas = evaluar_umbrales(kpis)
-    reporte = renderizar_reporte(kpis, alertas, config.CONFIG, periodo_dias)
+    reporte = renderizar_reporte(kpis, alertas, config.get_config(), periodo_dias)
 
     tiene_critico  = any(a["nivel"] == "critico" for a in alertas)
     estado_general = "critico" if tiene_critico else "alerta" if alertas else "ok"
@@ -92,7 +92,7 @@ async def agente_cierre_diario(
     data = await calcular_cierre(fecha)
 
     if formato == "markdown":
-        md = renderizar_cierre_markdown(data, config.CONFIG)
+        md = renderizar_cierre_markdown(data, config.get_config())
         return PlainTextResponse(content=md, media_type="text/markdown; charset=utf-8")
 
     return data
@@ -123,7 +123,7 @@ async def agente_control_gastos(
     data = await calcular_control_gastos(fecha_inicio, fecha_fin)
 
     if formato == "markdown":
-        md = renderizar_control_gastos_markdown(data, config.CONFIG)
+        md = renderizar_control_gastos_markdown(data, config.get_config())
         return PlainTextResponse(content=md, media_type="text/markdown; charset=utf-8")
 
     return data
@@ -156,7 +156,7 @@ async def agente_pnl_mensual(
     data = await calcular_pnl(año_cal, mes_cal)
 
     if formato == "markdown":
-        md = renderizar_pnl_markdown(data, config.CONFIG)
+        md = renderizar_pnl_markdown(data, config.get_config())
         return PlainTextResponse(content=md, media_type="text/markdown; charset=utf-8")
 
     return data
@@ -178,7 +178,7 @@ async def agente_revenue_management(
     data = await calcular_revenue_management(horizon_dias)
 
     if formato == "markdown":
-        md = renderizar_revenue_markdown(data, config.CONFIG)
+        md = renderizar_revenue_markdown(data, config.get_config())
         return PlainTextResponse(content=md, media_type="text/markdown; charset=utf-8")
 
     return data
@@ -199,7 +199,7 @@ async def agente_cash_flow(
     data = await calcular_cash_flow()
 
     if formato == "markdown":
-        md = renderizar_cash_flow_markdown(data, config.CONFIG)
+        md = renderizar_cash_flow_markdown(data, config.get_config())
         return PlainTextResponse(content=md, media_type="text/markdown; charset=utf-8")
 
     return data
@@ -230,7 +230,7 @@ async def agente_rentabilidad_canal(
     data = await calcular_rentabilidad_canal(año_cal, mes_cal)
 
     if formato == "markdown":
-        md = renderizar_rentabilidad_canal_markdown(data, config.CONFIG)
+        md = renderizar_rentabilidad_canal_markdown(data, config.get_config())
         return PlainTextResponse(content=md, media_type="text/markdown; charset=utf-8")
 
     return data
@@ -257,10 +257,10 @@ async def agente_dashboard_semanal(
     if formato == "json":
         return data
 
-    html = renderizar_dashboard_html(data, config.CONFIG)
+    html = renderizar_dashboard_html(data, config.get_config())
 
     if formato == "email":
-        resultado = enviar_dashboard_email(html, config.CONFIG)
+        resultado = enviar_dashboard_email(html, config.get_config())
         return resultado
 
     return PlainTextResponse(content=html, media_type="text/html; charset=utf-8")

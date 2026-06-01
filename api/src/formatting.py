@@ -9,15 +9,15 @@ from . import config
 
 def _es_valor_dinero(clave: str) -> bool:
     clave_lower = clave.lower().replace(" ", "_")
-    non_money   = set(config.CONFIG.get("non_money_columns", []))
-    money       = set(config.CONFIG.get("money_columns", []))
+    non_money   = set(config.get_config().get("non_money_columns", []))
+    money       = set(config.get_config().get("money_columns", []))
     if any(p in clave_lower for p in non_money):
         return False
     return any(p in clave_lower for p in money)
 
 
 def _formatear_moneda(valor: float) -> str:
-    cur  = config.CONFIG.get("currency", {})
+    cur  = config.get_config().get("currency", {})
     sym  = cur.get("symbol", "$")
     tsep = cur.get("thousands_separator", ".")
     dp   = cur.get("decimal_places", 0)

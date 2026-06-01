@@ -17,11 +17,13 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 
 from .. import config
 from ..auth import get_role
+from ..tenant import get_tenant
 
 router = APIRouter(prefix="/api/ingest", tags=["ingest"])
 
 
 async def _primary_key_columns(tabla: str) -> list[str]:
+    schema = get_tenant().tenant_id
     rows = await config.db_pool.fetch("""
         SELECT kcu.column_name
         FROM information_schema.table_constraints tc
@@ -29,21 +31,22 @@ async def _primary_key_columns(tabla: str) -> list[str]:
             ON tc.constraint_name = kcu.constraint_name
            AND tc.table_schema    = kcu.table_schema
         WHERE tc.constraint_type = 'PRIMARY KEY'
-          AND tc.table_schema    = 'public'
-          AND tc.table_name      = $1
+          AND tc.table_schema    = $1
+          AND tc.table_name      = $2
         ORDER BY kcu.ordinal_position
-    """, tabla)
+    """, schema, tabla)
     return [r["column_name"] for r in rows]
 
 
 async def _tablas_permitidas() -> frozenset[str]:
     """Tablas de negocio disponibles para importación (excluye infraestructura interna)."""
-    exclude = set(config.CONFIG.get("schema", {}).get("exclude_tables", []))
+    schema  = get_tenant().tenant_id
+    exclude = set(config.get_config().get("schema", {}).get("exclude_tables", []))
     rows = await config.db_pool.fetch("""
         SELECT table_name FROM information_schema.tables
-        WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+        WHERE table_schema = $1 AND table_type = 'BASE TABLE'
         ORDER BY table_name
-    """)
+    """, schema)
     return frozenset(r["table_name"] for r in rows if r["table_name"] not in exclude)
 
 
@@ -52,18 +55,19 @@ async def _columnas_insertables(tabla: str) -> list[dict]:
     Devuelve las columnas que el usuario puede proveer en el CSV, con sus tipos.
     Excluye: SERIAL (nextval), GENERATED ALWAYS AS, created_at.
     """
+    schema = get_tenant().tenant_id
     rows = await config.db_pool.fetch(
         """
         SELECT column_name, data_type
         FROM information_schema.columns
-        WHERE table_schema = 'public'
-          AND table_name   = $1
+        WHERE table_schema = $1
+          AND table_name   = $2
           AND is_generated = 'NEVER'
           AND (column_default IS NULL OR column_default NOT LIKE 'nextval%%')
           AND column_name  != 'created_at'
         ORDER BY ordinal_position
         """,
-        tabla,
+        schema, tabla,
     )
     return [{"name": r["column_name"], "type": r["data_type"]} for r in rows]
 
