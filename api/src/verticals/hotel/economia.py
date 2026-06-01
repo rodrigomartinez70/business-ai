@@ -93,17 +93,19 @@ async def obtener_ipc(meses: int = 12) -> dict | None:
         logger.warning(f"IPC: error consultando API BDE Banco Central: {e}")
         return _cache["data"] if _cache else None
 
-    # Estructura esperada: {"Series": [...]} con cada entrada: {"Periodo": "2025-01", "Valor": "0.4"}
-    series_data = raw.get("Series", [])
+    # Estructura esperada: {"Series": {"Obs": [{"indexDateString": "2025-01", "value": "0.4"}, ...]}}
+    series_obj = raw.get("Series", {})
+    series_data = series_obj.get("Obs", []) if isinstance(series_obj, dict) else []
+
     if not series_data:
         logger.warning(f"IPC: respuesta vacía de API BDE para serie {series_code}")
         return _cache["data"] if _cache else None
 
     # Extraer y ordenar: tomar últimos N meses, ordenar cronológicamente ascendente
     serie = [
-        {"mes": p["Periodo"][:7], "valor": float(p["Valor"])}
+        {"mes": p["indexDateString"][:7], "valor": float(p["value"])}
         for p in series_data
-        if p.get("Valor")
+        if p.get("value") and p.get("statusCode") == "OK"
     ]
     serie = sorted(serie, key=lambda x: x["mes"])[-meses:]
 
