@@ -82,7 +82,13 @@ async def obtener_ipc(meses: int = 12) -> dict | None:
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.get(_BCENTRAL_URL, params=params)
             resp.raise_for_status()
-            raw = resp.json()
+            # El Banco Central a veces devuelve caracteres con encoding incorrecto; usar 'replace' para ignorarlos
+            try:
+                raw = resp.json()
+            except UnicodeDecodeError:
+                text = resp.content.decode('utf-8', errors='replace')
+                import json
+                raw = json.loads(text)
     except Exception as e:
         logger.warning(f"IPC: error consultando API BDE Banco Central: {e}")
         return _cache["data"] if _cache else None
