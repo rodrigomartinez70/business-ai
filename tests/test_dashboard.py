@@ -8,7 +8,7 @@ y no dependan de red. Los cálculos corren contra la DB de test real.
 import pytest
 from unittest.mock import AsyncMock, patch
 
-from src.dashboard import _detectar_problemas
+from src.verticals.hotel.dashboard import _detectar_problemas
 
 
 _IPC_FAKE = {
@@ -113,7 +113,7 @@ async def test_dashboard_vista_cfo_en_html(client, gerente_headers):
 
 
 def test_ipc_acumulado_compuesto():
-    from src.economia import _acumulado_pct
+    from src.verticals.hotel.economia import _acumulado_pct
     # inflación compuesta de +1% y +1% = 2.01%, no 2%
     assert _acumulado_pct([1.0, 1.0]) == 2.0
     assert _acumulado_pct([0.5, -0.2, 0.3]) == round(((1.005*0.998*1.003)-1)*100, 1)
