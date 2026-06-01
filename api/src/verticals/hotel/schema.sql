@@ -10,7 +10,7 @@
 -- negocio_ingest).
 -- ─────────────────────────────────────────────────────────────
 
-CREATE TABLE habitaciones (
+CREATE TABLE IF NOT EXISTS habitaciones (
     id              SERIAL PRIMARY KEY,
     numero          VARCHAR(10) UNIQUE NOT NULL,
     tipo            VARCHAR(50),
@@ -21,14 +21,14 @@ CREATE TABLE habitaciones (
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE canales_venta (
+CREATE TABLE IF NOT EXISTS canales_venta (
     id              SERIAL PRIMARY KEY,
     nombre          VARCHAR(100) NOT NULL,
     comision_pct    NUMERIC(5,2) DEFAULT 0,
     activo          BOOLEAN DEFAULT TRUE
 );
 
-CREATE TABLE huespedes (
+CREATE TABLE IF NOT EXISTS huespedes (
     id              SERIAL PRIMARY KEY,
     nombre          VARCHAR(100) NOT NULL,
     apellido        VARCHAR(100) NOT NULL,
@@ -40,7 +40,7 @@ CREATE TABLE huespedes (
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE reservas (
+CREATE TABLE IF NOT EXISTS reservas (
     id              SERIAL PRIMARY KEY,
     habitacion_id   INTEGER NOT NULL REFERENCES habitaciones(id),
     huesped_id      INTEGER NOT NULL REFERENCES huespedes(id),
@@ -55,7 +55,7 @@ CREATE TABLE reservas (
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE pagos (
+CREATE TABLE IF NOT EXISTS pagos (
     id              SERIAL PRIMARY KEY,
     reserva_id      INTEGER NOT NULL REFERENCES reservas(id),
     fecha           DATE NOT NULL,
@@ -66,13 +66,13 @@ CREATE TABLE pagos (
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE categorias_gasto (
+CREATE TABLE IF NOT EXISTS categorias_gasto (
     id              SERIAL PRIMARY KEY,
     nombre          VARCHAR(100) NOT NULL,
     descripcion     TEXT
 );
 
-CREATE TABLE gastos (
+CREATE TABLE IF NOT EXISTS gastos (
     id              SERIAL PRIMARY KEY,
     categoria_id    INTEGER REFERENCES categorias_gasto(id),
     fecha           DATE NOT NULL,
@@ -83,7 +83,7 @@ CREATE TABLE gastos (
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE consumos_frigobar (
+CREATE TABLE IF NOT EXISTS consumos_frigobar (
     id              SERIAL PRIMARY KEY,
     reserva_id      INTEGER NOT NULL REFERENCES reservas(id),
     fecha           DATE NOT NULL,
@@ -96,7 +96,7 @@ CREATE TABLE consumos_frigobar (
     margen          NUMERIC(10,2) GENERATED ALWAYS AS (cantidad * (precio_unitario - costo_unitario)) STORED
 );
 
-CREATE TABLE consumos_servicios (
+CREATE TABLE IF NOT EXISTS consumos_servicios (
     id              SERIAL PRIMARY KEY,
     reserva_id      INTEGER NOT NULL REFERENCES reservas(id),
     fecha           DATE NOT NULL,
@@ -111,7 +111,7 @@ CREATE TABLE consumos_servicios (
 );
 
 -- audit_log es genérico pero vive en el schema del tenant para aislar datos
-CREATE TABLE audit_log (
+CREATE TABLE IF NOT EXISTS audit_log (
     id              SERIAL PRIMARY KEY,
     rol             VARCHAR(50),
     pregunta        TEXT,
@@ -126,18 +126,18 @@ CREATE TABLE audit_log (
 );
 
 -- Índices
-CREATE INDEX idx_reservas_fechas        ON reservas(fecha_entrada, fecha_salida);
-CREATE INDEX idx_reservas_estado        ON reservas(estado);
-CREATE INDEX idx_reservas_estado_salida ON reservas(estado, fecha_salida);
-CREATE INDEX idx_reservas_habitacion    ON reservas(habitacion_id);
-CREATE INDEX idx_reservas_huesped       ON reservas(huesped_id);
-CREATE INDEX idx_pagos_reserva          ON pagos(reserva_id);
-CREATE INDEX idx_pagos_fecha            ON pagos(fecha);
-CREATE INDEX idx_gastos_fecha           ON gastos(fecha);
-CREATE INDEX idx_gastos_categoria       ON gastos(categoria_id);
-CREATE INDEX idx_consumos_reserva       ON consumos_frigobar(reserva_id);
-CREATE INDEX idx_servicios_reserva      ON consumos_servicios(reserva_id);
-CREATE INDEX idx_servicios_fecha        ON consumos_servicios(fecha);
-CREATE INDEX idx_audit_timestamp        ON audit_log(timestamp);
-CREATE INDEX idx_audit_rol              ON audit_log(rol);
-CREATE INDEX idx_audit_estado           ON audit_log(estado);
+CREATE INDEX IF NOT EXISTS idx_reservas_fechas        ON reservas(fecha_entrada, fecha_salida);
+CREATE INDEX IF NOT EXISTS idx_reservas_estado        ON reservas(estado);
+CREATE INDEX IF NOT EXISTS idx_reservas_estado_salida ON reservas(estado, fecha_salida);
+CREATE INDEX IF NOT EXISTS idx_reservas_habitacion    ON reservas(habitacion_id);
+CREATE INDEX IF NOT EXISTS idx_reservas_huesped       ON reservas(huesped_id);
+CREATE INDEX IF NOT EXISTS idx_pagos_reserva          ON pagos(reserva_id);
+CREATE INDEX IF NOT EXISTS idx_pagos_fecha            ON pagos(fecha);
+CREATE INDEX IF NOT EXISTS idx_gastos_fecha           ON gastos(fecha);
+CREATE INDEX IF NOT EXISTS idx_gastos_categoria       ON gastos(categoria_id);
+CREATE INDEX IF NOT EXISTS idx_consumos_reserva       ON consumos_frigobar(reserva_id);
+CREATE INDEX IF NOT EXISTS idx_servicios_reserva      ON consumos_servicios(reserva_id);
+CREATE INDEX IF NOT EXISTS idx_servicios_fecha        ON consumos_servicios(fecha);
+CREATE INDEX IF NOT EXISTS idx_audit_timestamp        ON audit_log(timestamp);
+CREATE INDEX IF NOT EXISTS idx_audit_rol              ON audit_log(rol);
+CREATE INDEX IF NOT EXISTS idx_audit_estado           ON audit_log(estado);
