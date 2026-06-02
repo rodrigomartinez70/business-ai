@@ -9,7 +9,9 @@ Orden por importancia (problemas primero):
   4. Rentabilidad canal (con insights IA)
   5. Revenue Management
   6. Control de Gastos
-  7. Cierre de la semana
+  7. Copiloto Tributario (IVA, recomendaciones, alertas)
+  8. Cierre de la semana
+  9. Contexto económico (Inflación Chile)
 """
 
 import logging
@@ -21,6 +23,7 @@ from ...agents._common import fmt_moneda, var_txt
 from .agents.cash_flow import calcular_cash_flow
 from .agents.cierre_diario import calcular_cierre_semanal
 from .agents.control_gastos import calcular_control_gastos, calcular_gastos_analitico
+from .agents.tributario import calcular_tributario_semanal
 from ...agents.insights import generar_insights
 from .agents.pnl_mensual import calcular_pnl_ytd
 from .agents.rentabilidad_canal import calcular_rentabilidad_canal
@@ -50,6 +53,7 @@ async def calcular_dashboard() -> dict:
     revenue = await calcular_revenue_management()
     cash    = await calcular_cash_flow()
     gastos  = await calcular_control_gastos(desde, corte)
+    tributario = await calcular_tributario_semanal(corte)
 
     # Insights IA solo para los dos reportes estratégicos
     insights_pnl  = await generar_insights("pnl_mensual", pnl)
@@ -76,6 +80,7 @@ async def calcular_dashboard() -> dict:
         "revenue":     revenue,
         "gastos":      gastos,
         "gastos_analitico": gastos_analitico,
+        "tributario":  tributario,
         "cierre":      cierre,
         "ipc":         ipc,
     }
@@ -321,6 +326,59 @@ def _sec_gastos(g: dict, cfg, ana: dict | None = None) -> str:
     return _card("📋 Control de Gastos", body)
 
 
+def _sec_tributario(trib: dict) -> str:
+    """Copiloto tributario para PyMEs en Chile: IVA, recomendaciones, alertas."""
+    n1 = trib["nivel_1_prediccion"]
+    n2 = trib["nivel_2_optimizacion"]
+    n3 = trib["nivel_3_control"]
+
+    # Nivel 1: Predicción IVA
+    acum = n1["acumulado_mes"]
+    rows = [
+        ("IVA débito (acum mes)", f"${acum['iva_debito_acum']:,.0f}"),
+        ("IVA crédito (acum mes)", f"${acum['iva_credito_acum']:,.0f}"),
+        ("Saldo IVA", f"${acum['saldo_iva']:,.0f} ({acum['saldo_iva_uf']:.1f} UF)"),
+        ("Estado", "🔴 Deuda" if acum["saldo_iva"] > 0 else "✅ A favor"),
+    ]
+    body = (_kpis(rows) +
+            '<div style="margin-top:10px;font-size:12px;font-weight:700;color:#374151;">Proyección próximos 7 días</div>' +
+            _kpis([
+                ("IVA débito estimado", f"${n1['proximos_7_dias']['iva_debito_estimado']:,.0f}"),
+                ("IVA crédito estimado", f"${n1['proximos_7_dias']['iva_credito_estimado']:,.0f}"),
+            ]))
+
+    # Nivel 2: Recomendaciones
+    if n2["recomendaciones"]:
+        rec_html = ""
+        for r in n2["recomendaciones"]:
+            rec_html += (f'<div style="margin:8px 0;padding:8px;background:#f0fdf4;border-left:3px solid #22c55e;border-radius:4px;">'
+                        f'<div style="font-weight:600;font-size:13px;">{r["titulo"]}</div>'
+                        f'<div style="font-size:12px;color:#6b7280;margin-top:3px;">{r["descripcion"]}</div>'
+                        f'</div>')
+        body += ('<div style="margin-top:10px;font-size:12px;font-weight:700;color:#374151;">Oportunidades de optimización</div>' + rec_html)
+
+    # Nivel 3: Alertas y control
+    if n3["alertas"]:
+        for alert in n3["alertas"]:
+            nivel_cls = "neg" if alert["nivel"] == "critico" else "warn" if alert["nivel"] == "alerta" else "info"
+            color_bg = "#fef2f2" if alert["nivel"] == "critico" else "#fffbeb" if alert["nivel"] == "alerta" else "#eff6ff"
+            color_border = "#dc2626" if alert["nivel"] == "critico" else "#f59e0b" if alert["nivel"] == "alerta" else "#3b82f6"
+            icono = "🚨" if alert["nivel"] == "critico" else "⚠️" if alert["nivel"] == "alerta" else "ℹ️"
+            body += (f'<div style="margin:8px 0;padding:8px;background:{color_bg};border-left:3px solid {color_border};border-radius:4px;">'
+                    f'<div style="font-weight:600;font-size:13px;">{icono} {alert["titulo"]}</div>'
+                    f'<div style="font-size:12px;color:#6b7280;margin-top:3px;">{alert["descripcion"]}</div>'
+                    f'<div style="font-size:11px;color:#9ca3af;margin-top:4px;font-style:italic;">{alert["recomendacion"]}</div>'
+                    f'</div>')
+
+    # Info sobre vencimiento F29
+    body += (f'<div style="margin-top:10px;font-size:11px;color:#9ca3af;padding:8px;background:#f9fafb;border-radius:4px;border:1px solid #e5e7eb;">'
+            f'Vencimiento F29 estimado: {n3["proximo_vencimiento_aprox"]} | '
+            f'Días para vencimiento: {n3["dias_para_vencimiento_f29"]}'
+            f'</div>')
+
+    return _card("🇨🇱 Copiloto Tributario — IVA & Recomendaciones", body)
+
+
 def _sec_cierre(c: dict, cfg) -> str:
     t = c["totales"]
     m = c["movimientos"]
@@ -412,6 +470,7 @@ def renderizar_dashboard_html(data: dict, cfg: dict) -> str:
         + _sec_rent(data["rent"], data["insights_rent"], cfg)
         + _sec_revenue(data["revenue"], cfg)
         + _sec_gastos(data["gastos"], cfg, data.get("gastos_analitico"))
+        + _sec_tributario(data.get("tributario", {}))
         + _sec_cierre(data["cierre"], cfg)
         + _sec_economia(data.get("ipc"))
     )
