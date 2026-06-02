@@ -40,16 +40,20 @@ def enviar_dashboard_email(html: str, cfg: dict, asunto: str | None = None) -> d
     msg["Subject"] = asunto
     msg["From"]    = config.SMTP_FROM
     msg["To"]      = ", ".join(to)
+
+    # Plain text fallback (sin HTML adjunto que puede ser bloqueado)
     msg.set_content(
-        "Tu cliente de correo no muestra HTML. El dashboard va adjunto como archivo .html."
+        "Dashboard generado. Accede a: http://178.104.160.82:8000/api/agents/dashboard-semanal?formato=html"
     )
+
+    # Agregar HTML como alternativa
     msg.add_alternative(html, subtype="html")
 
-    # Adjuntar también el HTML como archivo descargable
-    nombre = f"dashboard_{date.today():%Y%m%d}.html"
-    msg.add_attachment(
-        html.encode("utf-8"), maintype="text", subtype="html", filename=nombre
-    )
+    # NO adjuntar el archivo HTML - algunos servidores lo bloquean
+    # nombre = f"dashboard_{date.today():%Y%m%d}.html"
+    # msg.add_attachment(
+    #     html.encode("utf-8"), maintype="text", subtype="html", filename=nombre
+    # )
 
     _entregar(msg, to)
     logger.info(f"Dashboard enviado a {len(to)} destinatario(s).")
@@ -63,19 +67,35 @@ def _entregar(msg: EmailMessage, to: list[str]) -> None:
     Puerto 587 / resto → STARTTLS si SMTP_USE_TLS=true.
     """
     ctx = ssl.create_default_context()
-    if config.SMTP_PORT == 465:
-        with smtplib.SMTP_SSL(config.SMTP_HOST, config.SMTP_PORT, context=ctx, timeout=30) as srv:
-            if config.SMTP_USER:
-                srv.login(config.SMTP_USER, config.SMTP_PASSWORD)
-            srv.send_message(msg, from_addr=config.SMTP_FROM, to_addrs=to)
-    elif config.SMTP_USE_TLS:
-        with smtplib.SMTP(config.SMTP_HOST, config.SMTP_PORT, timeout=30) as srv:
-            srv.starttls(context=ctx)
-            if config.SMTP_USER:
-                srv.login(config.SMTP_USER, config.SMTP_PASSWORD)
-            srv.send_message(msg, from_addr=config.SMTP_FROM, to_addrs=to)
-    else:
-        with smtplib.SMTP(config.SMTP_HOST, config.SMTP_PORT, timeout=30) as srv:
-            if config.SMTP_USER:
-                srv.login(config.SMTP_USER, config.SMTP_PASSWORD)
-            srv.send_message(msg, from_addr=config.SMTP_FROM, to_addrs=to)
+    try:
+        if config.SMTP_PORT == 465:
+            with smtplib.SMTP_SSL(config.SMTP_HOST, config.SMTP_PORT, context=ctx, timeout=30) as srv:
+                if config.SMTP_USER:
+                    srv.login(config.SMTP_USER, config.SMTP_PASSWORD)
+                result = srv.send_message(msg, from_addr=config.SMTP_FROM, to_addrs=to)
+                if result:
+                    logger.warning(f"SMTP respuesta parcial: {result}")
+        elif config.SMTP_USE_TLS:
+            with smtplib.SMTP(config.SMTP_HOST, config.SMTP_PORT, timeout=30) as srv:
+                srv.starttls(context=ctx)
+                if config.SMTP_USER:
+                    srv.login(config.SMTP_USER, config.SMTP_PASSWORD)
+                result = srv.send_message(msg, from_addr=config.SMTP_FROM, to_addrs=to)
+                if result:
+                    logger.warning(f"SMTP respuesta parcial: {result}")
+        else:
+            with smtplib.SMTP(config.SMTP_HOST, config.SMTP_PORT, timeout=30) as srv:
+                if config.SMTP_USER:
+                    srv.login(config.SMTP_USER, config.SMTP_PASSWORD)
+                result = srv.send_message(msg, from_addr=config.SMTP_FROM, to_addrs=to)
+                if result:
+                    logger.warning(f"SMTP respuesta parcial: {result}")
+    except smtplib.SMTPRecipientsRefused as e:
+        logger.error(f"SMTP rechazó destinatarios: {e}")
+        raise
+    except smtplib.SMTPSenderRefused as e:
+        logger.error(f"SMTP rechazó remitente: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"Error SMTP desconocido: {e}")
+        raise
