@@ -249,11 +249,11 @@ def _sec_revenue(rev: dict, cfg) -> str:
     h7  = rev["historico"]["7d"]
     h30 = rev["historico"]["30d"]
     rows = [
-        ("Ocupación (semana)",   f"{h7['ocupacion_pct']:.1f}%"),
-        ("ADR (semana)",         _fm(h7["adr"], cfg)),
-        ("RevPAR (semana)",      _fm(h7["revpar"], cfg)),
-        ("Ocupación hoy",        f"{s['ocupacion_pct']:.1f}%"),
-        ("ADR 30 días",          _fm(h30["adr"], cfg)),
+        ("Ocupación (últimos 7d)", f"{h7['ocupacion_pct']:.1f}%"),
+        ("ADR (últimos 7d)",       _fm(h7["adr"], cfg)),
+        ("RevPAR (últimos 7d)",    _fm(h7["revpar"], cfg)),
+        ("ADR (últimos 30d)",      _fm(h30["adr"], cfg)),
+        ("RevPAR (últimos 30d)",   _fm(h30["revpar"], cfg)),
     ]
     return _card("📊 Revenue Management", _kpis(rows))
 
