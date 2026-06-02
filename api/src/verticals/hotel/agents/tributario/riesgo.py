@@ -41,12 +41,11 @@ async def calcular_riesgo(conn, hasta: date, iva: dict, uf: float | None = None)
         "SELECT COALESCE(SUM(monto), 0) FROM gastos WHERE fecha BETWEEN $1 AND $2",
         hace_30, hasta) or 0)
     ingresos_30 = to_float(await conn.fetchval("""
-        SELECT COALESCE(SUM(r.total_hospedaje) + COALESCE(SUM(f.total), 0)
-                      + COALESCE(SUM(s.total), 0), 0)
-        FROM reservas r
-        LEFT JOIN consumos_frigobar  f ON f.reserva_id = r.id
-        LEFT JOIN consumos_servicios s ON s.reserva_id = r.id
-        WHERE r.fecha_salida BETWEEN $1 AND $2 AND r.estado = 'checkout'
+        SELECT
+            (SELECT COALESCE(SUM(total_hospedaje), 0) FROM reservas
+              WHERE fecha_salida BETWEEN $1 AND $2 AND estado = 'checkout')
+          + (SELECT COALESCE(SUM(total), 0) FROM consumos_frigobar WHERE fecha BETWEEN $1 AND $2)
+          + (SELECT COALESCE(SUM(total), 0) FROM consumos_servicios WHERE fecha BETWEEN $1 AND $2)
     """, hace_30, hasta) or 0)
     ratio_gasto_ingreso = (gastos_30 / ingresos_30 * 100) if ingresos_30 > 0 else 0
 

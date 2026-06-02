@@ -157,6 +157,13 @@ def redondear_tarifa(tarifa: float) -> int:
     return round(tarifa / 1000) * 1000
 
 
+def _comprobante() -> str | None:
+    """Nº de comprobante para ~85% de los gastos; el resto queda sin respaldo."""
+    if random.random() < 0.85:
+        return f"FAC-{random.randint(10000, 99999)}"
+    return None
+
+
 # ─── Generación principal ─────────────────────────────────────────────────────
 
 async def generar_periodo(conn, desde: date, hasta: date):
@@ -348,9 +355,10 @@ async def generar_periodo(conn, desde: date, hasta: date):
         for concepto, cat, monto_base in GASTOS_FIJOS:
             monto = redondear_tarifa(monto_base * random.uniform(0.95, 1.05))
             await conn.execute(
-                "INSERT INTO gastos (categoria_id, fecha, descripcion, monto, proveedor) "
-                "VALUES ($1,$2,$3,$4,$5)",
+                "INSERT INTO gastos (categoria_id, fecha, descripcion, monto, proveedor, comprobante) "
+                "VALUES ($1,$2,$3,$4,$5,$6)",
                 cats_db.get(cat), date(año, mes, 5), concepto, monto, concepto,
+                _comprobante(),
             )
             gastos_n += 1
 
@@ -358,9 +366,10 @@ async def generar_periodo(conn, desde: date, hasta: date):
             if random.random() < 0.80:
                 monto = redondear_tarifa(random.randint(mn, mx))
                 await conn.execute(
-                    "INSERT INTO gastos (categoria_id, fecha, descripcion, monto, proveedor) "
-                    "VALUES ($1,$2,$3,$4,$5)",
+                    "INSERT INTO gastos (categoria_id, fecha, descripcion, monto, proveedor, comprobante) "
+                    "VALUES ($1,$2,$3,$4,$5,$6)",
                     cats_db.get(cat), date(año, mes, 15), concepto, monto, "Proveedor varios",
+                    _comprobante(),
                 )
                 gastos_n += 1
 

@@ -18,16 +18,16 @@ async def calcular_iva(conn, hasta: date, uf: float | None = None) -> dict:
     desde      = hasta - timedelta(days=6)
     inicio_mes = date(hasta.year, hasta.month, 1)
 
-    # Ingresos afectos de la última semana (hospedaje + frigobar + servicios)
+    # Ingresos afectos de la última semana (hospedaje + frigobar + servicios).
+    # Agregados separados para evitar el fan-out del JOIN uno-a-muchos.
     ingresos_semana = dict(await conn.fetchrow("""
         SELECT
-            COALESCE(SUM(r.total_hospedaje), 0) AS afectos,
-            COALESCE(SUM(f.total), 0)           AS frigobar_afectos,
-            COALESCE(SUM(s.total), 0)           AS servicios_afectos
-        FROM reservas r
-        LEFT JOIN consumos_frigobar  f ON f.reserva_id = r.id AND f.fecha BETWEEN $1 AND $2
-        LEFT JOIN consumos_servicios s ON s.reserva_id = r.id AND s.fecha BETWEEN $1 AND $2
-        WHERE r.fecha_salida BETWEEN $1 AND $2 AND r.estado = 'checkout'
+            (SELECT COALESCE(SUM(total_hospedaje), 0) FROM reservas
+              WHERE fecha_salida BETWEEN $1 AND $2 AND estado = 'checkout') AS afectos,
+            (SELECT COALESCE(SUM(total), 0) FROM consumos_frigobar
+              WHERE fecha BETWEEN $1 AND $2)  AS frigobar_afectos,
+            (SELECT COALESCE(SUM(total), 0) FROM consumos_servicios
+              WHERE fecha BETWEEN $1 AND $2)  AS servicios_afectos
     """, desde, hasta))
 
     # Gastos de la semana (proxy de crédito de IVA)
@@ -36,15 +36,17 @@ async def calcular_iva(conn, hasta: date, uf: float | None = None) -> dict:
         FROM gastos WHERE fecha BETWEEN $1 AND $2
     """, desde, hasta))
 
-    # IVA acumulado del mes en curso (día 1 → hasta)
+    # IVA acumulado del mes en curso (día 1 → hasta). Agregados separados
+    # (sin fan-out): hospedaje devengado por checkout + consumos por su fecha.
     iva_mes = dict(await conn.fetchrow("""
         WITH ingresos_mes AS (
-            SELECT COALESCE(SUM(r.total_hospedaje) + COALESCE(SUM(f.total), 0)
-                          + COALESCE(SUM(s.total), 0), 0) AS total
-            FROM reservas r
-            LEFT JOIN consumos_frigobar  f ON f.reserva_id = r.id
-            LEFT JOIN consumos_servicios s ON s.reserva_id = r.id
-            WHERE r.fecha_salida BETWEEN $1 AND $2 AND r.estado = 'checkout'
+            SELECT
+                (SELECT COALESCE(SUM(total_hospedaje), 0) FROM reservas
+                  WHERE fecha_salida BETWEEN $1 AND $2 AND estado = 'checkout')
+              + (SELECT COALESCE(SUM(total), 0) FROM consumos_frigobar
+                  WHERE fecha BETWEEN $1 AND $2)
+              + (SELECT COALESCE(SUM(total), 0) FROM consumos_servicios
+                  WHERE fecha BETWEEN $1 AND $2) AS total
         ),
         gastos_mes AS (
             SELECT COALESCE(SUM(monto), 0) AS total FROM gastos WHERE fecha BETWEEN $1 AND $2

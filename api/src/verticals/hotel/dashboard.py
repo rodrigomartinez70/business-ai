@@ -427,11 +427,12 @@ def _sec_conciliacion(con: dict) -> str:
 
     r = con.get("resumen", {})
     pct = r.get("pct_conciliado", 0)
-    color = "pos" if pct >= 90 else "warn" if pct >= 70 else "neg"
     body = _kpis([
         ("Movimientos", f"{r.get('movimientos', 0)}"),
         ("Conciliados", f"{r.get('conciliados', 0)} ({pct:.0f}%)"),
         ("Monto conciliado", f"${r.get('monto_conciliado', 0):,.0f}"),
+        ("Movimientos sin respaldo", f"{con.get('sin_respaldo_total', 0)}"),
+        ("Registros de libro sin movimiento", f"{con.get('libro_sin_movimiento_total', 0)}"),
     ])
 
     sr = con.get("sin_respaldo", [])
