@@ -34,6 +34,10 @@ from ..verticals.hotel.agents.revenue_management import (
 )
 from ..auth import get_role
 from ..verticals.hotel.dashboard import calcular_dashboard, renderizar_dashboard_html
+from ..verticals.hotel.agents.tributario import (
+    calcular_tributario_semanal,
+    renderizar_tributario_markdown,
+)
 from ..delivery import enviar_dashboard_email
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
@@ -265,6 +269,32 @@ async def agente_dashboard_semanal(
         return resultado
 
     return PlainTextResponse(content=html, media_type="text/html; charset=utf-8")
+
+
+@router.get("/tributario")
+async def agente_tributario(
+    fecha:   Optional[date] = Query(None, description="Fecha de corte (default: hoy)"),
+    formato: str            = Query("json", description="json | markdown"),
+    _rol:    str            = Depends(get_role),
+):
+    """
+    Copiloto Tributario — agentes IVA, Cumplimiento y Riesgo.
+
+    - **Agente IVA**: débito, crédito, saldo, proyección y F29.
+    - **Agente Cumplimiento**: calendario tributario, DJs y próximos vencimientos.
+    - **Agente Riesgo**: inconsistencias, fiscalización y alertas.
+
+    - **json**: estructura completa de los tres agentes.
+    - **markdown**: reporte listo para leer.
+    """
+    corte = fecha or date.today()
+    data  = await calcular_tributario_semanal(corte)
+
+    if formato == "markdown":
+        md = renderizar_tributario_markdown(data)
+        return PlainTextResponse(content=md, media_type="text/markdown; charset=utf-8")
+
+    return data
 
 
 # ─────────────────────────────────────────────────────────────

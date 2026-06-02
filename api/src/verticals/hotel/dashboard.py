@@ -326,73 +326,89 @@ def _sec_gastos(g: dict, cfg, ana: dict | None = None) -> str:
     return _card("📋 Control de Gastos", body)
 
 
+def _subt(titulo: str) -> str:
+    """Encabezado de subsección dentro de una tarjeta."""
+    return (f'<div style="margin-top:14px;margin-bottom:4px;font-size:12px;'
+            f'font-weight:700;color:#374151;border-bottom:1px solid #e5e7eb;'
+            f'padding-bottom:4px;">{titulo}</div>')
+
+
+def _aviso(nivel: str, titulo: str, desc: str, extra: str = "") -> str:
+    """Caja de alerta/inconsistencia coloreada por nivel."""
+    bg     = "#fef2f2" if nivel == "critico" else "#fffbeb" if nivel == "alerta" else "#eff6ff"
+    border = "#dc2626" if nivel == "critico" else "#f59e0b" if nivel == "alerta" else "#3b82f6"
+    ico    = "🚨" if nivel == "critico" else "⚠️" if nivel == "alerta" else "ℹ️"
+    extra_html = (f'<div style="font-size:11px;color:#9ca3af;margin-top:4px;'
+                  f'font-style:italic;">{extra}</div>') if extra else ""
+    return (f'<div style="margin:8px 0;padding:8px;background:{bg};'
+            f'border-left:3px solid {border};border-radius:4px;">'
+            f'<div style="font-weight:600;font-size:13px;">{ico} {titulo}</div>'
+            f'<div style="font-size:12px;color:#6b7280;margin-top:3px;">{desc}</div>'
+            f'{extra_html}</div>')
+
+
 def _sec_tributario(trib: dict) -> str:
-    """Copiloto tributario para PyMEs en Chile: IVA, recomendaciones, alertas."""
-    # Si el tributario está vacío, retornar nada
-    if not trib or not trib.get("nivel_1_prediccion"):
+    """Copiloto Tributario: agentes IVA, Cumplimiento y Riesgo en una tarjeta."""
+    if not trib or not trib.get("agente_iva"):
         return ""
 
-    n1 = trib.get("nivel_1_prediccion", {})
-    n2 = trib.get("nivel_2_optimizacion", {})
-    n3 = trib.get("nivel_3_control", {})
+    iva = trib.get("agente_iva", {})
+    cum = trib.get("agente_cumplimiento", {})
+    rie = trib.get("agente_riesgo", {})
 
-    # Nivel 1: Predicción IVA
-    acum = n1.get("acumulado_mes", {})
-    rows = [
-        ("IVA débito (acum mes)", f"${acum.get('iva_debito_acum', 0):,.0f}"),
+    # ── Agente IVA ─────────────────────────────────────────────────────
+    acum = iva.get("acumulado_mes", {})
+    f29  = iva.get("f29", {})
+    body = _subt("Agente IVA — Débito, Crédito & F29")
+    body += _kpis([
+        ("IVA débito (acum mes)",  f"${acum.get('iva_debito_acum', 0):,.0f}"),
         ("IVA crédito (acum mes)", f"${acum.get('iva_credito_acum', 0):,.0f}"),
         ("Saldo IVA", f"${acum.get('saldo_iva', 0):,.0f} ({acum.get('saldo_iva_uf', 0):.1f} UF)"),
         ("Estado", "🔴 Deuda" if acum.get("saldo_iva", 0) > 0 else "✅ A favor"),
-    ]
-    prox_7d = n1.get("proximos_7_dias", {})
-    body = (_kpis(rows) +
-            '<div style="margin-top:10px;font-size:12px;font-weight:700;color:#374151;">Proyección próximos 7 días</div>' +
-            _kpis([
-                ("IVA débito estimado", f"${prox_7d.get('iva_debito_estimado', 0):,.0f}"),
-                ("IVA crédito estimado", f"${prox_7d.get('iva_credito_estimado', 0):,.0f}"),
-            ]))
+        (f"F29 {f29.get('periodo', '')} — a pagar", f"${f29.get('monto_estimado', 0):,.0f}"),
+        ("Vence F29", f"{f29.get('vencimiento', 'N/A')} (en {f29.get('dias_para_vencimiento', 0)}d)"),
+    ])
 
-    # Documentos pendientes (si hay)
-    docs = n2.get("documentos_pendientes", {})
-    n_pendientes = docs.get("cantidad", 0)
-    iva_recuperable = docs.get("iva_potencial_recuperable", 0)
-    if n_pendientes > 0:
-        body += (f'<div style="margin:12px 0;padding:10px;background:#fef3c7;border-left:3px solid #f59e0b;border-radius:4px;">'
-                f'<div style="font-weight:600;font-size:13px;color:#92400e;">📋 {n_pendientes} Documento(s) pendiente(s)</div>'
-                f'<div style="font-size:12px;color:#78350f;margin-top:3px;">'
-                f'IVA potencial recuperable: <b>${iva_recuperable:,.0f}</b></div>'
-                f'</div>')
+    # ── Agente Cumplimiento ────────────────────────────────────────────
+    body += _subt("Agente Cumplimiento — Próximos vencimientos")
+    venc = cum.get("proximos_vencimientos", [])
+    if venc:
+        filas = ""
+        for v in venc[:8]:
+            filas += (f'<tr><td>{v["fecha"]}</td><td>{v["nombre"]}</td>'
+                      f'<td style="text-align:right;">{v["dias_restantes"]}d</td></tr>')
+        body += (f'<table class="dt"><tr><th>Fecha</th><th>Obligación</th><th>Faltan</th></tr>'
+                 f'{filas}</table>')
+    else:
+        body += ('<div style="font-size:12px;color:#6b7280;">Sin vencimientos en los próximos '
+                 f'{cum.get("horizonte_dias", 60)} días.</div>')
 
-    # Nivel 2: Recomendaciones
-    if n2["recomendaciones"]:
-        rec_html = ""
-        for r in n2["recomendaciones"]:
-            rec_html += (f'<div style="margin:8px 0;padding:8px;background:#f0fdf4;border-left:3px solid #22c55e;border-radius:4px;">'
-                        f'<div style="font-weight:600;font-size:13px;">{r["titulo"]}</div>'
-                        f'<div style="font-size:12px;color:#6b7280;margin-top:3px;">{r["descripcion"]}</div>'
-                        f'</div>')
-        body += ('<div style="margin-top:10px;font-size:12px;font-weight:700;color:#374151;">Oportunidades de optimización</div>' + rec_html)
+    # ── Agente Riesgo ──────────────────────────────────────────────────
+    score = rie.get("score_riesgo", "bajo")
+    score_ico = "🔴" if score == "alto" else "🟠" if score == "medio" else "🟢"
+    body += _subt(f"Agente Riesgo — Nivel: {score_ico} {score}")
 
-    # Nivel 3: Alertas y control
-    if n3.get("alertas"):
-        for alert in n3.get("alertas", []):
-            nivel_cls = "neg" if alert.get("nivel") == "critico" else "warn" if alert.get("nivel") == "alerta" else "info"
-            color_bg = "#fef2f2" if alert.get("nivel") == "critico" else "#fffbeb" if alert.get("nivel") == "alerta" else "#eff6ff"
-            color_border = "#dc2626" if alert.get("nivel") == "critico" else "#f59e0b" if alert.get("nivel") == "alerta" else "#3b82f6"
-            icono = "🚨" if alert.get("nivel") == "critico" else "⚠️" if alert.get("nivel") == "alerta" else "ℹ️"
-            body += (f'<div style="margin:8px 0;padding:8px;background:{color_bg};border-left:3px solid {color_border};border-radius:4px;">'
-                    f'<div style="font-weight:600;font-size:13px;">{icono} {alert.get("titulo", "")}</div>'
-                    f'<div style="font-size:12px;color:#6b7280;margin-top:3px;">{alert.get("descripcion", "")}</div>'
-                    f'<div style="font-size:11px;color:#9ca3af;margin-top:4px;font-style:italic;">{alert.get("recomendacion", "")}</div>'
-                    f'</div>')
+    docs = rie.get("documentos_pendientes", {})
+    if docs.get("cantidad", 0) > 0:
+        body += (f'<div style="margin:8px 0;padding:10px;background:#fef3c7;'
+                 f'border-left:3px solid #f59e0b;border-radius:4px;">'
+                 f'<div style="font-weight:600;font-size:13px;color:#92400e;">'
+                 f'📋 {docs["cantidad"]} documento(s) pendiente(s)</div>'
+                 f'<div style="font-size:12px;color:#78350f;margin-top:3px;">'
+                 f'IVA potencial recuperable: <b>${docs.get("iva_potencial_recuperable", 0):,.0f}</b>'
+                 f'</div></div>')
 
-    # Info sobre vencimiento F29
-    body += (f'<div style="margin-top:10px;font-size:11px;color:#9ca3af;padding:8px;background:#f9fafb;border-radius:4px;border:1px solid #e5e7eb;">'
-            f'Vencimiento F29 estimado: {n3.get("proximo_vencimiento_aprox", "N/A")} | '
-            f'Días para vencimiento: {n3.get("dias_para_vencimiento_f29", 0)}'
-            f'</div>')
+    for inc in rie.get("inconsistencias", []):
+        body += _aviso(inc.get("nivel", "info"), inc.get("titulo", ""), inc.get("descripcion", ""))
+    for al in rie.get("alertas", []):
+        body += _aviso(al.get("nivel", "info"), al.get("titulo", ""),
+                       al.get("descripcion", ""), al.get("recomendacion", ""))
 
-    return _card("🇨🇱 Copiloto Tributario — IVA & Recomendaciones", body)
+    if not rie.get("inconsistencias") and not rie.get("alertas"):
+        body += ('<div style="font-size:12px;color:#047857;margin-top:6px;">'
+                 'Sin inconsistencias ni alertas detectadas.</div>')
+
+    return _card("🇨🇱 Copiloto Tributario", body)
 
 
 def _sec_cierre(c: dict, cfg) -> str:
