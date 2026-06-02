@@ -41,6 +41,10 @@ async def test_tributario_agente_iva(client, gerente_headers):
     # total = IVA a pagar + PPM + retención
     assert f29["total_a_pagar"] == pytest.approx(
         f29["iva_a_pagar"] + f29["ppm"] + f29["retencion_honorarios"], abs=1.0)
+    # postergación: sin postergar, lo de ahora = total; con postergar, = PPM + ret
+    assert "iva_postergado" in f29 and "total_a_pagar_ahora" in f29
+    if not f29["iva_postergado"]:
+        assert f29["total_a_pagar_ahora"] == pytest.approx(f29["total_a_pagar"], abs=1.0)
     # IVA a pagar = max(0, débito - crédito - remanente)
     assert f29["iva_a_pagar"] == pytest.approx(
         max(0.0, f29["iva_debito"] - f29["iva_credito"] - f29["remanente_anterior"]), abs=1.0)

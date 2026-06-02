@@ -372,6 +372,12 @@ def _sec_tributario(trib: dict) -> str:
         ("TOTAL F29 a pagar",      f"${f29.get('total_a_pagar', 0):,.0f}"),
         ("Vence", f"{f29.get('vencimiento', 'N/A')} (en {f29.get('dias_para_vencimiento', 0)}d)"),
     ])
+    if f29.get("iva_postergado"):
+        body += (f'<div style="margin:8px 0;padding:8px;background:#eff6ff;'
+                 f'border-left:3px solid #3b82f6;border-radius:4px;font-size:12px;color:#1e40af;">'
+                 f'IVA postergado: el IVA a pagar (${f29.get("iva_a_pagar", 0):,.0f}) vence '
+                 f'{f29.get("vencimiento_iva", "N/A")}. A pagar ahora (PPM + retenciones): '
+                 f'<b>${f29.get("total_a_pagar_ahora", 0):,.0f}</b>.</div>')
 
     # ── Agente Cumplimiento ────────────────────────────────────────────
     body += _subt("Agente Cumplimiento — Próximos vencimientos")

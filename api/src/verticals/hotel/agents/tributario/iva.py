@@ -11,6 +11,7 @@ Calcula los principales componentes del F29 chileno:
 
 from datetime import date, timedelta
 
+from src import config
 from src.agents._common import to_float
 from . import _common as c
 
@@ -25,6 +26,12 @@ def _siguiente_mes(d: date) -> date:
     if d.month == 12:
         return date(d.year + 1, 1, 1)
     return date(d.year, d.month + 1, 1)
+
+
+def _sumar_meses(d: date, n: int) -> date:
+    """Suma n meses a una fecha, fijando el día al inicio del mes resultante."""
+    total = (d.year * 12 + (d.month - 1)) + n
+    return date(total // 12, total % 12 + 1, min(d.day, 28))
 
 
 async def _ingresos(conn, ini: date, fin: date) -> float:
@@ -43,8 +50,12 @@ async def _ingresos(conn, ini: date, fin: date) -> float:
 async def _credito(conn, ini: date, fin: date) -> tuple[float, str]:
     """IVA crédito del período: facturas registradas si existen; si no, estimación
     gastos × 19% excluyendo categorías no afectas (Personal, Honorarios)."""
+    # Netea notas de crédito de compra (restan crédito); notas de débito y
+    # facturas/boletas suman.
     docs = await conn.fetchrow("""
-        SELECT COUNT(*) AS n, COALESCE(SUM(monto_iva), 0) AS iva
+        SELECT COUNT(*) AS n,
+               COALESCE(SUM(CASE WHEN tipo = 'nota_credito' THEN -monto_iva
+                                 ELSE monto_iva END), 0) AS iva
         FROM documentos_tributarios
         WHERE estado = 'registrado' AND fecha BETWEEN $1 AND $2
     """, ini, fin)
@@ -93,8 +104,13 @@ async def calcular_iva(conn, hasta: date, uf: float | None = None) -> dict:
     saldo_iva           = round(iva_debito - iva_credito, 2)   # posición del mes, sin remanente
     saldo_iva_uf        = saldo_iva / uf_valor if uf_valor else 0
 
+    # ── Parámetros tributarios del tenant (config.yaml → tributario) ────────
+    cfg_trib   = (config.get_config() or {}).get("tributario", {})
+    ppm_tasa   = float(cfg_trib.get("ppm_tasa", c.PPM_TASA))
+    meses_post = int(cfg_trib.get("iva_postergacion_meses", 0) or 0)
+
     # ── PPM y retención de honorarios ───────────────────────────────────────
-    ppm = round(ingresos_mes * c.PPM_TASA, 2)
+    ppm = round(ingresos_mes * ppm_tasa, 2)
     honorarios_mes = to_float(await conn.fetchval("""
         SELECT COALESCE(SUM(g.monto), 0) FROM gastos g
         LEFT JOIN categorias_gasto cg ON cg.id = g.categoria_id
@@ -103,6 +119,17 @@ async def calcular_iva(conn, hasta: date, uf: float | None = None) -> dict:
     retencion = round(honorarios_mes * c.RETENCION_HONORARIOS, 2)
 
     total_f29 = round(iva_a_pagar + ppm + retencion, 2)
+
+    # ── Postergación de IVA (beneficio PyME): difiere el pago del IVA ────────
+    venc_normal = c.fecha_vencimiento_f29(hasta)
+    if meses_post > 0:
+        iva_postergado     = True
+        vencimiento_iva    = str(_sumar_meses(venc_normal, meses_post))
+        total_a_pagar_ahora = round(ppm + retencion, 2)   # el IVA se paga después
+    else:
+        iva_postergado     = False
+        vencimiento_iva    = str(venc_normal)
+        total_a_pagar_ahora = total_f29
 
     return {
         "semana_actual": {
@@ -132,12 +159,15 @@ async def calcular_iva(conn, hasta: date, uf: float | None = None) -> dict:
             "iva_a_pagar":           iva_a_pagar,
             "remanente_siguiente":   remanente_siguiente,
             "ppm":                   ppm,
-            "ppm_tasa_pct":          round(c.PPM_TASA * 100, 3),
+            "ppm_tasa_pct":          round(ppm_tasa * 100, 3),
             "retencion_honorarios":  retencion,
             "total_a_pagar":         total_f29,
+            "total_a_pagar_ahora":   total_a_pagar_ahora,
+            "iva_postergado":        iva_postergado,
+            "vencimiento_iva":       vencimiento_iva,
             "monto_estimado":        total_f29,   # compat
             "monto_estimado_uf":     round(total_f29 / uf_valor, 2) if uf_valor else 0,
-            "vencimiento":           str(c.fecha_vencimiento_f29(hasta)),
+            "vencimiento":           str(venc_normal),
             "dias_para_vencimiento": c.dias_para_vencimiento_f29(hasta),
         },
         "uf_referencia": round(uf_valor, 2),

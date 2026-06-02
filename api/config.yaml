@@ -16,6 +16,11 @@ currency:
   decimal_separator: ","
   decimal_places: 0              # 0 = sin decimales (pesos), 2 = centavos
 
+# ─── Tributario (F29) ────────────────────────────────────────
+tributario:
+  ppm_tasa: 0.0025               # PPM: % sobre ingresos brutos (régimen del contribuyente)
+  iva_postergacion_meses: 0      # 0 = sin postergación; 1-2 = diferir el pago del IVA
+
 # ─── Roles y API keys ────────────────────────────────────────
 # Agregar o quitar roles según el negocio.
 # excluded_tables: tablas que este rol NO puede ver en el schema.
