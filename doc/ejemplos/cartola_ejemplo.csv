@@ -1,0 +1,12 @@
+fecha,glosa,monto,referencia
+2026-05-04,Abono Transbank hospedaje,336000,TBK-0504A
+2026-05-04,Transferencia reserva directa,460000,TEF-0504
+2026-05-05,Abono Webpay,342000,TBK-0505A
+2026-05-05,Abono Webpay,78000,TBK-0505B
+2026-05-05,Pago remuneraciones personal,-814000,RH-0505
+2026-05-05,Pago CGE electricidad,-118000,SERV-0505E
+2026-05-05,Pago Aguas Andinas,-45000,SERV-0505A
+2026-05-15,Pago proveedor insumos,-142000,PROV-0515
+2026-05-20,Comision mantencion cuenta,-9990,BANCO-COM
+2026-05-22,Cargo cheque protestado,-15770,BANCO-CHQ
+2026-05-25,Abono no identificado,24990,SIN-ID
