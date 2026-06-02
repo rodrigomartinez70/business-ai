@@ -33,8 +33,17 @@ async def test_tributario_agente_iva(client, gerente_headers):
         acum["iva_debito_acum"] - acum["iva_credito_acum"], abs=1.0
     )
     assert iva["acumulado_mes"]["estado"] in ("deuda", "saldo_a_favor")
-    # F29 monto a pagar nunca negativo
-    assert iva["f29"]["monto_estimado"] >= 0
+    # F29 completo: componentes presentes y coherentes
+    f29 = iva["f29"]
+    for k in ("iva_debito", "iva_credito", "remanente_anterior", "iva_a_pagar",
+              "ppm", "retencion_honorarios", "total_a_pagar", "monto_estimado"):
+        assert k in f29 and f29[k] >= 0
+    # total = IVA a pagar + PPM + retención
+    assert f29["total_a_pagar"] == pytest.approx(
+        f29["iva_a_pagar"] + f29["ppm"] + f29["retencion_honorarios"], abs=1.0)
+    # IVA a pagar = max(0, débito - crédito - remanente)
+    assert f29["iva_a_pagar"] == pytest.approx(
+        max(0.0, f29["iva_debito"] - f29["iva_credito"] - f29["remanente_anterior"]), abs=1.0)
 
 
 @pytest.mark.asyncio

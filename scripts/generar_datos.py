@@ -56,6 +56,7 @@ SERVICIOS = [
 
 GASTOS_FIJOS = [
     ("Personal",            "Personal",    800000),
+    ("Honorarios contador", "Honorarios",  250000),
     ("Electricidad",        "Servicios",   120000),
     ("Agua",                "Servicios",    45000),
     ("Gas",                 "Servicios",    35000),
@@ -72,11 +73,12 @@ GASTOS_VARIABLES = [
     ("Amenities",                     "Suministros",    40000,  80000),
     ("Lavandería",                    "Servicios",      60000, 130000),
     ("Artículos de aseo",             "Suministros",    30000,  90000),
+    ("Asesoría legal/profesional",    "Honorarios",     80000, 200000),
     ("Gastos generales",              "Administración",  20000,  70000),
 ]
 
-# Categorías de gasto NO afectas a IVA (no generan crédito): remuneraciones.
-NO_AFECTO_IVA = {"Personal"}
+# Categorías de gasto NO afectas a IVA (no generan crédito): remuneraciones y honorarios.
+NO_AFECTO_IVA = {"Personal", "Honorarios"}
 
 # Cargos bancarios que no tienen respaldo en los libros (excepciones típicas)
 CARGOS_BANCARIOS = [

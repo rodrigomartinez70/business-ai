@@ -17,6 +17,13 @@ ALERTA_IVA_DEUDA_UF      = 50    # deuda de IVA elevada por encima de N UF
 PCT_AFECTOS_BAJO         = 85    # % ingresos afectos por debajo del cual se alerta
 RATIO_GASTO_INGRESO_ALTO = 40    # gasto/ingreso (%) por encima del cual se revisa
 
+# Otros componentes del F29 (además del IVA)
+PPM_TASA             = 0.0025    # Pago Provisional Mensual: % sobre ingresos brutos (configurable)
+RETENCION_HONORARIOS = 0.1375   # retención boletas de honorarios de terceros (2025)
+
+# Categorías de gasto que NO generan crédito de IVA (remuneraciones y honorarios).
+NO_AFECTO_IVA = ("Personal", "Honorarios")
+
 
 def fecha_vencimiento_f29(periodo: date) -> date:
     """

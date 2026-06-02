@@ -13,7 +13,7 @@ from datetime import date, timedelta
 _MENSUALES = [
     (13, "COTIZ", "Cotizaciones previsionales",   "pago",
      "AFP, salud y seguro de cesantía del personal."),
-    (20, "F29",   "Declaración F29 (IVA + PPM)",  "declaracion",
+    (20, "F29",   "Declaración F29 (IVA + PPM + retenciones)",  "declaracion",
      "IVA débito/crédito y pagos provisionales mensuales del período anterior."),
 ]
 
@@ -31,7 +31,7 @@ _ANUALES = [
 
 # Calendario anual de referencia (siempre presente, para contexto)
 _CALENDARIO_ANUAL_REF = [
-    {"codigo": "F29",    "nombre": "Declaración F29 (IVA + PPM)",  "periodicidad": "mensual",
+    {"codigo": "F29",    "nombre": "Declaración F29 (IVA + PPM + retenciones)",  "periodicidad": "mensual",
      "cuando": "Día 20 del mes siguiente."},
     {"codigo": "COTIZ",  "nombre": "Cotizaciones previsionales",   "periodicidad": "mensual",
      "cuando": "Día 13 del mes siguiente."},

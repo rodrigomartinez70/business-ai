@@ -39,13 +39,16 @@ def _resumen_contexto(data: dict) -> str:
     lineas = ["CONTEXTO TRIBUTARIO (datos reales de la empresa):"]
     lineas.append(
         f"- IVA del mes: débito ${acum.get('iva_debito_acum', 0):,.0f}, "
-        f"crédito ${acum.get('iva_credito_acum', 0):,.0f}, "
-        f"saldo ${acum.get('saldo_iva', 0):,.0f} "
-        f"({acum.get('saldo_iva_uf', 0):.1f} UF), estado {acum.get('estado', 'n/a')}."
+        f"crédito ${acum.get('iva_credito_acum', 0):,.0f} "
+        f"(fuente {acum.get('iva_credito_fuente', 'n/a')})."
     )
     lineas.append(
-        f"- F29 período {f29.get('periodo', '')}: a pagar ${f29.get('monto_estimado', 0):,.0f}, "
-        f"vence {f29.get('vencimiento', '')} (en {f29.get('dias_para_vencimiento', 0)} días)."
+        f"- F29 período {f29.get('periodo', '')}: remanente mes anterior "
+        f"${f29.get('remanente_anterior', 0):,.0f}; IVA a pagar ${f29.get('iva_a_pagar', 0):,.0f}; "
+        f"PPM ${f29.get('ppm', 0):,.0f}; retención honorarios "
+        f"${f29.get('retencion_honorarios', 0):,.0f}; TOTAL a pagar "
+        f"${f29.get('total_a_pagar', 0):,.0f}; vence {f29.get('vencimiento', '')} "
+        f"(en {f29.get('dias_para_vencimiento', 0)} días)."
     )
     if iva.get("uf_referencia"):
         lineas.append(f"- UF de referencia: ${iva['uf_referencia']:,.2f}.")

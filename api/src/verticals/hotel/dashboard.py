@@ -359,17 +359,18 @@ def _sec_tributario(trib: dict) -> str:
     cum = trib.get("agente_cumplimiento", {})
     rie = trib.get("agente_riesgo", {})
 
-    # ── Agente IVA ─────────────────────────────────────────────────────
-    acum = iva.get("acumulado_mes", {})
-    f29  = iva.get("f29", {})
-    body = _subt("Agente IVA — Débito, Crédito & F29")
+    # ── Agente IVA / F29 ───────────────────────────────────────────────
+    f29 = iva.get("f29", {})
+    body = _subt(f"Agente IVA / F29 — período {f29.get('periodo', '')}")
     body += _kpis([
-        ("IVA débito (acum mes)",  f"${acum.get('iva_debito_acum', 0):,.0f}"),
-        ("IVA crédito (acum mes)", f"${acum.get('iva_credito_acum', 0):,.0f}"),
-        ("Saldo IVA", f"${acum.get('saldo_iva', 0):,.0f} ({acum.get('saldo_iva_uf', 0):.1f} UF)"),
-        ("Estado", "🔴 Deuda" if acum.get("saldo_iva", 0) > 0 else "✅ A favor"),
-        (f"F29 {f29.get('periodo', '')} — a pagar", f"${f29.get('monto_estimado', 0):,.0f}"),
-        ("Vence F29", f"{f29.get('vencimiento', 'N/A')} (en {f29.get('dias_para_vencimiento', 0)}d)"),
+        ("IVA débito",             f"${f29.get('iva_debito', 0):,.0f}"),
+        ("IVA crédito",            f"${f29.get('iva_credito', 0):,.0f}"),
+        ("Remanente mes anterior", f"${f29.get('remanente_anterior', 0):,.0f}"),
+        ("IVA a pagar",            f"${f29.get('iva_a_pagar', 0):,.0f}"),
+        (f"PPM ({f29.get('ppm_tasa_pct', 0)}%)", f"${f29.get('ppm', 0):,.0f}"),
+        ("Retención honorarios",   f"${f29.get('retencion_honorarios', 0):,.0f}"),
+        ("TOTAL F29 a pagar",      f"${f29.get('total_a_pagar', 0):,.0f}"),
+        ("Vence", f"{f29.get('vencimiento', 'N/A')} (en {f29.get('dias_para_vencimiento', 0)}d)"),
     ])
 
     # ── Agente Cumplimiento ────────────────────────────────────────────

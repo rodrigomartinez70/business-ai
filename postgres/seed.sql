@@ -145,7 +145,8 @@ INSERT INTO categorias_gasto (nombre, descripcion) VALUES
 ('Servicios',      'Electricidad, agua, internet, telefonía'),
 ('Marketing',      'Publicidad, comisiones OTA, materiales promocionales'),
 ('Frigobar',       'Reposición de bebidas y snacks del frigobar'),
-('Administración', 'Contabilidad, seguros, gastos bancarios');
+('Administración', 'Contabilidad, seguros, gastos bancarios'),
+('Honorarios',     'Boletas de honorarios de terceros (sin IVA, con retención)');
 
 -- GASTOS (Enero–Abril 2026)
 INSERT INTO gastos (categoria_id, fecha, descripcion, monto, proveedor) VALUES
