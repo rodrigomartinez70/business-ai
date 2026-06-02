@@ -79,6 +79,22 @@ PROVEEDORES_COMPRA = [
     ("Ferretería Central",             "Mantenimiento"),
 ]
 
+# Cargos bancarios que no tienen respaldo en los libros (excepciones típicas)
+CARGOS_BANCARIOS = [
+    ("Comision mantencion cuenta",        8990,  12500),
+    ("Comision por transferencias",       1500,   4500),
+    ("Impuesto al giro / timbres",        2000,   9000),
+    ("Comision administracion tarjeta",  15000,  45000),
+    ("PAC servicios no contabilizado",   20000,  90000),
+]
+
+# Abonos sin contraparte en los libros
+ABONOS_SIN_RESPALDO = [
+    "Abono no identificado",
+    "Deposito en efectivo por identificar",
+    "Reverso/devolucion bancaria",
+]
+
 NOMBRES = [
     ("Carlos",    "García"),    ("María",     "López"),
     ("Juan",      "Martínez"),  ("Ana",       "González"),
@@ -401,46 +417,65 @@ async def generar_contable(conn, desde: date, hasta: date):
             docs_n += 1
     print(f"  Documentos tributarios: {docs_n}")
 
-    # ── B) Movimientos bancarios (cartola espejo) ───────────────────────────
+    # ── B) Movimientos bancarios (cartola con excepciones realistas) ────────
     existe_mov = await conn.fetchval(
         "SELECT COUNT(*) FROM movimientos_bancarios WHERE fecha BETWEEN $1 AND $2",
         desde, hasta,
     )
     mov_n = 0
+    rango_dias = max(1, (hasta - desde).days + 1)
+
+    async def _mov(fecha, glosa, monto, ref):
+        await conn.execute(
+            "INSERT INTO movimientos_bancarios (fecha, glosa, monto, referencia) "
+            "VALUES ($1,$2,$3,$4)", fecha, glosa, float(monto), ref)
+
+    def _fecha_rand():
+        return desde + timedelta(days=random.randint(0, rango_dias - 1))
+
     if not existe_mov:
+        # Abonos (pagos): exactos / netos de comisión / sin movimiento
         pagos = await conn.fetch(
             "SELECT fecha, monto FROM pagos WHERE fecha BETWEEN $1 AND $2", desde, hasta)
         for p in pagos:
-            if random.random() < 0.92:   # ~8% sin movimiento → excepción de libro
-                await conn.execute(
-                    "INSERT INTO movimientos_bancarios (fecha, glosa, monto, referencia) "
-                    "VALUES ($1,$2,$3,$4)",
-                    p["fecha"],
-                    random.choice(["Abono Transbank", "Transferencia recibida", "Abono Webpay"]),
-                    float(p["monto"]), f"AB-{random.randint(10000, 99999)}",
-                )
+            r = random.random()
+            if r < 0.82:                          # calza exacto
+                await _mov(p["fecha"],
+                           random.choice(["Abono Transbank", "Transferencia recibida", "Abono Webpay"]),
+                           p["monto"], f"AB-{random.randint(10000, 99999)}")
                 mov_n += 1
+            elif r < 0.90:                        # llega NETO de comisión → no calza por monto
+                neto = round(float(p["monto"]) * (1 - random.uniform(0.015, 0.03)))
+                await _mov(p["fecha"], "Abono Transbank neto comision",
+                           neto, f"TBKN-{random.randint(10000, 99999)}")
+                mov_n += 1
+            # ~10% restante: sin movimiento bancario → excepción de libro
 
+        # Cargos (gastos): exactos / sin movimiento
         gastos = await conn.fetch(
             "SELECT fecha, monto FROM gastos WHERE fecha BETWEEN $1 AND $2", desde, hasta)
         for g in gastos:
-            if random.random() < 0.92:
-                await conn.execute(
-                    "INSERT INTO movimientos_bancarios (fecha, glosa, monto, referencia) "
-                    "VALUES ($1,$2,$3,$4)",
-                    g["fecha"], "Pago proveedor/servicio",
-                    -float(g["monto"]), f"PG-{random.randint(10000, 99999)}",
-                )
+            if random.random() < 0.88:
+                await _mov(g["fecha"], "Pago proveedor/servicio",
+                           -float(g["monto"]), f"PG-{random.randint(10000, 99999)}")
                 mov_n += 1
 
-        # Comisión bancaria sin respaldo (excepción típica de conciliación)
-        if (hasta - desde).days >= 20 or random.random() < 0.4:
-            await conn.execute(
-                "INSERT INTO movimientos_bancarios (fecha, glosa, monto, referencia) "
-                "VALUES ($1,$2,$3,$4)",
-                hasta, "Comision mantencion cuenta",
-                -float(random.choice([8990, 9990, 12500])), f"COM-{random.randint(100, 999)}",
-            )
+        # Excepciones bancarias sin respaldo (~7% del total): comisiones, impuestos,
+        # PAC no contabilizados y abonos no identificados.
+        for _ in range(int(round(mov_n * 0.07))):
+            if random.random() < 0.75:
+                glosa, lo, hi = random.choice(CARGOS_BANCARIOS)
+                await _mov(_fecha_rand(), glosa, -random.randint(lo, hi),
+                           f"COM-{random.randint(1000, 9999)}")
+            else:
+                await _mov(_fecha_rand(), random.choice(ABONOS_SIN_RESPALDO),
+                           random.randint(20000, 200000), f"ABX-{random.randint(1000, 9999)}")
+            mov_n += 1
+
+        # Comisión de mantención mensual garantizada en backfills largos
+        if rango_dias >= 20:
+            await _mov(hasta, "Comision mantencion cuenta",
+                       -random.choice([8990, 9990, 12500]), f"COM-{random.randint(100, 999)}")
             mov_n += 1
     print(f"  Movimientos bancarios:  {mov_n}")
 
