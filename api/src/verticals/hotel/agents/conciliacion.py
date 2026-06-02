@@ -3,12 +3,12 @@ Agente Conciliación bancaria.
 
 Cruza los movimientos de la cartola del banco (tabla movimientos_bancarios,
 cargada por el usuario vía CSV — el agente NO se conecta al banco) contra los
-registros de los libros: pagos (ingresos), gastos y documentos tributarios
-(egresos). Reporta el % conciliado y las excepciones a revisar.
+registros de los libros: pagos (ingresos) y gastos (egresos). Reporta el %
+conciliado y las excepciones a revisar.
 
 Regla de match: mismo monto (±$1) y fecha dentro de ±3 días.
   - Abono (monto > 0)  → calza con pagos (ingresos).
-  - Cargo (monto < 0)  → calza con gastos o documentos (egresos).
+  - Cargo (monto < 0)  → calza con gastos (egresos / salida de caja).
 """
 
 import logging
@@ -47,16 +47,15 @@ async def calcular_conciliacion(hasta: date, dias: int = 30) -> dict:
             "SELECT fecha, monto FROM pagos WHERE fecha BETWEEN $1 AND $2", desde, hasta)
         gastos = await conn.fetch(
             "SELECT fecha, monto, proveedor FROM gastos WHERE fecha BETWEEN $1 AND $2", desde, hasta)
-        docs = await conn.fetch(
-            "SELECT fecha, monto_total AS monto, proveedor FROM documentos_tributarios "
-            "WHERE fecha BETWEEN $1 AND $2", desde, hasta)
 
-    # Candidatos por lado (con flag de uso)
+    # Candidatos por lado (con flag de uso). Los egresos se cruzan contra el
+    # libro de gastos (salida de caja); las facturas (documentos_tributarios)
+    # alimentan el IVA, no la conciliación bancaria, para no duplicar egresos.
     abonos = [{"fecha": p["fecha"], "monto": to_float(p["monto"]), "used": False}
               for p in pagos]
-    cargos = [{"fecha": r["fecha"], "monto": to_float(r["monto"]),
-               "ref": r["proveedor"], "used": False}
-              for r in list(gastos) + list(docs)]
+    cargos = [{"fecha": g["fecha"], "monto": to_float(g["monto"]),
+               "ref": g["proveedor"], "used": False}
+              for g in gastos]
 
     conciliados = 0
     monto_conciliado = 0.0
