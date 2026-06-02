@@ -99,6 +99,15 @@ CREATE TABLE IF NOT EXISTS documentos_tributarios (
     updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS movimientos_bancarios (
+    id              SERIAL PRIMARY KEY,
+    fecha           DATE NOT NULL,
+    glosa           TEXT,
+    monto           NUMERIC(12,2) NOT NULL,   -- signo: + abono (ingreso), - cargo (egreso)
+    referencia      VARCHAR(100),
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS consumos_frigobar (
     id              SERIAL PRIMARY KEY,
     reserva_id      INTEGER NOT NULL REFERENCES reservas(id),

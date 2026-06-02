@@ -24,6 +24,7 @@ from .agents.cash_flow import calcular_cash_flow
 from .agents.cierre_diario import calcular_cierre_semanal
 from .agents.control_gastos import calcular_control_gastos, calcular_gastos_analitico
 from .agents.tributario import calcular_tributario_semanal
+from .agents.conciliacion import calcular_conciliacion
 from ...agents.insights import generar_insights
 from .agents.pnl_mensual import calcular_pnl_ytd
 from .agents.rentabilidad_canal import calcular_rentabilidad_canal
@@ -54,6 +55,7 @@ async def calcular_dashboard() -> dict:
     cash    = await calcular_cash_flow()
     gastos  = await calcular_control_gastos(desde, corte)
     tributario = await calcular_tributario_semanal(corte)
+    conciliacion = await calcular_conciliacion(corte, 30)
 
     # Insights IA solo para los dos reportes estratégicos
     insights_pnl  = await generar_insights("pnl_mensual", pnl)
@@ -81,6 +83,7 @@ async def calcular_dashboard() -> dict:
         "gastos":      gastos,
         "gastos_analitico": gastos_analitico,
         "tributario":  tributario,
+        "conciliacion": conciliacion,
         "cierre":      cierre,
         "ipc":         ipc,
     }
@@ -411,6 +414,45 @@ def _sec_tributario(trib: dict) -> str:
     return _card("🇨🇱 Copiloto Tributario", body)
 
 
+def _sec_conciliacion(con: dict) -> str:
+    """Conciliación bancaria: cartola vs pagos/gastos/facturas."""
+    if not con:
+        return ""
+
+    if not con.get("tiene_cartola"):
+        body = ('<div style="font-size:12px;color:#6b7280;">'
+                'No hay cartola cargada en el período. Sube tu cartola del banco (CSV) '
+                'para conciliar automáticamente contra pagos, gastos y facturas.</div>')
+        return _card("🏦 Conciliación bancaria", body)
+
+    r = con.get("resumen", {})
+    pct = r.get("pct_conciliado", 0)
+    color = "pos" if pct >= 90 else "warn" if pct >= 70 else "neg"
+    body = _kpis([
+        ("Movimientos", f"{r.get('movimientos', 0)}"),
+        ("Conciliados", f"{r.get('conciliados', 0)} ({pct:.0f}%)"),
+        ("Monto conciliado", f"${r.get('monto_conciliado', 0):,.0f}"),
+    ])
+
+    sr = con.get("sin_respaldo", [])
+    if sr:
+        filas = ""
+        for m in sr:
+            filas += (f'<tr><td>{m["fecha"][5:]}</td>'
+                      f'<td style="text-align:right;">${m["monto"]:,.0f}</td>'
+                      f'<td>{m["glosa"][:40]}</td></tr>')
+        total = con.get("sin_respaldo_total", len(sr))
+        body += (f'<div style="margin-top:10px;font-size:12px;font-weight:700;color:#374151;">'
+                 f'Movimientos sin respaldo ({total})</div>'
+                 f'<table class="dt"><tr><th>Fecha</th><th>Monto</th><th>Glosa</th></tr>'
+                 f'{filas}</table>')
+    else:
+        body += ('<div style="font-size:12px;color:#047857;margin-top:6px;">'
+                 'Todos los movimientos tienen respaldo.</div>')
+
+    return _card("🏦 Conciliación bancaria", body)
+
+
 def _sec_cierre(c: dict, cfg) -> str:
     t = c["totales"]
     m = c["movimientos"]
@@ -503,6 +545,7 @@ def renderizar_dashboard_html(data: dict, cfg: dict) -> str:
         + _sec_revenue(data["revenue"], cfg)
         + _sec_gastos(data["gastos"], cfg, data.get("gastos_analitico"))
         + _sec_tributario(data.get("tributario", {}))
+        + _sec_conciliacion(data.get("conciliacion", {}))
         + _sec_cierre(data["cierre"], cfg)
         + _sec_economia(data.get("ipc"))
     )

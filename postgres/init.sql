@@ -97,6 +97,15 @@ CREATE TABLE documentos_tributarios (
     updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE movimientos_bancarios (
+    id              SERIAL PRIMARY KEY,
+    fecha           DATE NOT NULL,
+    glosa           TEXT,                              -- descripción del movimiento en la cartola
+    monto           NUMERIC(12,2) NOT NULL,            -- signo: + abono (ingreso), - cargo (egreso)
+    referencia      VARCHAR(100),                      -- nº operación/documento si la cartola lo trae
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE consumos_frigobar (
     id              SERIAL PRIMARY KEY,
     reserva_id      INTEGER NOT NULL REFERENCES reservas(id),
@@ -158,7 +167,7 @@ END
 $$;
 
 GRANT USAGE ON SCHEMA public TO negocio_user;
-GRANT SELECT ON habitaciones, canales_venta, huespedes, reservas, pagos, categorias_gasto, gastos, consumos_frigobar, consumos_servicios, documentos_tributarios TO negocio_user;
+GRANT SELECT ON habitaciones, canales_venta, huespedes, reservas, pagos, categorias_gasto, gastos, consumos_frigobar, consumos_servicios, documentos_tributarios, movimientos_bancarios TO negocio_user;
 GRANT INSERT ON audit_log TO negocio_user;
 GRANT USAGE, SELECT ON SEQUENCE audit_log_id_seq TO negocio_user;
 
@@ -182,7 +191,7 @@ END
 $$;
 
 GRANT USAGE ON SCHEMA public TO negocio_ingest;
-GRANT SELECT, INSERT ON habitaciones, canales_venta, huespedes, reservas, pagos, categorias_gasto, gastos, consumos_frigobar, consumos_servicios, documentos_tributarios TO negocio_ingest;
+GRANT SELECT, INSERT ON habitaciones, canales_venta, huespedes, reservas, pagos, categorias_gasto, gastos, consumos_frigobar, consumos_servicios, documentos_tributarios, movimientos_bancarios TO negocio_ingest;
 GRANT INSERT ON audit_log TO negocio_ingest;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO negocio_ingest;
 
@@ -201,6 +210,7 @@ CREATE INDEX idx_gastos_fecha           ON gastos(fecha);
 CREATE INDEX idx_gastos_categoria       ON gastos(categoria_id);
 CREATE INDEX idx_documentos_estado      ON documentos_tributarios(estado);
 CREATE INDEX idx_documentos_fecha       ON documentos_tributarios(fecha);
+CREATE INDEX idx_movbancarios_fecha     ON movimientos_bancarios(fecha);
 CREATE INDEX idx_consumos_reserva       ON consumos_frigobar(reserva_id);
 CREATE INDEX idx_servicios_reserva      ON consumos_servicios(reserva_id);
 CREATE INDEX idx_servicios_fecha        ON consumos_servicios(fecha);

@@ -54,15 +54,30 @@ async def calcular_iva(conn, hasta: date, uf: float | None = None) -> dict:
             ROUND((SELECT total FROM gastos_mes)   * 0.19, 2) AS iva_credito
     """, inicio_mes, hasta))
 
+    # Crédito real desde facturas registradas (F29 exacto); si no hay
+    # documentos registrados, se cae a la estimación gastos × 19%.
+    docs_credito = dict(await conn.fetchrow("""
+        SELECT COUNT(*) AS n, COALESCE(SUM(monto_iva), 0) AS iva
+        FROM documentos_tributarios
+        WHERE estado = 'registrado' AND fecha BETWEEN $1 AND $2
+    """, inicio_mes, hasta))
+
     ingreso_semana = (to_float(ingresos_semana.get("afectos", 0))
                       + to_float(ingresos_semana.get("frigobar_afectos", 0))
                       + to_float(ingresos_semana.get("servicios_afectos", 0)))
     gasto_semana = to_float(gastos_semana.get("total_gastos", 0))
 
-    iva_debito_acum  = to_float(iva_mes.get("iva_debito", 0))
-    iva_credito_acum = to_float(iva_mes.get("iva_credito", 0))
-    saldo_iva        = iva_debito_acum - iva_credito_acum
-    saldo_iva_uf     = saldo_iva / uf_valor if uf_valor else 0
+    iva_debito_acum   = to_float(iva_mes.get("iva_debito", 0))
+    credito_estimado  = to_float(iva_mes.get("iva_credito", 0))
+    n_docs_registrados = int(docs_credito.get("n", 0))
+    if n_docs_registrados > 0:
+        iva_credito_acum = to_float(docs_credito.get("iva", 0))
+        credito_fuente   = "documentos"
+    else:
+        iva_credito_acum = credito_estimado
+        credito_fuente   = "estimado"
+    saldo_iva    = iva_debito_acum - iva_credito_acum
+    saldo_iva_uf = saldo_iva / uf_valor if uf_valor else 0
 
     # F29: lo que se pagaría es el saldo positivo (débito > crédito)
     monto_f29 = max(0.0, saldo_iva)
@@ -80,11 +95,12 @@ async def calcular_iva(conn, hasta: date, uf: float | None = None) -> dict:
             "iva_credito_estimado": round(gasto_semana * c.IVA_TASA, 2),
         },
         "acumulado_mes": {
-            "iva_debito_acum":  iva_debito_acum,
-            "iva_credito_acum": iva_credito_acum,
-            "saldo_iva":        saldo_iva,
-            "saldo_iva_uf":     round(saldo_iva_uf, 2),
-            "estado":           "deuda" if saldo_iva > 0 else "saldo_a_favor",
+            "iva_debito_acum":   iva_debito_acum,
+            "iva_credito_acum":  iva_credito_acum,
+            "iva_credito_fuente": credito_fuente,
+            "saldo_iva":         saldo_iva,
+            "saldo_iva_uf":      round(saldo_iva_uf, 2),
+            "estado":            "deuda" if saldo_iva > 0 else "saldo_a_favor",
         },
         "f29": {
             "periodo":               inicio_mes.strftime("%Y-%m"),

@@ -38,6 +38,10 @@ from ..verticals.hotel.agents.tributario import (
     calcular_tributario_semanal,
     renderizar_tributario_markdown,
 )
+from ..verticals.hotel.agents.conciliacion import (
+    calcular_conciliacion,
+    renderizar_conciliacion_markdown,
+)
 from ..delivery import enviar_dashboard_email
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
@@ -292,6 +296,30 @@ async def agente_tributario(
 
     if formato == "markdown":
         md = renderizar_tributario_markdown(data)
+        return PlainTextResponse(content=md, media_type="text/markdown; charset=utf-8")
+
+    return data
+
+
+@router.get("/conciliacion")
+async def agente_conciliacion(
+    fecha:   Optional[date] = Query(None, description="Fecha de corte (default: hoy)"),
+    dias:    int            = Query(30, ge=1, le=90, description="Ventana a conciliar"),
+    formato: str            = Query("json", description="json | markdown"),
+    _rol:    str            = Depends(get_role),
+):
+    """
+    Agente Conciliación bancaria.
+
+    Cruza la cartola cargada (movimientos_bancarios) contra pagos, gastos y
+    documentos tributarios, y reporta el % conciliado y las excepciones.
+    El agente no se conecta al banco: solo lee la cartola que subiste por CSV.
+    """
+    corte = fecha or date.today()
+    data  = await calcular_conciliacion(corte, dias)
+
+    if formato == "markdown":
+        md = renderizar_conciliacion_markdown(data)
         return PlainTextResponse(content=md, media_type="text/markdown; charset=utf-8")
 
     return data

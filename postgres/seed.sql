@@ -236,3 +236,10 @@ INSERT INTO consumos_servicios (reserva_id, fecha, servicio, descripcion, cantid
 -- Abril
 (36, '2026-04-13',  'Lavandería',      '2 camisas + 1 pantalón',    1, 8500,  3500),
 (36, '2026-04-14',  'Estacionamiento', 'Día completo',               1, 5000,  1000);
+
+-- MOVIMIENTOS BANCARIOS (cartola de ejemplo, Enero 2026)
+-- Dos abonos que calzan con pagos existentes y un cargo sin respaldo.
+INSERT INTO movimientos_bancarios (fecha, glosa, monto, referencia) VALUES
+('2026-01-06', 'Abono cliente Booking',      165000,  'OP-1001'),
+('2026-01-15', 'Transferencia recibida',     1120000, 'OP-1002'),
+('2026-01-18', 'Comisión mantención banco',  -77777,  'OP-1003');
