@@ -439,30 +439,30 @@ async def generar_contable(conn, desde: date, hasta: date):
             "SELECT fecha, monto FROM pagos WHERE fecha BETWEEN $1 AND $2", desde, hasta)
         for p in pagos:
             r = random.random()
-            if r < 0.82:                          # calza exacto
+            if r < 0.90:                          # calza exacto
                 await _mov(p["fecha"],
                            random.choice(["Abono Transbank", "Transferencia recibida", "Abono Webpay"]),
                            p["monto"], f"AB-{random.randint(10000, 99999)}")
                 mov_n += 1
-            elif r < 0.90:                        # llega NETO de comisión → no calza por monto
+            elif r < 0.96:                        # llega NETO de comisión → no calza por monto
                 neto = round(float(p["monto"]) * (1 - random.uniform(0.015, 0.03)))
                 await _mov(p["fecha"], "Abono Transbank neto comision",
                            neto, f"TBKN-{random.randint(10000, 99999)}")
                 mov_n += 1
-            # ~10% restante: sin movimiento bancario → excepción de libro
+            # ~4% restante: sin movimiento bancario → excepción de libro
 
         # Cargos (gastos): exactos / sin movimiento
         gastos = await conn.fetch(
             "SELECT fecha, monto FROM gastos WHERE fecha BETWEEN $1 AND $2", desde, hasta)
         for g in gastos:
-            if random.random() < 0.88:
+            if random.random() < 0.92:
                 await _mov(g["fecha"], "Pago proveedor/servicio",
                            -float(g["monto"]), f"PG-{random.randint(10000, 99999)}")
                 mov_n += 1
 
-        # Excepciones bancarias sin respaldo (~7% del total): comisiones, impuestos,
+        # Excepciones bancarias sin respaldo (~4% del total): comisiones, impuestos,
         # PAC no contabilizados y abonos no identificados.
-        for _ in range(int(round(mov_n * 0.07))):
+        for _ in range(int(round(mov_n * 0.04))):
             if random.random() < 0.75:
                 glosa, lo, hi = random.choice(CARGOS_BANCARIOS)
                 await _mov(_fecha_rand(), glosa, -random.randint(lo, hi),
