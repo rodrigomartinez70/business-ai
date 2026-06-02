@@ -7,6 +7,7 @@ de la stdlib — sin dependencias nuevas.
 """
 
 import logging
+import re
 import smtplib
 import ssl
 from datetime import date
@@ -15,6 +16,25 @@ from email.message import EmailMessage
 from . import config
 
 logger = logging.getLogger(__name__)
+
+# El filtro de salida de mail.majorbi.com (v2nets) descarta silenciosamente
+# los correos HTML que contienen emojis tras aceptarlos en SMTP (250 OK +
+# queue id, pero nunca se entregan). Se eliminan del cuerpo del email para
+# garantizar la entrega. La vista web (/dashboard-semanal?formato=html) los
+# mantiene.
+_EMOJI_RE = re.compile(
+    "[\U0001F300-\U0001FAFF"   # pictogramas y símbolos
+    "\U00002600-\U000027BF"    # misc símbolos / dingbats
+    "\U0001F1E6-\U0001F1FF"    # indicadores regionales (banderas)
+    "\U0000FE0F"               # variation selector-16
+    "\U000020E3]+\\s?",        # combining enclosing keycap (+ espacio sobrante)
+    flags=re.UNICODE,
+)
+
+
+def _strip_emojis(html: str) -> str:
+    """Quita emojis del HTML para que el filtro de salida no descarte el correo."""
+    return _EMOJI_RE.sub("", html)
 
 
 def _destinatarios() -> list[str]:
@@ -34,7 +54,10 @@ def enviar_dashboard_email(html: str, cfg: dict, asunto: str | None = None) -> d
 
     biz   = cfg.get("business", {}).get("name", "Negocio")
     to    = _destinatarios()
-    asunto = asunto or f"📈 Dashboard Semanal — {biz} — {date.today():%d/%m/%Y}"
+    asunto = asunto or f"Dashboard Semanal — {biz} — {date.today():%d/%m/%Y}"
+
+    # El filtro de salida descarta correos con emojis: limpiarlos del cuerpo.
+    html = _strip_emojis(html)
 
     msg = EmailMessage()
     msg["Subject"] = asunto
