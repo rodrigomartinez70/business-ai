@@ -64,19 +64,13 @@ def enviar_dashboard_email(html: str, cfg: dict, asunto: str | None = None) -> d
     msg["From"]    = config.SMTP_FROM
     msg["To"]      = ", ".join(to)
 
-    # Plain text fallback (sin HTML adjunto que puede ser bloqueado)
+    # Plain text fallback — sin URLs con IP cruda (disparador de spam).
     msg.set_content(
-        "Dashboard generado. Accede a: http://178.104.160.82:8000/api/agents/dashboard-semanal?formato=html"
+        "Tu cliente de correo no muestra HTML. El dashboard va en el cuerpo del mensaje."
     )
 
     # Agregar HTML como alternativa
     msg.add_alternative(html, subtype="html")
-
-    # NO adjuntar el archivo HTML - algunos servidores lo bloquean
-    # nombre = f"dashboard_{date.today():%Y%m%d}.html"
-    # msg.add_attachment(
-    #     html.encode("utf-8"), maintype="text", subtype="html", filename=nombre
-    # )
 
     _entregar(msg, to)
     logger.info(f"Dashboard enviado a {len(to)} destinatario(s).")
