@@ -81,6 +81,22 @@ CREATE TABLE gastos (
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE documentos_tributarios (
+    id              SERIAL PRIMARY KEY,
+    fecha           DATE NOT NULL,
+    tipo            VARCHAR(30) NOT NULL DEFAULT 'factura',  -- 'factura', 'boleta', 'nota_credito', 'factura_exenta'
+    numero_documento VARCHAR(50),
+    proveedor       VARCHAR(100) NOT NULL,
+    monto_neto      NUMERIC(10,2) NOT NULL,
+    monto_iva       NUMERIC(10,2),
+    monto_total     NUMERIC(10,2),
+    estado          VARCHAR(30) DEFAULT 'pendiente_revision', -- 'pendiente_revision', 'registrado', 'rechazado'
+    categoria_gasto VARCHAR(100),
+    observaciones   TEXT,
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE consumos_frigobar (
     id              SERIAL PRIMARY KEY,
     reserva_id      INTEGER NOT NULL REFERENCES reservas(id),
@@ -142,7 +158,7 @@ END
 $$;
 
 GRANT USAGE ON SCHEMA public TO negocio_user;
-GRANT SELECT ON habitaciones, canales_venta, huespedes, reservas, pagos, categorias_gasto, gastos, consumos_frigobar, consumos_servicios TO negocio_user;
+GRANT SELECT ON habitaciones, canales_venta, huespedes, reservas, pagos, categorias_gasto, gastos, consumos_frigobar, consumos_servicios, documentos_tributarios TO negocio_user;
 GRANT INSERT ON audit_log TO negocio_user;
 GRANT USAGE, SELECT ON SEQUENCE audit_log_id_seq TO negocio_user;
 
@@ -166,7 +182,7 @@ END
 $$;
 
 GRANT USAGE ON SCHEMA public TO negocio_ingest;
-GRANT SELECT, INSERT ON habitaciones, canales_venta, huespedes, reservas, pagos, categorias_gasto, gastos, consumos_frigobar, consumos_servicios TO negocio_ingest;
+GRANT SELECT, INSERT ON habitaciones, canales_venta, huespedes, reservas, pagos, categorias_gasto, gastos, consumos_frigobar, consumos_servicios, documentos_tributarios TO negocio_ingest;
 GRANT INSERT ON audit_log TO negocio_ingest;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO negocio_ingest;
 
@@ -183,6 +199,8 @@ CREATE INDEX idx_pagos_reserva          ON pagos(reserva_id);
 CREATE INDEX idx_pagos_fecha            ON pagos(fecha);
 CREATE INDEX idx_gastos_fecha           ON gastos(fecha);
 CREATE INDEX idx_gastos_categoria       ON gastos(categoria_id);
+CREATE INDEX idx_documentos_estado      ON documentos_tributarios(estado);
+CREATE INDEX idx_documentos_fecha       ON documentos_tributarios(fecha);
 CREATE INDEX idx_consumos_reserva       ON consumos_frigobar(reserva_id);
 CREATE INDEX idx_servicios_reserva      ON consumos_servicios(reserva_id);
 CREATE INDEX idx_servicios_fecha        ON consumos_servicios(fecha);
