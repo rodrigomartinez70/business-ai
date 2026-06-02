@@ -14,7 +14,7 @@ from src.verticals.hotel.dashboard import _detectar_problemas
 _IPC_FAKE = {
     "serie": [{"mes": f"2025-{m:02d}", "valor": v} for m, v in
               enumerate([0.4, 0.0, 0.5, -0.1, 0.3, 0.2, 0.9, 0.0, 0.4, 0.0, 0.3, -0.2], start=1)],
-    "acumulado_pct": 3.1, "ultimo_mes": "2025-12", "fuente": "mindicador.cl",
+    "acumulado_pct": 3.1, "ultimo_mes": "2025-12", "fuente": "Banco Central de Chile",
 }
 
 
@@ -69,8 +69,8 @@ async def test_dashboard_json(client, gerente_headers):
 @pytest.mark.asyncio
 async def test_dashboard_seccion_ipc(client, gerente_headers):
     html = (await client.get("/api/agents/dashboard-semanal?formato=html", headers=gerente_headers)).text
-    assert "📉 Contexto económico — IPC Chile" in html
-    assert "mindicador.cl" in html
+    assert "📉 Contexto económico — Inflación Chile" in html
+    assert "Banco Central de Chile" in html
     # gráfico con eje cero: 4 filas (positivos / eje / negativos / meses)
     assert html.count('border-top:2px solid') >= 1
 
@@ -108,7 +108,7 @@ async def test_dashboard_vista_cfo_en_html(client, gerente_headers):
     html = (await client.get("/api/agents/dashboard-semanal?formato=html", headers=gerente_headers)).text
     assert "Vista CFO" in html
     assert "Gasto por categoría (12m)" in html
-    assert "vs IPC" in html
+    assert "vs Inflación" in html
     assert "Top proveedores (12m)" in html
 
 
