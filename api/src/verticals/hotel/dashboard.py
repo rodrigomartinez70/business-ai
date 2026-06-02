@@ -276,7 +276,7 @@ def _sec_gastos(g: dict, cfg, ana: dict | None = None) -> str:
         if ana["crecimiento_pct"] is not None:
             cfo_rows.append(("Crecimiento del gasto (12m)", var_txt(ana["crecimiento_pct"])))
         if ana["ipc_acum_pct"] is not None:
-            cfo_rows.append(("Inflación (IPC 12m)", f"{ana['ipc_acum_pct']:+.1f}%"))
+            cfo_rows.append(("Inflación mensual (Banco Central)", f"{ana['ipc_acum_pct']:+.1f}%"))
         if ana["brecha_pp"] is not None:
             bp = ana["brecha_pp"]
             cls = "neg" if bp > 0 else "pos"
@@ -300,12 +300,12 @@ def _sec_gastos(g: dict, cfg, ana: dict | None = None) -> str:
                     vsipc = f'<span class="pos">{vp:.1f}%</span>'
                 filas += (f'<tr><td>{c["categoria"]}</td><td>{_fm(c["monto"], cfg)}</td>'
                           f'<td>{c["pct"]:.0f}%</td><td>{crec}</td><td>{vsipc}</td></tr>')
-            ipc_ref = (f' · IPC 12m: {ana["ipc_acum_pct"]:+.1f}%'
+            ipc_ref = (f' · Inflación mensual: {ana["ipc_acum_pct"]:+.1f}%'
                        if ana.get("ipc_acum_pct") is not None else "")
             body += ('<div style="margin-top:10px;font-size:12px;font-weight:700;color:#374151;">'
                      f'Gasto por categoría (12m){ipc_ref}</div>'
                      '<table class="dt"><tr><th>Categoría</th><th>Monto</th><th>%</th>'
-                     '<th>Crec. 12m</th><th>vs IPC</th></tr>'
+                     '<th>Crec. 12m</th><th>vs Inflación</th></tr>'
                      f'{filas}</table>')
 
         # Top proveedores (12m)
@@ -387,7 +387,7 @@ def _sec_economia(ipc: dict | None) -> str:
         mes_cells += f'<td style="text-align:center;font-size:9px;color:#9ca3af;padding-top:3px;">{mes}</td>'
 
     acum = ipc.get("acumulado_pct")
-    sub  = (f"Inflación acumulada 12 meses: <b>{acum:+.1f}%</b> · "
+    sub  = (f"Inflación mensual (última medición): <b>{acum:+.1f}%</b> · "
             if acum is not None else "")
     body = (
         f'<div style="font-size:12px;color:#6b7280;margin-bottom:8px;">'
@@ -399,7 +399,7 @@ def _sec_economia(ipc: dict | None) -> str:
         f'<tr>{mes_cells}</tr>'
         '</table>'
     )
-    return _card("📉 Contexto económico — IPC Chile", body)
+    return _card("📉 Contexto económico — Inflación Chile", body)
 
 
 def renderizar_dashboard_html(data: dict, cfg: dict) -> str:
