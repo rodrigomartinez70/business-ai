@@ -132,10 +132,14 @@ El Agente IVA calcula el **F29** usando como crédito las facturas con estado
 estimación `gastos × 19%`), marca los documentos como registrados:
 
 ```bash
-curl -X PATCH "https://api.majorbi.com/api/tributario/documentos/<ID>" \
+curl -X PATCH "https://api.majorbi.com/api/agents/tributario/documentos/<ID>" \
   -H "Authorization: Bearer <API_KEY>" -H "Content-Type: application/json" \
   -d '{"nuevo_estado": "registrado"}'
 ```
+
+> Verificado en producción: tras registrar las 8 facturas de mayo, el F29 de
+> mayo pasó de `iva_credito_fuente: estimado` a `documentos`, usando el IVA
+> crédito real de las facturas registradas.
 El reporte indica la fuente del crédito en `iva_credito_fuente`
 (`documentos` | `estimado`).
 
