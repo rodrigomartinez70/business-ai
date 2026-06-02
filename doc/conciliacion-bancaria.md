@@ -17,7 +17,11 @@ Cruza cada movimiento de la cartola contra los registros de los libros:
 | Lado de la cartola | Calza contra |
 |--------------------|--------------|
 | Abono (monto **positivo**, ingreso) | `pagos` |
-| Cargo (monto **negativo**, egreso) | `gastos` y `documentos_tributarios` |
+| Cargo (monto **negativo**, egreso) | `gastos` (libro de egresos / salida de caja) |
+
+> Las facturas (`documentos_tributarios`) **no** se usan en la conciliación
+> bancaria — alimentan el IVA/F29. Usar solo `gastos` evita contar dos veces el
+> mismo egreso.
 
 **Regla de match:** mismo monto (tolerancia ±$1) y fecha dentro de ±3 días.
 Cada registro de libro se usa una sola vez.
@@ -94,34 +98,29 @@ cargada en el período, muestra un aviso para subirla.
 
 ---
 
-## 5. Ejemplo real ejecutado (prueba en producción)
+## 5. Ejemplo real (producción, mayo 2026)
 
-Se cargó una cartola de prueba de **mayo 2026** (11 movimientos: 8 que calzan con
-pagos/gastos reales + 3 excepciones a propósito).
-
-**Carga:**
-```
-VALIDAR  → filas_a_insertar: 11, columnas_validas: [fecha, glosa, monto, referencia]
-INSERTAR → filas_procesadas: 11
-```
-
-**Resultado de la conciliación (corte 2026-05-31, ventana 30 días):**
+El generador diario produce una cartola realista (espejo de pagos/gastos con
+excepciones). Resultado de la conciliación de mayo (corte 2026-05-31, 30 días):
 
 | Métrica | Valor |
 |---------|-------|
-| Movimientos | 11 |
-| Conciliados | 8 (**72,7%**) |
-| Monto conciliado | $2.335.000 |
-| Sin respaldo | 3 |
+| Movimientos | 146 |
+| Conciliados | 131 (**89,7%**) |
+| Movimientos sin respaldo | 15 |
+| Registros de libro sin movimiento | 15 |
 
-**Movimientos sin respaldo detectados (las excepciones a revisar):**
-- `2026-05-20  −$9.990   Comisión mantención cuenta`
-- `2026-05-22  −$15.770  Cargo cheque protestado`
-- `2026-05-25  +$24.990  Abono no identificado`
+**Tipos de excepción que aparecen** (como en un banco real):
+- `Abono Transbank neto comisión` — el depósito llega descontada la comisión de
+  tarjeta, no calza por monto.
+- `Comisión mantención cuenta`, `Comisión por transferencias`,
+  `Impuesto al giro / timbres`, `PAC servicios no contabilizado`.
+- `Abono no identificado`, `Reverso/devolución bancaria`.
 
-Interpretación: esos 3 movimientos están en el banco pero no en los libros →
-hay que contabilizarlos (las comisiones bancarias suelen ser gasto no registrado;
-el abono no identificado puede ser un pago de cliente sin asociar).
+Esas excepciones (~10%) son justo lo que un contador revisa a mano.
+
+> Nota: el `pct_conciliado` depende de la calidad de la cartola y de las reglas
+> de match. El generador apunta a ~90%; con cartolas reales reflejará tu operación.
 
 ---
 
@@ -137,24 +136,29 @@ curl -X PATCH "https://api.majorbi.com/api/agents/tributario/documentos/<ID>" \
   -d '{"nuevo_estado": "registrado"}'
 ```
 
-> Verificado en producción: tras registrar las 8 facturas de mayo, el F29 de
-> mayo pasó de `iva_credito_fuente: estimado` a `documentos`, usando el IVA
-> crédito real de las facturas registradas.
-El reporte indica la fuente del crédito en `iva_credito_fuente`
-(`documentos` | `estimado`).
+El reporte indica la fuente del crédito en `iva_credito_fuente`:
+
+- **`documentos`**: crédito = IVA de las facturas con estado `registrado` del mes
+  (cálculo exacto, recomendado).
+- **`estimado`** (fallback si no hay facturas registradas): `gastos × 19%`,
+  **excluyendo Personal/remuneraciones** (no llevan IVA), para no sobreestimar.
+
+> Importante: el IVA débito (ventas) suele ser bastante mayor que el crédito
+> (compras) en un hotel, porque el mayor costo —las remuneraciones— no genera
+> crédito de IVA. Un saldo de IVA a pagar mes a mes es lo normal.
 
 ---
 
-## 7. Limpiar los datos de prueba
+## 7. Datos en producción
 
-Los movimientos de prueba se cargaron con referencias identificables. Para
-borrarlos:
+La cartola y las facturas de prueba/demo ya no se cargan a mano: las genera el
+**cron diario** (`scripts/generar_datos.py`), espejo de los pagos/gastos del
+período con excepciones realistas. Para limpiar la cartola generada de un rango
+(si quieres partir de tu cartola real):
 
 ```sql
 DELETE FROM hotel_mbi.movimientos_bancarios
-WHERE referencia IN ('TBK-0504A','TEF-0504','TBK-0505A','TBK-0505B',
-                     'RH-0505','SERV-0505E','SERV-0505A','PROV-0515',
-                     'BANCO-COM','BANCO-CHQ','SIN-ID');
+WHERE fecha BETWEEN '2026-05-01' AND '2026-05-31';
 ```
 
 ---
