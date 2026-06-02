@@ -280,6 +280,19 @@ class DocumentoTributario(BaseModel):
     categoria_gasto: Optional[str] = None
     observaciones: Optional[str] = None
 
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "fecha": "2026-06-02",
+                "tipo": "factura",
+                "numero_documento": "F-001",
+                "proveedor": "Nombre Proveedor",
+                "monto_neto": 1000.00,
+                "categoria_gasto": "servicios",
+                "observaciones": "Descripción del gasto"
+            }
+        }
+
 
 @router.post("/tributario/documentos")
 async def agregar_documento_tributario(
