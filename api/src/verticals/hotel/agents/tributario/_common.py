@@ -8,7 +8,8 @@ from datetime import date
 # Tasa IVA estándar en Chile
 IVA_TASA = 0.19
 
-# UF aproximada — TODO: integrar el valor real (Banco Central, como el IPC)
+# UF de respaldo si la API del Banco Central no responde.
+# El valor real diario lo obtiene economia.obtener_uf() y se pasa a los agentes.
 UF_VALOR = 36_400
 
 # Umbrales de alerta / riesgo

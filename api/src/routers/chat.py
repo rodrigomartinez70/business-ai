@@ -15,9 +15,13 @@ from ..audit import registrar_auditoria
 from ..auth import get_role
 from ..formatting import formatear_respuesta
 from ..ratelimit import rate_limit
+from ..verticals.hotel.agents.tributario.conversacional import responder_tributario
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# Modelo conversacional del Copiloto Tributario expuesto en Open WebUI.
+_TRIBUTARIO_MODEL = "copiloto-tributario"
 
 
 async def _audit(*args, **kwargs) -> None:
@@ -140,6 +144,35 @@ async def chat_completions(request: ChatRequest, rol: str = Depends(get_role), _
             return StreamingResponse(_noop(), media_type="text/event-stream")
         return payload
 
+    chat_id = f"chatcmpl-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+
+    # Agente Conversacional Tributario: enruta al copiloto en lenguaje natural.
+    if request.model == _TRIBUTARIO_MODEL:
+        t0 = time.monotonic()
+        estado, error_msg = "ok", None
+        try:
+            historial = [{"role": m.role, "content": m.content} for m in request.messages]
+            respuesta = await responder_tributario(pregunta, historial)
+        except Exception as e:
+            logger.error(f"Error en copiloto tributario: {e}")
+            respuesta = "Ocurrió un error al responder tu consulta tributaria."
+            estado, error_msg = "error", str(e)
+        _fire_audit(
+            rol, pregunta, "[tributario]", 0,
+            int((time.monotonic() - t0) * 1000), estado, "tributario",
+            "claude" if config.claude_disponible() else "local", error_msg,
+        )
+        if request.stream:
+            return StreamingResponse(
+                _stream_respuesta(chat_id, request.model, respuesta),
+                media_type="text/event-stream",
+            )
+        return {
+            "id": chat_id, "object": "chat.completion", "model": request.model,
+            "choices": [{"index": 0, "message": {"role": "assistant", "content": respuesta}, "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        }
+
     t0          = time.monotonic()
     sql_log     = ""
     tipo_flujo  = "simple"
@@ -180,8 +213,6 @@ async def chat_completions(request: ChatRequest, rol: str = Depends(get_role), _
         duracion_ms, estado, tipo_flujo, modelo_llm, error_msg,
     )
 
-    chat_id = f"chatcmpl-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
-
     if request.stream:
         return StreamingResponse(
             _stream_respuesta(chat_id, request.model, respuesta),
@@ -200,5 +231,8 @@ async def chat_completions(request: ChatRequest, rol: str = Depends(get_role), _
 async def list_models(_rol: str = Depends(get_role)):
     return {
         "object": "list",
-        "data": [{"id": config.biz("model_id", "asistente-ia"), "object": "model", "owned_by": "local"}],
+        "data": [
+            {"id": config.biz("model_id", "asistente-ia"), "object": "model", "owned_by": "local"},
+            {"id": _TRIBUTARIO_MODEL, "object": "model", "owned_by": "local"},
+        ],
     }

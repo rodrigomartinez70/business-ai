@@ -129,3 +129,73 @@ async def obtener_ipc(meses: int = 12) -> dict | None:
     }
     _cache.update(ts=now, data=data)
     return data
+
+
+# ─────────────────────────────────────────────────────────────
+# UF — Unidad de Fomento (valor diario)
+# ─────────────────────────────────────────────────────────────
+
+_UF_CACHE_TTL = 12 * 3600   # 12 horas (la UF se publica una vez al día)
+_uf_cache: dict = {}        # {"ts": epoch, "valor": float}
+
+
+async def obtener_uf() -> float | None:
+    """
+    Devuelve el último valor de la UF (en pesos) desde la API BDE del Banco
+    Central. Reutiliza las credenciales BCENTRAL_IPC_USER/PASS (misma cuenta BDE).
+    Serie por defecto: F073.UFF.PRE.Z.D (UF diaria). Cacheado 12h.
+
+    Retorna None si la fuente no responde o no hay credenciales.
+    """
+    now = time.time()
+    if _uf_cache and now - _uf_cache["ts"] < _UF_CACHE_TTL:
+        return _uf_cache["valor"]
+
+    user       = os.environ.get("BCENTRAL_IPC_USER", "").strip()
+    password   = os.environ.get("BCENTRAL_IPC_PASS", "").strip()
+    series_uf  = os.environ.get("BCENTRAL_UF_SERIES", "F073.UFF.PRE.Z.D").strip()
+
+    if not (user and password and series_uf):
+        logger.warning("UF: credenciales Banco Central no configuradas")
+        return _uf_cache.get("valor") if _uf_cache else None
+
+    try:
+        today      = date.today()
+        first_date = today - timedelta(days=10)   # margen para tomar el último valor publicado
+        params = {
+            "user": user, "pass": password,
+            "function": "GetSeries", "timeseries": series_uf,
+            "firstdate": first_date.strftime("%Y-%m-%d"),
+            "lastdate":  today.strftime("%Y-%m-%d"),
+        }
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(_BCENTRAL_URL, params=params)
+            resp.raise_for_status()
+            try:
+                raw = resp.json()
+            except UnicodeDecodeError:
+                import json
+                raw = json.loads(resp.content.decode("utf-8", errors="replace"))
+    except Exception as e:
+        logger.warning(f"UF: error consultando API BDE Banco Central: {e}")
+        return _uf_cache.get("valor") if _uf_cache else None
+
+    series_obj = raw.get("Series", {})
+    obs = series_obj.get("Obs", []) if isinstance(series_obj, dict) else []
+
+    # indexDateString viene en DD-MM-YYYY; tomar la observación OK más reciente
+    valores = []
+    for p in obs:
+        if p.get("value") and p.get("statusCode") == "OK":
+            parts = p["indexDateString"].split("-")
+            if len(parts) == 3:
+                clave = f"{parts[2]}-{parts[1]}-{parts[0]}"  # YYYY-MM-DD para ordenar
+                valores.append((clave, float(p["value"])))
+
+    if not valores:
+        logger.warning("UF: respuesta vacía de API BDE")
+        return _uf_cache.get("valor") if _uf_cache else None
+
+    valor = sorted(valores, key=lambda x: x[0])[-1][1]
+    _uf_cache.update(ts=now, valor=valor)
+    return valor

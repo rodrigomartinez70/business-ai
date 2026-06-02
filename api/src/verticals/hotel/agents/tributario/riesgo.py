@@ -13,10 +13,11 @@ from src.agents._common import to_float
 from . import _common as c
 
 
-async def calcular_riesgo(conn, hasta: date, iva: dict) -> dict:
-    """Agente Riesgo. Recibe conexión scopeada y el resultado del agente IVA."""
-    hace_30 = hasta - timedelta(days=30)
-    hace_90 = hasta - timedelta(days=90)
+async def calcular_riesgo(conn, hasta: date, iva: dict, uf: float | None = None) -> dict:
+    """Agente Riesgo. Recibe conexión scopeada, el resultado del agente IVA y la UF."""
+    uf_valor = uf or c.UF_VALOR
+    hace_30  = hasta - timedelta(days=30)
+    hace_90  = hasta - timedelta(days=90)
 
     # Documentos tributarios pendientes de procesar (crédito de IVA sin usar)
     docs = dict(await conn.fetchrow("""
@@ -84,7 +85,7 @@ async def calcular_riesgo(conn, hasta: date, iva: dict) -> dict:
         })
 
     # ── Alertas (control + fiscalización) ─────────────────────────────
-    if saldo_iva > (c.ALERTA_IVA_DEUDA_UF * c.UF_VALOR):
+    if saldo_iva > (c.ALERTA_IVA_DEUDA_UF * uf_valor):
         alertas.append({
             "nivel": "critico",
             "codigo": "IVA_DEUDA_ALTA",

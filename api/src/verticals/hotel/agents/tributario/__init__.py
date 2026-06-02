@@ -13,12 +13,16 @@ Fase 2 (interactivo, con LLM):
 el dict que consume el dashboard semanal.
 """
 
+import logging
 from datetime import date, timedelta
 
 from src import config
+from ...economia import obtener_uf
 from .iva import calcular_iva
 from .cumplimiento import calcular_cumplimiento
 from .riesgo import calcular_riesgo
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["calcular_tributario_semanal", "renderizar_tributario_markdown"]
 
@@ -28,9 +32,14 @@ async def calcular_tributario_semanal(hasta: date) -> dict:
     desde      = hasta - timedelta(days=6)
     inicio_mes = date(hasta.year, hasta.month, 1)
 
+    # UF real del Banco Central (None → cada agente usa su fallback).
+    uf = await obtener_uf()
+    if uf:
+        logger.info(f"UF del día: ${uf:,.2f}")
+
     async with config.db_pool.acquire() as conn:
-        iva    = await calcular_iva(conn, hasta)
-        riesgo = await calcular_riesgo(conn, hasta, iva)
+        iva    = await calcular_iva(conn, hasta, uf)
+        riesgo = await calcular_riesgo(conn, hasta, iva, uf)
 
     cumplimiento = calcular_cumplimiento(hasta)
 

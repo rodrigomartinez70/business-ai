@@ -93,6 +93,44 @@ async def test_tributario_defaults_a_hoy(client, gerente_headers):
 
 
 @pytest.mark.asyncio
+async def test_tributario_uf_referencia(client, gerente_headers):
+    """Sin credenciales del Banco Central (CI), usa la UF de respaldo."""
+    iva = (await client.get(
+        f"/api/agents/tributario?fecha={FECHA}", headers=gerente_headers
+    )).json()["agente_iva"]
+    assert iva["uf_referencia"] > 0
+    # saldo_iva_uf coherente con el saldo y la UF de referencia
+    saldo = iva["acumulado_mes"]["saldo_iva"]
+    esperado = round(saldo / iva["uf_referencia"], 2)
+    assert iva["acumulado_mes"]["saldo_iva_uf"] == pytest.approx(esperado, abs=0.1)
+
+
+@pytest.mark.asyncio
 async def test_tributario_requiere_auth(client):
     resp = await client.get("/api/agents/tributario")
     assert resp.status_code == 403
+
+
+# ── Agente Conversacional (Open WebUI) ──────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_conversacional_modelo_listado(client, gerente_headers):
+    data = (await client.get("/api/v1/models", headers=gerente_headers)).json()
+    assert "copiloto-tributario" in [m["id"] for m in data["data"]]
+
+
+@pytest.mark.asyncio
+async def test_conversacional_responde(client, gerente_headers):
+    """Sin LLM en CI, responde con el contexto tributario como fallback."""
+    resp = await client.post(
+        "/api/v1/chat/completions",
+        headers=gerente_headers,
+        json={
+            "model": "copiloto-tributario",
+            "messages": [{"role": "user", "content": "¿Cuánto debo pagar de IVA este mes?"}],
+            "stream": False,
+        },
+    )
+    assert resp.status_code == 200
+    content = resp.json()["choices"][0]["message"]["content"]
+    assert isinstance(content, str) and len(content) > 0

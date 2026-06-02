@@ -12,8 +12,9 @@ from src.agents._common import to_float
 from . import _common as c
 
 
-async def calcular_iva(conn, hasta: date) -> dict:
-    """Agente IVA. Recibe una conexión ya scopeada al tenant."""
+async def calcular_iva(conn, hasta: date, uf: float | None = None) -> dict:
+    """Agente IVA. Recibe una conexión ya scopeada al tenant y la UF del día."""
+    uf_valor   = uf or c.UF_VALOR
     desde      = hasta - timedelta(days=6)
     inicio_mes = date(hasta.year, hasta.month, 1)
 
@@ -61,7 +62,7 @@ async def calcular_iva(conn, hasta: date) -> dict:
     iva_debito_acum  = to_float(iva_mes.get("iva_debito", 0))
     iva_credito_acum = to_float(iva_mes.get("iva_credito", 0))
     saldo_iva        = iva_debito_acum - iva_credito_acum
-    saldo_iva_uf     = saldo_iva / c.UF_VALOR if c.UF_VALOR else 0
+    saldo_iva_uf     = saldo_iva / uf_valor if uf_valor else 0
 
     # F29: lo que se pagaría es el saldo positivo (débito > crédito)
     monto_f29 = max(0.0, saldo_iva)
@@ -88,8 +89,9 @@ async def calcular_iva(conn, hasta: date) -> dict:
         "f29": {
             "periodo":               inicio_mes.strftime("%Y-%m"),
             "monto_estimado":        round(monto_f29, 2),
-            "monto_estimado_uf":     round(monto_f29 / c.UF_VALOR, 2) if c.UF_VALOR else 0,
+            "monto_estimado_uf":     round(monto_f29 / uf_valor, 2) if uf_valor else 0,
             "vencimiento":           str(c.fecha_vencimiento_f29(hasta)),
             "dias_para_vencimiento": c.dias_para_vencimiento_f29(hasta),
         },
+        "uf_referencia": round(uf_valor, 2),
     }

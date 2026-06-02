@@ -16,5 +16,7 @@ async def test_models_endpoint(client, gerente_headers):
     assert resp.status_code == 200
     data = resp.json()
     assert data["object"] == "list"
-    assert len(data["data"]) == 1
-    assert "id" in data["data"][0]
+    ids = [m["id"] for m in data["data"]]
+    # asistente-ia (text-to-SQL) + copiloto-tributario (conversacional)
+    assert "copiloto-tributario" in ids
+    assert len(data["data"]) == 2
