@@ -167,10 +167,22 @@ curl -X PATCH "https://api.majorbi.com/api/agents/tributario/documentos/<ID>" \
 > (compras) en un hotel, porque el mayor costo —las remuneraciones— no genera
 > crédito de IVA. Un saldo de IVA a pagar mes a mes es lo normal.
 
-**Parámetros / límites:** `PPM_TASA` (0,25%) y `RETENCION_HONORARIOS` (13,75%)
-son constantes en `agents/tributario/_common.py`. El PPM real depende del
-régimen y la tasa recalculada anual; el remanente se calcula iterando los meses
-del año en curso (sin reajuste IPC/UTM). No reemplaza al contador.
+**Notas de crédito/débito:** el crédito netea documentos `tipo='nota_credito'`
+(restan) y `nota_debito` (suman) registrados.
+
+**Postergación de IVA (beneficio PyME):** si `tributario.iva_postergacion_meses`
+> 0 en `config.yaml`, el vencimiento del IVA se difiere N meses; el F29 expone
+`iva_postergado`, `vencimiento_iva` y `total_a_pagar_ahora` (PPM + retenciones,
+ya que el IVA se paga después).
+
+**Parámetros (por tenant, en `config.yaml` → `tributario`):**
+- `ppm_tasa` (default 0,25%) — % del PPM sobre ingresos.
+- `iva_postergacion_meses` (default 0) — meses de postergación del IVA.
+
+`RETENCION_HONORARIOS` (13,75%) es constante en `agents/tributario/_common.py`.
+El PPM real depende del régimen y la tasa recalculada anual; el remanente se
+calcula iterando los meses del año en curso (sin reajuste IPC/UTM). No reemplaza
+al contador.
 
 ---
 
