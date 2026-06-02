@@ -287,21 +287,25 @@ async def agregar_documento_tributario(
     _rol: str = Depends(get_role),
 ):
     """Agregar un documento tributario pendiente de procesar (factura, boleta, etc)."""
+    # Calcular IVA (19% si no es exenta)
+    monto_iva = round(doc.monto_neto * 0.19, 2) if doc.tipo != "factura_exenta" else 0
+    monto_total = doc.monto_neto + monto_iva
+
     async with config.db_pool.acquire() as conn:
         resultado = await conn.fetchrow("""
             INSERT INTO documentos_tributarios
-            (fecha, tipo, numero_documento, proveedor, monto_neto, categoria_gasto, observaciones)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING id, monto_neto, monto_iva, monto_total
+            (fecha, tipo, numero_documento, proveedor, monto_neto, monto_iva, monto_total, categoria_gasto, observaciones)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            RETURNING id
         """, doc.fecha, doc.tipo, doc.numero_documento, doc.proveedor,
-            doc.monto_neto, doc.categoria_gasto, doc.observaciones)
+            doc.monto_neto, monto_iva, monto_total, doc.categoria_gasto, doc.observaciones)
 
     return {
         "id": resultado["id"],
         "proveedor": doc.proveedor,
-        "monto_neto": float(resultado["monto_neto"]),
-        "monto_iva": float(resultado["monto_iva"]),
-        "monto_total": float(resultado["monto_total"]),
+        "monto_neto": float(doc.monto_neto),
+        "monto_iva": float(monto_iva),
+        "monto_total": float(monto_total),
         "estado": "pendiente_revision",
     }
 
