@@ -118,14 +118,16 @@ async def calcular_tributario_semanal(hasta: date) -> dict:
         ratio_gasto_ingreso = (gastos_ultimos_30 / ingresos_ultimos_30 * 100) if ingresos_ultimos_30 > 0 else 0
 
         # Documentos pendientes de procesar
-        docs_pendientes = dict(await conn.fetchrow("""
+        docs_pendientes_row = await conn.fetchrow("""
             SELECT
                 COUNT(*) AS cantidad,
                 COALESCE(SUM(monto_iva), 0) AS iva_potencial,
                 COALESCE(SUM(monto_total), 0) AS monto_total
             FROM documentos_tributarios
             WHERE estado = 'pendiente_revision'
-        """) or {})
+        """)
+        docs_pendientes = dict(docs_pendientes_row) if docs_pendientes_row else {}
+        logger.info(f"✅ Documentos tributarios detectados: cantidad={docs_pendientes.get('cantidad')}, iva=${docs_pendientes.get('iva_potencial'):,.2f}")
 
         iva_potencial = to_float(docs_pendientes.get("iva_potencial", 0))
         n_docs_pendientes = int(docs_pendientes.get("cantidad", 0))

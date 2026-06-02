@@ -328,23 +328,28 @@ def _sec_gastos(g: dict, cfg, ana: dict | None = None) -> str:
 
 def _sec_tributario(trib: dict) -> str:
     """Copiloto tributario para PyMEs en Chile: IVA, recomendaciones, alertas."""
-    n1 = trib["nivel_1_prediccion"]
-    n2 = trib["nivel_2_optimizacion"]
-    n3 = trib["nivel_3_control"]
+    # Si el tributario está vacío, retornar nada
+    if not trib or not trib.get("nivel_1_prediccion"):
+        return ""
+
+    n1 = trib.get("nivel_1_prediccion", {})
+    n2 = trib.get("nivel_2_optimizacion", {})
+    n3 = trib.get("nivel_3_control", {})
 
     # Nivel 1: Predicción IVA
-    acum = n1["acumulado_mes"]
+    acum = n1.get("acumulado_mes", {})
     rows = [
-        ("IVA débito (acum mes)", f"${acum['iva_debito_acum']:,.0f}"),
-        ("IVA crédito (acum mes)", f"${acum['iva_credito_acum']:,.0f}"),
-        ("Saldo IVA", f"${acum['saldo_iva']:,.0f} ({acum['saldo_iva_uf']:.1f} UF)"),
-        ("Estado", "🔴 Deuda" if acum["saldo_iva"] > 0 else "✅ A favor"),
+        ("IVA débito (acum mes)", f"${acum.get('iva_debito_acum', 0):,.0f}"),
+        ("IVA crédito (acum mes)", f"${acum.get('iva_credito_acum', 0):,.0f}"),
+        ("Saldo IVA", f"${acum.get('saldo_iva', 0):,.0f} ({acum.get('saldo_iva_uf', 0):.1f} UF)"),
+        ("Estado", "🔴 Deuda" if acum.get("saldo_iva", 0) > 0 else "✅ A favor"),
     ]
+    prox_7d = n1.get("proximos_7_dias", {})
     body = (_kpis(rows) +
             '<div style="margin-top:10px;font-size:12px;font-weight:700;color:#374151;">Proyección próximos 7 días</div>' +
             _kpis([
-                ("IVA débito estimado", f"${n1['proximos_7_dias']['iva_debito_estimado']:,.0f}"),
-                ("IVA crédito estimado", f"${n1['proximos_7_dias']['iva_credito_estimado']:,.0f}"),
+                ("IVA débito estimado", f"${prox_7d.get('iva_debito_estimado', 0):,.0f}"),
+                ("IVA crédito estimado", f"${prox_7d.get('iva_credito_estimado', 0):,.0f}"),
             ]))
 
     # Documentos pendientes (si hay)
@@ -369,22 +374,22 @@ def _sec_tributario(trib: dict) -> str:
         body += ('<div style="margin-top:10px;font-size:12px;font-weight:700;color:#374151;">Oportunidades de optimización</div>' + rec_html)
 
     # Nivel 3: Alertas y control
-    if n3["alertas"]:
-        for alert in n3["alertas"]:
-            nivel_cls = "neg" if alert["nivel"] == "critico" else "warn" if alert["nivel"] == "alerta" else "info"
-            color_bg = "#fef2f2" if alert["nivel"] == "critico" else "#fffbeb" if alert["nivel"] == "alerta" else "#eff6ff"
-            color_border = "#dc2626" if alert["nivel"] == "critico" else "#f59e0b" if alert["nivel"] == "alerta" else "#3b82f6"
-            icono = "🚨" if alert["nivel"] == "critico" else "⚠️" if alert["nivel"] == "alerta" else "ℹ️"
+    if n3.get("alertas"):
+        for alert in n3.get("alertas", []):
+            nivel_cls = "neg" if alert.get("nivel") == "critico" else "warn" if alert.get("nivel") == "alerta" else "info"
+            color_bg = "#fef2f2" if alert.get("nivel") == "critico" else "#fffbeb" if alert.get("nivel") == "alerta" else "#eff6ff"
+            color_border = "#dc2626" if alert.get("nivel") == "critico" else "#f59e0b" if alert.get("nivel") == "alerta" else "#3b82f6"
+            icono = "🚨" if alert.get("nivel") == "critico" else "⚠️" if alert.get("nivel") == "alerta" else "ℹ️"
             body += (f'<div style="margin:8px 0;padding:8px;background:{color_bg};border-left:3px solid {color_border};border-radius:4px;">'
-                    f'<div style="font-weight:600;font-size:13px;">{icono} {alert["titulo"]}</div>'
-                    f'<div style="font-size:12px;color:#6b7280;margin-top:3px;">{alert["descripcion"]}</div>'
-                    f'<div style="font-size:11px;color:#9ca3af;margin-top:4px;font-style:italic;">{alert["recomendacion"]}</div>'
+                    f'<div style="font-weight:600;font-size:13px;">{icono} {alert.get("titulo", "")}</div>'
+                    f'<div style="font-size:12px;color:#6b7280;margin-top:3px;">{alert.get("descripcion", "")}</div>'
+                    f'<div style="font-size:11px;color:#9ca3af;margin-top:4px;font-style:italic;">{alert.get("recomendacion", "")}</div>'
                     f'</div>')
 
     # Info sobre vencimiento F29
     body += (f'<div style="margin-top:10px;font-size:11px;color:#9ca3af;padding:8px;background:#f9fafb;border-radius:4px;border:1px solid #e5e7eb;">'
-            f'Vencimiento F29 estimado: {n3["proximo_vencimiento_aprox"]} | '
-            f'Días para vencimiento: {n3["dias_para_vencimiento_f29"]}'
+            f'Vencimiento F29 estimado: {n3.get("proximo_vencimiento_aprox", "N/A")} | '
+            f'Días para vencimiento: {n3.get("dias_para_vencimiento_f29", 0)}'
             f'</div>')
 
     return _card("🇨🇱 Copiloto Tributario — IVA & Recomendaciones", body)
