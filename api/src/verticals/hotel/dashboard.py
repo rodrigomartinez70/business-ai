@@ -347,6 +347,17 @@ def _sec_tributario(trib: dict) -> str:
                 ("IVA crédito estimado", f"${n1['proximos_7_dias']['iva_credito_estimado']:,.0f}"),
             ]))
 
+    # Documentos pendientes (si hay)
+    docs = n2.get("documentos_pendientes", {})
+    n_pendientes = docs.get("cantidad", 0)
+    iva_recuperable = docs.get("iva_potencial_recuperable", 0)
+    if n_pendientes > 0:
+        body += (f'<div style="margin:12px 0;padding:10px;background:#fef3c7;border-left:3px solid #f59e0b;border-radius:4px;">'
+                f'<div style="font-weight:600;font-size:13px;color:#92400e;">📋 {n_pendientes} Documento(s) pendiente(s)</div>'
+                f'<div style="font-size:12px;color:#78350f;margin-top:3px;">'
+                f'IVA potencial recuperable: <b>${iva_recuperable:,.0f}</b></div>'
+                f'</div>')
+
     # Nivel 2: Recomendaciones
     if n2["recomendaciones"]:
         rec_html = ""

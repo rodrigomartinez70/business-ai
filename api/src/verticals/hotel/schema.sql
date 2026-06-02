@@ -83,6 +83,22 @@ CREATE TABLE IF NOT EXISTS gastos (
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS documentos_tributarios (
+    id              SERIAL PRIMARY KEY,
+    fecha           DATE NOT NULL,
+    tipo            VARCHAR(30) NOT NULL DEFAULT 'factura',
+    numero_documento VARCHAR(50),
+    proveedor       VARCHAR(100) NOT NULL,
+    monto_neto      NUMERIC(10,2) NOT NULL,
+    monto_iva       NUMERIC(10,2) GENERATED ALWAYS AS (CASE WHEN tipo != 'factura_exenta' THEN ROUND(monto_neto * 0.19, 2) ELSE 0 END) STORED,
+    monto_total     NUMERIC(10,2) GENERATED ALWAYS AS (monto_neto + monto_iva) STORED,
+    estado          VARCHAR(30) DEFAULT 'pendiente_revision',
+    categoria_gasto VARCHAR(100),
+    observaciones   TEXT,
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS consumos_frigobar (
     id              SERIAL PRIMARY KEY,
     reserva_id      INTEGER NOT NULL REFERENCES reservas(id),

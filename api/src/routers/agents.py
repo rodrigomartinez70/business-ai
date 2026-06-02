@@ -1,8 +1,9 @@
 from datetime import date, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Body
 from fastapi.responses import PlainTextResponse
+from pydantic import BaseModel
 
 from .. import config
 from ..agents.alertas import calcular_kpis, evaluar_umbrales, renderizar_reporte, _fmt_kpi
@@ -264,3 +265,102 @@ async def agente_dashboard_semanal(
         return resultado
 
     return PlainTextResponse(content=html, media_type="text/html; charset=utf-8")
+
+
+# ─────────────────────────────────────────────────────────────
+# Gestión de Documentos Tributarios (IVA)
+# ─────────────────────────────────────────────────────────────
+
+class DocumentoTributario(BaseModel):
+    fecha: date
+    tipo: str = "factura"
+    numero_documento: Optional[str] = None
+    proveedor: str
+    monto_neto: float
+    categoria_gasto: Optional[str] = None
+    observaciones: Optional[str] = None
+
+
+@router.post("/tributario/documentos")
+async def agregar_documento_tributario(
+    doc: DocumentoTributario = Body(...),
+    _rol: str = Depends(get_role),
+):
+    """Agregar un documento tributario pendiente de procesar (factura, boleta, etc)."""
+    async with config.db_pool.acquire() as conn:
+        resultado = await conn.fetchrow("""
+            INSERT INTO documentos_tributarios
+            (fecha, tipo, numero_documento, proveedor, monto_neto, categoria_gasto, observaciones)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id, monto_neto, monto_iva, monto_total
+        """, doc.fecha, doc.tipo, doc.numero_documento, doc.proveedor,
+            doc.monto_neto, doc.categoria_gasto, doc.observaciones)
+
+    return {
+        "id": resultado["id"],
+        "proveedor": doc.proveedor,
+        "monto_neto": float(resultado["monto_neto"]),
+        "monto_iva": float(resultado["monto_iva"]),
+        "monto_total": float(resultado["monto_total"]),
+        "estado": "pendiente_revision",
+    }
+
+
+@router.get("/tributario/documentos")
+async def listar_documentos_tributarios(
+    estado: Optional[str] = Query(None, description="pendiente_revision | registrado | rechazado"),
+    _rol: str = Depends(get_role),
+):
+    """Listar documentos tributarios (filtrar por estado si se proporciona)."""
+    async with config.db_pool.acquire() as conn:
+        query = "SELECT id, fecha, tipo, numero_documento, proveedor, monto_neto, monto_iva, monto_total, estado FROM documentos_tributarios"
+        params = []
+        if estado:
+            query += " WHERE estado = $1"
+            params = [estado]
+        query += " ORDER BY fecha DESC"
+
+        documentos = await conn.fetch(query, *params)
+
+    return {
+        "total": len(documentos),
+        "documentos": [
+            {
+                "id": d["id"],
+                "fecha": str(d["fecha"]),
+                "tipo": d["tipo"],
+                "numero_documento": d["numero_documento"],
+                "proveedor": d["proveedor"],
+                "monto_neto": float(d["monto_neto"]),
+                "monto_iva": float(d["monto_iva"]),
+                "monto_total": float(d["monto_total"]),
+                "estado": d["estado"],
+            }
+            for d in documentos
+        ]
+    }
+
+
+@router.patch("/tributario/documentos/{doc_id}")
+async def actualizar_documento(
+    doc_id: int,
+    nuevo_estado: str = Body(..., embed=True, description="pendiente_revision | registrado | rechazado"),
+    _rol: str = Depends(get_role),
+):
+    """Cambiar el estado de un documento (marcar como registrado o rechazado)."""
+    async with config.db_pool.acquire() as conn:
+        resultado = await conn.fetchrow("""
+            UPDATE documentos_tributarios
+            SET estado = $1, updated_at = CURRENT_TIMESTAMP
+            WHERE id = $2
+            RETURNING id, estado, monto_iva
+        """, nuevo_estado, doc_id)
+
+        if not resultado:
+            return {"error": "Documento no encontrado", "doc_id": doc_id}
+
+    return {
+        "id": resultado["id"],
+        "estado": resultado["estado"],
+        "iva_procesado": float(resultado["monto_iva"]) if nuevo_estado == "registrado" else 0,
+    }

@@ -117,8 +117,30 @@ async def calcular_tributario_semanal(hasta: date) -> dict:
 
         ratio_gasto_ingreso = (gastos_ultimos_30 / ingresos_ultimos_30 * 100) if ingresos_ultimos_30 > 0 else 0
 
+        # Documentos pendientes de procesar
+        docs_pendientes = dict(await conn.fetchrow("""
+            SELECT
+                COUNT(*) AS cantidad,
+                COALESCE(SUM(monto_iva), 0) AS iva_potencial,
+                COALESCE(SUM(monto_total), 0) AS monto_total
+            FROM documentos_tributarios
+            WHERE estado = 'pendiente_revision'
+        """) or {})
+
+        iva_potencial = to_float(docs_pendientes.get("iva_potencial", 0))
+        n_docs_pendientes = int(docs_pendientes.get("cantidad", 0))
+
         # Recomendaciones
         recomendaciones = []
+
+        if n_docs_pendientes > 0:
+            recomendaciones.append({
+                "tipo": "alerta",
+                "prioridad": "alta",
+                "titulo": f"⚠️ {n_docs_pendientes} documentos pendientes",
+                "descripcion": f"Tienes {n_docs_pendientes} documentos sin procesar. Procesarlos recuperaría ${iva_potencial:,.0f} en crédito de IVA.",
+                "impacto": f"Recuperar ${iva_potencial:,.0f} en IVA crédito"
+            })
 
         if pct_afectos < 85:
             recomendaciones.append({
@@ -221,6 +243,10 @@ async def calcular_tributario_semanal(hasta: date) -> dict:
         "nivel_2_optimizacion": {
             "pct_ingresos_afectos": round(pct_afectos, 1),
             "ratio_gasto_ingreso_30d": round(ratio_gasto_ingreso, 1),
+            "documentos_pendientes": {
+                "cantidad": n_docs_pendientes,
+                "iva_potencial_recuperable": iva_potencial,
+            },
             "recomendaciones": recomendaciones,
         },
         "nivel_3_control": {
