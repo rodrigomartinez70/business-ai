@@ -55,29 +55,28 @@ SERVICIOS = [
 ]
 
 GASTOS_FIJOS = [
-    ("Personal",      "Personal",    800000),
-    ("Electricidad",  "Servicios",   120000),
-    ("Agua",          "Servicios",    45000),
-    ("Gas",           "Servicios",    35000),
-    ("Internet",      "Servicios",    25000),
+    ("Personal",            "Personal",    800000),
+    ("Electricidad",        "Servicios",   120000),
+    ("Agua",                "Servicios",    45000),
+    ("Gas",                 "Servicios",    35000),
+    ("Internet",            "Servicios",    25000),
+    ("Telefonía",           "Servicios",    35000),
+    ("Televisión por cable","Servicios",    22000),
+    ("Seguridad y alarmas", "Servicios",   160000),
 ]
 
 GASTOS_VARIABLES = [
-    ("Suministros limpieza",  "Suministros",    80000, 120000),
-    ("Mantenimiento general", "Mantenimiento",  50000, 200000),
-    ("Amenities",             "Suministros",    40000,  80000),
+    ("Suministros limpieza",          "Suministros",    80000, 120000),
+    ("Mantenimiento general",         "Mantenimiento",  50000, 200000),
+    ("Mantenimiento aire acond. (A/C)","Mantenimiento", 60000, 150000),
+    ("Amenities",                     "Suministros",    40000,  80000),
+    ("Lavandería",                    "Servicios",      60000, 130000),
+    ("Artículos de aseo",             "Suministros",    30000,  90000),
+    ("Gastos generales",              "Administración",  20000,  70000),
 ]
 
-# Proveedores de compra para documentos tributarios (facturas/boletas de compra)
-PROVEEDORES_COMPRA = [
-    ("Distribuidora de Alimentos SpA", "Suministros"),
-    ("Comercial de Bebidas Ltda",      "Suministros"),
-    ("Lavandería Industrial",          "Servicios"),
-    ("Mantención y Repuestos",         "Mantenimiento"),
-    ("Insumos de Aseo",                "Suministros"),
-    ("Imprenta y Marketing",           "Marketing"),
-    ("Ferretería Central",             "Mantenimiento"),
-]
+# Categorías de gasto NO afectas a IVA (no generan crédito): remuneraciones.
+NO_AFECTO_IVA = {"Personal"}
 
 # Cargos bancarios que no tienen respaldo en los libros (excepciones típicas)
 CARGOS_BANCARIOS = [
@@ -389,7 +388,8 @@ async def generar_contable(conn, desde: date, hasta: date):
     """
     await conn.execute("SET search_path = hotel_mbi, public")
 
-    # ── A) Documentos tributarios (mensual, como los gastos) ────────────────
+    # ── A) Documentos tributarios = facturas de compra que respaldan los
+    #       gastos AFECTOS a IVA del mes (coherentes con el crédito). ─────────
     meses: set[tuple] = set()
     d = desde
     while d <= hasta:
@@ -406,22 +406,26 @@ async def generar_contable(conn, desde: date, hasta: date):
         )
         if existe:
             continue
-        for _ in range(random.randint(6, 12)):
-            prov, cat = random.choice(PROVEEDORES_COMPRA)
-            neto   = redondear_tarifa(random.randint(40_000, 600_000))
-            iva    = round(neto * 0.19)
-            total  = neto + iva
-            tipo   = random.choice(["factura", "factura", "factura", "boleta"])
+        gastos_afectos = await conn.fetch("""
+            SELECT g.fecha, g.monto, g.proveedor, cg.nombre AS categoria
+            FROM gastos g LEFT JOIN categorias_gasto cg ON cg.id = g.categoria_id
+            WHERE EXTRACT(YEAR FROM g.fecha)=$1 AND EXTRACT(MONTH FROM g.fecha)=$2
+              AND COALESCE(cg.nombre, '') <> ALL($3::text[])
+        """, año, mes, list(NO_AFECTO_IVA))
+        for g in gastos_afectos:
+            neto  = float(g["monto"])                 # gasto tratado como neto
+            iva   = round(neto * 0.19)
+            tipo  = "boleta" if neto < 30000 else "factura"
             # La mayoría ya contabilizadas; algunas quedan por revisar.
-            estado = "registrado" if random.random() < 0.80 else "pendiente_revision"
+            estado = "registrado" if random.random() < 0.85 else "pendiente_revision"
             await conn.execute(
                 "INSERT INTO documentos_tributarios "
                 "(fecha, tipo, numero_documento, proveedor, monto_neto, monto_iva, "
                 " monto_total, estado, categoria_gasto) "
                 "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)",
-                date(año, mes, random.randint(1, 28)), tipo,
-                f"{tipo[0].upper()}-{random.randint(1000, 9999)}",
-                prov, neto, iva, total, estado, cat,
+                g["fecha"], tipo, f"{tipo[0].upper()}-{random.randint(1000, 9999)}",
+                g["proveedor"] or g["categoria"], neto, iva, neto + iva,
+                estado, g["categoria"],
             )
             docs_n += 1
     print(f"  Documentos tributarios: {docs_n}")

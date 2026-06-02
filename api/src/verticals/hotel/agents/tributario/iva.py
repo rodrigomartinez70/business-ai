@@ -49,7 +49,11 @@ async def calcular_iva(conn, hasta: date, uf: float | None = None) -> dict:
                   WHERE fecha BETWEEN $1 AND $2) AS total
         ),
         gastos_mes AS (
-            SELECT COALESCE(SUM(monto), 0) AS total FROM gastos WHERE fecha BETWEEN $1 AND $2
+            -- Estimación de crédito: excluye remuneraciones (Personal), que no
+            -- tienen IVA. Solo aplica como respaldo si no hay documentos registrados.
+            SELECT COALESCE(SUM(g.monto), 0) AS total
+            FROM gastos g LEFT JOIN categorias_gasto cg ON cg.id = g.categoria_id
+            WHERE g.fecha BETWEEN $1 AND $2 AND COALESCE(cg.nombre, '') <> 'Personal'
         )
         SELECT
             ROUND((SELECT total FROM ingresos_mes) * 0.19, 2) AS iva_debito,
