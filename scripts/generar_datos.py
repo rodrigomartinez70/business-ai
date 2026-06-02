@@ -68,6 +68,17 @@ GASTOS_VARIABLES = [
     ("Amenities",             "Suministros",    40000,  80000),
 ]
 
+# Proveedores de compra para documentos tributarios (facturas/boletas de compra)
+PROVEEDORES_COMPRA = [
+    ("Distribuidora de Alimentos SpA", "Suministros"),
+    ("Comercial de Bebidas Ltda",      "Suministros"),
+    ("Lavandería Industrial",          "Servicios"),
+    ("Mantención y Repuestos",         "Mantenimiento"),
+    ("Insumos de Aseo",                "Suministros"),
+    ("Imprenta y Marketing",           "Marketing"),
+    ("Ferretería Central",             "Mantenimiento"),
+]
+
 NOMBRES = [
     ("Carlos",    "García"),    ("María",     "López"),
     ("Juan",      "Martínez"),  ("Ana",       "González"),
@@ -340,6 +351,100 @@ async def generar_periodo(conn, desde: date, hasta: date):
     print(f"  Gastos generados:    {gastos_n}")
 
 
+# ── Datos contables: documentos tributarios + cartola bancaria ────────────────
+
+async def generar_contable(conn, desde: date, hasta: date):
+    """
+    Genera datos contables para que los agentes Tributario y Conciliación
+    sigan teniendo información:
+      - documentos_tributarios: facturas/boletas de compra (mensual).
+      - movimientos_bancarios:  cartola espejo de pagos (abonos) y gastos
+        (cargos), con algunas comisiones sin respaldo para que la conciliación
+        no sea trivialmente 100%.
+    """
+    await conn.execute("SET search_path = hotel_mbi, public")
+
+    # ── A) Documentos tributarios (mensual, como los gastos) ────────────────
+    meses: set[tuple] = set()
+    d = desde
+    while d <= hasta:
+        meses.add((d.year, d.month))
+        d += timedelta(days=32)
+        d = d.replace(day=1)
+
+    docs_n = 0
+    for año, mes in sorted(meses):
+        existe = await conn.fetchval(
+            "SELECT COUNT(*) FROM documentos_tributarios "
+            "WHERE EXTRACT(YEAR FROM fecha)=$1 AND EXTRACT(MONTH FROM fecha)=$2",
+            año, mes,
+        )
+        if existe:
+            continue
+        for _ in range(random.randint(6, 12)):
+            prov, cat = random.choice(PROVEEDORES_COMPRA)
+            neto   = redondear_tarifa(random.randint(40_000, 600_000))
+            iva    = round(neto * 0.19)
+            total  = neto + iva
+            tipo   = random.choice(["factura", "factura", "factura", "boleta"])
+            # La mayoría ya contabilizadas; algunas quedan por revisar.
+            estado = "registrado" if random.random() < 0.80 else "pendiente_revision"
+            await conn.execute(
+                "INSERT INTO documentos_tributarios "
+                "(fecha, tipo, numero_documento, proveedor, monto_neto, monto_iva, "
+                " monto_total, estado, categoria_gasto) "
+                "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)",
+                date(año, mes, random.randint(1, 28)), tipo,
+                f"{tipo[0].upper()}-{random.randint(1000, 9999)}",
+                prov, neto, iva, total, estado, cat,
+            )
+            docs_n += 1
+    print(f"  Documentos tributarios: {docs_n}")
+
+    # ── B) Movimientos bancarios (cartola espejo) ───────────────────────────
+    existe_mov = await conn.fetchval(
+        "SELECT COUNT(*) FROM movimientos_bancarios WHERE fecha BETWEEN $1 AND $2",
+        desde, hasta,
+    )
+    mov_n = 0
+    if not existe_mov:
+        pagos = await conn.fetch(
+            "SELECT fecha, monto FROM pagos WHERE fecha BETWEEN $1 AND $2", desde, hasta)
+        for p in pagos:
+            if random.random() < 0.92:   # ~8% sin movimiento → excepción de libro
+                await conn.execute(
+                    "INSERT INTO movimientos_bancarios (fecha, glosa, monto, referencia) "
+                    "VALUES ($1,$2,$3,$4)",
+                    p["fecha"],
+                    random.choice(["Abono Transbank", "Transferencia recibida", "Abono Webpay"]),
+                    float(p["monto"]), f"AB-{random.randint(10000, 99999)}",
+                )
+                mov_n += 1
+
+        gastos = await conn.fetch(
+            "SELECT fecha, monto FROM gastos WHERE fecha BETWEEN $1 AND $2", desde, hasta)
+        for g in gastos:
+            if random.random() < 0.92:
+                await conn.execute(
+                    "INSERT INTO movimientos_bancarios (fecha, glosa, monto, referencia) "
+                    "VALUES ($1,$2,$3,$4)",
+                    g["fecha"], "Pago proveedor/servicio",
+                    -float(g["monto"]), f"PG-{random.randint(10000, 99999)}",
+                )
+                mov_n += 1
+
+        # Comisión bancaria sin respaldo (excepción típica de conciliación)
+        if (hasta - desde).days >= 20 or random.random() < 0.4:
+            await conn.execute(
+                "INSERT INTO movimientos_bancarios (fecha, glosa, monto, referencia) "
+                "VALUES ($1,$2,$3,$4)",
+                hasta, "Comision mantencion cuenta",
+                -float(random.choice([8990, 9990, 12500])), f"COM-{random.randint(100, 999)}",
+            )
+            mov_n += 1
+    print(f"  Movimientos bancarios:  {mov_n}")
+
+
 # ── Actualización de estados para cron diario ─────────────────────────────────
 
 async def actualizar_estados(conn, ayer: date):
@@ -382,6 +487,7 @@ async def main():
     try:
         print(f"\nGenerando datos: {desde} → {hasta}")
         await generar_periodo(conn, desde, hasta)
+        await generar_contable(conn, desde, hasta)
         if args.ayer:
             await actualizar_estados(conn, desde)
         print("\n✓ Completado\n")
