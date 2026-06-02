@@ -124,11 +124,34 @@ Esas excepciones (~10%) son justo lo que un contador revisa a mano.
 
 ---
 
-## 6. Relación con el F29 exacto
+## 6. El F29 (modelo completo)
 
-El Agente IVA calcula el **F29** usando como crédito las facturas con estado
-`registrado` en `documentos_tributarios`. Para que el F29 sea exacto (y no la
-estimación `gastos × 19%`), marca los documentos como registrados:
+El F29 **no es solo IVA débito − crédito**. El Agente IVA/F29 modela los
+principales componentes:
+
+```
+  IVA débito (ventas afectas × 19%)
+− IVA crédito (compras con IVA)
+− Remanente de crédito del mes anterior
+─────────────────────────────────────
+= IVA a pagar
++ PPM  (pago provisional mensual = ingresos × tasa)
++ Retención de honorarios (boletas de terceros × 13,75%)
+─────────────────────────────────────
+= TOTAL F29 a pagar
+```
+
+Campos en `agente_iva.f29`: `iva_debito`, `iva_credito`, `remanente_anterior`,
+`iva_a_pagar`, `remanente_siguiente`, `ppm`, `ppm_tasa_pct`,
+`retencion_honorarios`, `total_a_pagar`, `vencimiento`, `dias_para_vencimiento`.
+
+**Crédito de IVA** — fuente en `acumulado_mes.iva_credito_fuente`:
+
+- **`documentos`**: IVA de las facturas `registrado` del mes (exacto, recomendado).
+- **`estimado`** (fallback): `gastos × 19%`, **excluyendo Personal y Honorarios**
+  (no llevan IVA), para no sobreestimar.
+
+Para que el crédito sea exacto, marca las facturas como registradas:
 
 ```bash
 curl -X PATCH "https://api.majorbi.com/api/agents/tributario/documentos/<ID>" \
@@ -136,16 +159,18 @@ curl -X PATCH "https://api.majorbi.com/api/agents/tributario/documentos/<ID>" \
   -d '{"nuevo_estado": "registrado"}'
 ```
 
-El reporte indica la fuente del crédito en `iva_credito_fuente`:
-
-- **`documentos`**: crédito = IVA de las facturas con estado `registrado` del mes
-  (cálculo exacto, recomendado).
-- **`estimado`** (fallback si no hay facturas registradas): `gastos × 19%`,
-  **excluyendo Personal/remuneraciones** (no llevan IVA), para no sobreestimar.
+**Ejemplo real (mayo 2026):** débito $5.024.512 − crédito $151.620 − remanente $0
+= IVA a pagar $4.872.892; + PPM $66.112 + retención honorarios $34.375
+= **TOTAL F29 $4.973.379** (vence 2026-06-20).
 
 > Importante: el IVA débito (ventas) suele ser bastante mayor que el crédito
 > (compras) en un hotel, porque el mayor costo —las remuneraciones— no genera
 > crédito de IVA. Un saldo de IVA a pagar mes a mes es lo normal.
+
+**Parámetros / límites:** `PPM_TASA` (0,25%) y `RETENCION_HONORARIOS` (13,75%)
+son constantes en `agents/tributario/_common.py`. El PPM real depende del
+régimen y la tasa recalculada anual; el remanente se calcula iterando los meses
+del año en curso (sin reajuste IPC/UTM). No reemplaza al contador.
 
 ---
 
