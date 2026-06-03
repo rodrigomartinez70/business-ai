@@ -179,6 +179,7 @@ async def _insertar_keys(conn: asyncpg.Connection, args: argparse.Namespace) -> 
         "gerente":        getattr(args, "api_key_gerente",        None),
         "administracion": getattr(args, "api_key_administracion", None),
         "recepcion":      getattr(args, "api_key_recepcion",      None),
+        "cajero":         getattr(args, "api_key_cajero",         None),
     }
     for rol, api_key in key_map.items():
         if not api_key:
@@ -373,7 +374,8 @@ def main() -> None:
                         help="Solo inserta API keys, sin crear schema ni tablas")
     parser.add_argument("--api-key-gerente",        default=None)
     parser.add_argument("--api-key-administracion", default=None)
-    parser.add_argument("--api-key-recepcion",      default=None)
+    parser.add_argument("--api-key-recepcion",      default=None, help="rol recepción (hotel)")
+    parser.add_argument("--api-key-cajero",         default=None, help="rol cajero (restaurante)")
 
     # Open WebUI
     parser.add_argument("--dominio",      default=None,
