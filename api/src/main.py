@@ -83,6 +83,15 @@ async def lifespan(app: FastAPI):
 
     _warn_placeholders(config.CONFIG)
 
+    # Validar el contrato de cada vertical registrado (no fatal: solo log).
+    from .verticals import registry
+    for _v in registry.VERTICALS:
+        try:
+            registry.cargar(_v)
+            logger.info(f"Vertical '{_v}' cumple el contrato.")
+        except Exception as e:
+            logger.error(f"Vertical '{_v}' NO cumple el contrato: {e}")
+
     raw_ingest_pool = None
     if config.INGEST_DATABASE_URL:
         raw_ingest_pool = await asyncpg.create_pool(

@@ -1,14 +1,15 @@
 """
-Dispatch por vertical — resuelve el módulo correcto según el tenant activo.
+Dispatch por vertical — resuelve el módulo correcto según el tenant activo,
+respaldado por el contrato de vertical (registry.py).
 
-Las features cross-cutting (dashboard semanal, copiloto tributario, conciliación,
-conversacional) existen por vertical en src/verticals/<vertical>/. Este módulo
-devuelve el módulo del vertical del tenant en curso, con 'hotel' como default.
+Las features cross-cutting (dashboard semanal, copiloto tributario, conversacional)
+existen por vertical; la conciliación es horizontal (sin diferenciador).
 """
 
 import importlib
 
 from ..tenant import get_tenant_or_none
+from . import registry
 
 
 def _vertical() -> str:
@@ -17,17 +18,17 @@ def _vertical() -> str:
 
 
 def dashboard():
-    return importlib.import_module(f"src.verticals.{_vertical()}.dashboard")
+    return registry.cargar(_vertical()).dashboard
 
 
 def tributario():
-    return importlib.import_module(f"src.verticals.{_vertical()}.agents.tributario")
+    return registry.cargar(_vertical()).tributario
+
+
+def conversacional():
+    return registry.cargar(_vertical()).conversacional
 
 
 def conciliacion():
     # Conciliación es horizontal (no tiene diferenciador por vertical).
     return importlib.import_module("src.finanzas.conciliacion")
-
-
-def conversacional():
-    return importlib.import_module(f"src.verticals.{_vertical()}.agents.tributario.conversacional")
