@@ -62,8 +62,8 @@ async def test_dashboard_json(client, gerente_headers):
                   "rent", "revenue", "gastos", "gastos_analitico", "cierre", "ipc"):
         assert campo in data
     assert "inicio" in data["semana"] and "fin" in data["semana"]
-    # P&L YTD: el período empieza el 1 de enero
-    assert data["pnl"]["periodo"]["inicio"].endswith("-01-01")
+    # P&L YTD comparativo: el período actual empieza el 1 de enero
+    assert data["pnl"]["periodo"]["actual"]["inicio"].endswith("-01-01")
 
 
 @pytest.mark.asyncio
@@ -153,7 +153,7 @@ async def test_dashboard_requiere_auth(client):
 # ── unitario: detección de problemas ──────────────────────────────────────────
 
 def test_detectar_problemas_ordena_criticos_primero():
-    pnl    = {"actual": {"resultado": {"estado": "negativo"}}}
+    pnl    = {"resumen": {"resultado_neto": -100}}
     cash   = {"semaforo": "alerta", "resumen": {}}
     gastos = {"alertas": []}
     rent   = {"totales": {"tasa_cancel_pct": 5}}
@@ -167,7 +167,7 @@ def test_detectar_problemas_ordena_criticos_primero():
 
 
 def test_detectar_problemas_sin_problemas():
-    pnl    = {"actual": {"resultado": {"estado": "positivo"}}}
+    pnl    = {"resumen": {"resultado_neto": 100}}
     cash   = {"semaforo": "ok", "resumen": {}}
     gastos = {"alertas": []}
     rent   = {"totales": {"tasa_cancel_pct": 5}}

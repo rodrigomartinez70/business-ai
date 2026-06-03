@@ -27,7 +27,8 @@ from src.finanzas.control_gastos import calcular_control_gastos, calcular_gastos
 from .agents.tributario import calcular_tributario_semanal
 from src.finanzas.conciliacion import calcular_conciliacion
 from ...agents.insights import generar_insights
-from .agents.pnl_mensual import calcular_pnl_ytd
+from .agents.pnl_mensual import calcular_pnl
+from src.finanzas.pnl import renderizar_pnl_html
 from .agents.rentabilidad_canal import calcular_rentabilidad_canal
 from .agents.revenue_management import calcular_revenue_management
 
@@ -49,7 +50,7 @@ async def calcular_dashboard() -> dict:
     hoy           = date.today()
     desde, corte  = _semana_cerrada(hoy)
 
-    pnl     = await calcular_pnl_ytd(corte)
+    pnl     = await calcular_pnl(corte)
     rent    = await calcular_rentabilidad_canal(corte.year, corte.month, hasta=corte)
     cierre  = await calcular_cierre_semanal(desde, corte)
     revenue = await calcular_revenue_management()
@@ -103,10 +104,10 @@ def _detectar_problemas(pnl, cash, gastos, rent, cierre) -> list[dict]:
         problemas.append({"nivel": "alerta", "origen": "Cash Flow",
                           "texto": "Liquidez ajustada: la cobertura mínima cae por debajo del umbral."})
 
-    # P&L YTD: GOP negativo
-    if pnl["actual"]["resultado"]["estado"] == "negativo":
+    # P&L YTD: resultado neto negativo
+    if pnl["resumen"]["resultado_neto"] < 0:
         problemas.append({"nivel": "critico", "origen": "P&L YTD",
-                          "texto": "El resultado operativo (GOP) acumulado del año es negativo."})
+                          "texto": "El resultado neto acumulado del año es negativo."})
 
     # Cierre de la semana: resultado negativo
     if cierre["totales"]["gop_estado"] == "negativo":
@@ -153,22 +154,9 @@ def _sec_atencion(problemas: list[dict]) -> str:
 
 
 def _sec_pnl(pnl: dict, insights: list[str], cfg) -> str:
-    a   = pnl["actual"]
-    c   = pnl["comparativas"]
-    res = a["resultado"]
-    met = a["metricas"]
-    ing = a["ingresos"]
-    rows = [
-        ("Ingresos netos (YTD)", _fm(ing.get("neto", ing["total"]), cfg)),
-        ("Comisiones OTA",       _fm(ing.get("comisiones_ota", 0), cfg)),
-        ("Gastos operativos",    _fm(a["gastos"]["total"], cfg)),
-        (f"GOP — {'✅' if res['estado']=='positivo' else '🔴'} {res['estado']}",
-         f"{_fm(res['gop'], cfg)} ({res['margen_pct'] or 0:.1f}%)"),
-        ("GOP vs año anterior",  var_txt(c["gop"]["vs_año_anterior"])),
-        ("Ocupación",            f"{met['ocupacion_pct'] or 0:.1f}%"),
-        ("RevPAR",               _fm(met['revpar'] or 0, cfg)),
-    ]
-    return _card(f"📑 P&L — {pnl['mes_nombre']}", _kpis(rows) + _insights_block(insights))
+    tabla = renderizar_pnl_html(pnl, cfg)
+    return _card("📑 P&L — Estado de Resultados (comparativo YTD)",
+                 tabla + _insights_block(insights))
 
 
 def _sec_cash(cash: dict, cfg) -> str:

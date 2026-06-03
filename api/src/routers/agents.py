@@ -16,10 +16,6 @@ from ..finanzas.control_gastos import (
     calcular_control_gastos,
     renderizar_control_gastos_markdown,
 )
-from ..verticals.hotel.agents.pnl_mensual import (
-    calcular_pnl,
-    renderizar_pnl_markdown,
-)
 from ..verticals.hotel.agents.rentabilidad_canal import (
     calcular_rentabilidad_canal,
     renderizar_rentabilidad_canal_markdown,
@@ -130,34 +126,28 @@ async def agente_control_gastos(
     return data
 
 
-@router.get("/pnl-mensual")
-async def agente_pnl_mensual(
-    mes:    int = Query(0,  ge=0, le=12, description="Mes (1-12). 0 = mes anterior."),
-    anio:   int = Query(0,  ge=0,        description="Año. 0 = año actual."),
-    formato: str = Query("json",         description="json | markdown"),
-    _rol:   str = Depends(get_role),
+@router.get("/pnl")
+async def agente_pnl(
+    fecha:   Optional[date] = Query(None, description="Corte YTD (default: hoy)"),
+    formato: str            = Query("json", description="json | markdown"),
+    _rol:    str            = Depends(get_role),
 ):
     """
-    Agente de P&L Mensual.
+    P&L — Estado de Resultados comparativo.
 
-    Estado de resultados completo con comparativa contra mes anterior y
-    mismo mes del año pasado. Incluye ocupación, ADR y RevPAR.
+    Año actual YTD (1-ene → corte) vs año anterior en el mismo rango, con
+    variación absoluta y porcentual. Estructura financiera estándar, genérica
+    por vertical (los ingresos/costo de ventas los aporta cada rubro).
 
-    - **json**: estructura completa con los tres períodos
-    - **markdown**: informe P&L listo para contabilidad
+    - **json**: estructura completa (líneas + resumen).
+    - **markdown**: informe P&L listo para contabilidad.
     """
-    hoy = date.today()
-    if anio == 0:
-        anio = hoy.year
-    if mes == 0:
-        año_cal, mes_cal = (anio - 1, 12) if hoy.month == 1 else (anio, hoy.month - 1)
-    else:
-        año_cal, mes_cal = anio, mes
-
-    data = await calcular_pnl(año_cal, mes_cal)
+    corte = fecha or date.today()
+    mod   = dispatch.pnl()
+    data  = await mod.calcular_pnl(corte)
 
     if formato == "markdown":
-        md = renderizar_pnl_markdown(data, config.get_config())
+        md = mod.renderizar_pnl_markdown(data, config.get_config())
         return PlainTextResponse(content=md, media_type="text/markdown; charset=utf-8")
 
     return data

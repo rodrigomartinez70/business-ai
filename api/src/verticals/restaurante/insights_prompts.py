@@ -68,20 +68,19 @@ def resumir_ventas(data: dict) -> str:
 
 
 def resumir_pnl(data: dict) -> str:
-    a   = data.get("actual", {})
-    c   = data.get("comparativas", {})
-    met = data.get("metricas", {})
-    var_ing = c.get("ingresos", {}).get("vs_mes_anterior")
-    var_res = c.get("resultado", {}).get("vs_mes_anterior")
-    ing_txt = f"{var_ing:+.1f}%" if var_ing is not None else "sin dato"
-    res_txt = f"{var_res:+.1f}%" if var_res is not None else "sin dato"
+    r = data.get("resumen", {})
+    vi = r.get("var_ingresos_pct")
+    vr = r.get("var_resultado_pct")
+    vi_txt = f"{vi:+.1f}%" if vi is not None else "sin dato"
+    vr_txt = f"{vr:+.1f}%" if vr is not None else "sin dato"
+    food_cost = 100 - r.get("margen_bruto_pct", 0)
+    estado = "positivo" if r.get("resultado_neto", 0) >= 0 else "negativo"
     return (
-        f"Mes: {data.get('mes_nombre', '')} ({'parcial' if data.get('parcial') else 'completo'})\n"
-        f"Resultado: {a.get('resultado', 0):,.0f} (margen {a.get('margen_pct', 0):.1f}%)\n"
-        f"Ingresos vs mes anterior: {ing_txt}\n"
-        f"Resultado vs mes anterior: {res_txt}\n"
-        f"Food cost: {met.get('food_cost_pct', 0):.1f}%\n"
-        f"Ticket promedio: {met.get('ticket_promedio', 0):,.0f}"
+        "P&L comparativo YTD (año actual vs año anterior):\n"
+        f"Resultado neto: {estado}\n"
+        f"Margen bruto: {r.get('margen_bruto_pct', 0):.1f}% (food cost {food_cost:.1f}%)\n"
+        f"Ingresos netos vs año anterior: {vi_txt}\n"
+        f"Resultado neto vs año anterior: {vr_txt}"
     )
 
 

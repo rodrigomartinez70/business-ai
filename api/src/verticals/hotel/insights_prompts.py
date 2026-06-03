@@ -110,26 +110,18 @@ def resumir_control_gastos(data: dict) -> str:
 
 
 def resumir_pnl(data: dict) -> str:
-    a   = data["actual"]
-    c   = data["comparativas"]
-    res = a["resultado"]
-    met = a["metricas"]
-    var_ing = c["ingresos_total"].get("vs_mes_anterior")
-    var_gop = c["gop"].get("vs_mes_anterior")
-    var_ocu = c["ocupacion"].get("vs_mes_anterior")
-    var_aa  = c["gop"].get("vs_año_anterior")
-    ing_txt = f"{var_ing:+.1f}%" if var_ing is not None else "sin dato"
-    gop_txt = f"{var_gop:+.1f}%" if var_gop is not None else "sin dato"
-    aa_txt  = f"{var_aa:+.1f}%" if var_aa is not None else "sin dato"
-    ocu_txt = "mejora" if var_ocu and var_ocu > 0 else "cae" if var_ocu and var_ocu < 0 else "estable"
+    r = data.get("resumen", {})
+    vi = r.get("var_ingresos_pct")
+    vr = r.get("var_resultado_pct")
+    vi_txt = f"{vi:+.1f}%" if vi is not None else "sin dato"
+    vr_txt = f"{vr:+.1f}%" if vr is not None else "sin dato"
+    estado = "positivo" if r.get("resultado_neto", 0) >= 0 else "negativo"
     return (
-        f"Mes: {data['mes_nombre']} ({'parcial' if data['parcial'] else 'completo'})\n"
-        f"Estado GOP: {res['estado']}, margen: {res['margen_pct'] or 0:.1f}%\n"
-        f"Ingresos vs mes anterior: {ing_txt}\n"
-        f"GOP vs mes anterior: {gop_txt}\n"
-        f"GOP vs año anterior: {aa_txt}\n"
-        f"Ocupación: {met['ocupacion_pct'] or 0:.1f}% ({ocu_txt} vs mes ant)\n"
-        f"RevPAR: {met['revpar'] or 0:.0f}"
+        "P&L comparativo YTD (año actual vs año anterior):\n"
+        f"Resultado neto: {estado}\n"
+        f"Margen bruto: {r.get('margen_bruto_pct', 0):.1f}%\n"
+        f"Ingresos netos vs año anterior: {vi_txt}\n"
+        f"Resultado neto vs año anterior: {vr_txt}"
     )
 
 

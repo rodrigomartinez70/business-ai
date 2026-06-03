@@ -18,6 +18,7 @@ from src.finanzas.control_gastos import calcular_control_gastos
 from src.finanzas.conciliacion import calcular_conciliacion
 from .agents.ventas import calcular_ventas
 from .agents.pnl_mensual import calcular_pnl
+from src.finanzas.pnl import renderizar_pnl_html
 from .agents.cash_flow import calcular_cash_flow
 from .agents.cierre_diario import calcular_cierre_semanal
 from .agents.tributario import calcular_tributario_semanal
@@ -103,15 +104,8 @@ def _sec_ventas(v: dict, cfg, insights) -> str:
 
 
 def _sec_pnl(p: dict, cfg, insights) -> str:
-    a = p["actual"]; m = p["metricas"]
-    rows = [
-        (f"Ingresos ({p['mes_nombre']})", _fm(a["ingresos"], cfg)),
-        ("Costo de productos (food cost)", f"{_fm(a['costo_productos'], cfg)} ({m['food_cost_pct']:.0f}%)"),
-        ("Gastos operativos", _fm(a["gastos_operativos"], cfg)),
-        (f"Resultado {'✅' if a['resultado'] >= 0 else '🔴'}", f"{_fm(a['resultado'], cfg)} ({a['margen_pct']:.0f}%)"),
-        ("Ticket promedio", _fm(m["ticket_promedio"], cfg)),
-    ]
-    return _card("📑 P&L mensual", _kpis(rows) + _ins(insights))
+    return _card("📑 P&L — Estado de Resultados (comparativo YTD)",
+                 renderizar_pnl_html(p, cfg) + _ins(insights))
 
 
 def _sec_cash(c: dict, cfg) -> str:

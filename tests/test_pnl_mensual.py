@@ -1,94 +1,57 @@
 """
-Tests del agente de P&L Mensual.
+Tests del P&L comparativo (Estado de Resultados YTD, año actual vs año anterior).
 """
 
 import pytest
 
 
 @pytest.mark.asyncio
-async def test_pnl_estructura_json(client, gerente_headers):
-    resp = await client.get("/api/agents/pnl-mensual?mes=4&anio=2026", headers=gerente_headers)
+async def test_pnl_estructura(client, gerente_headers):
+    resp = await client.get("/api/agents/pnl?fecha=2026-04-30", headers=gerente_headers)
     assert resp.status_code == 200
     data = resp.json()
-    for campo in ("mes", "año", "mes_nombre", "parcial", "dias_comparados",
-                  "actual", "anterior", "año_pasado", "comparativas"):
-        assert campo in data
+    assert "periodo" in data and "lineas" in data and "resumen" in data
+    assert "actual" in data["periodo"] and "anterior" in data["periodo"]
 
 
 @pytest.mark.asyncio
-async def test_pnl_periodos_comparables(client, gerente_headers):
-    """Los tres períodos siempre deben tener el mismo número de días."""
-    data = (await client.get("/api/agents/pnl-mensual?mes=4&anio=2026", headers=gerente_headers)).json()
-    dias = data["dias_comparados"]
-    assert dias > 0
-    assert data["actual"]["periodo"]["dias"]    == dias
-    assert data["anterior"]["periodo"]["dias"]  == dias
-    assert data["año_pasado"]["periodo"]["dias"] == dias
-
-    # Los tres empiezan el día 1 de su respectivo mes
-    assert data["actual"]["periodo"]["inicio"].endswith("-01")
-    assert data["anterior"]["periodo"]["inicio"].endswith("-01")
-    assert data["año_pasado"]["periodo"]["inicio"].endswith("-01")
+async def test_pnl_periodos_ytd(client, gerente_headers):
+    p = (await client.get("/api/agents/pnl?fecha=2026-04-30", headers=gerente_headers)).json()["periodo"]
+    assert p["actual"]["inicio"] == "2026-01-01"
+    assert p["actual"]["fin"] == "2026-04-30"
+    assert p["anterior"]["inicio"] == "2025-01-01"
+    assert p["anterior"]["fin"] == "2025-04-30"
 
 
 @pytest.mark.asyncio
-async def test_pnl_ingresos_numericos(client, gerente_headers):
-    ing = (await client.get("/api/agents/pnl-mensual?mes=4&anio=2026", headers=gerente_headers)).json()["actual"]["ingresos"]
-    for campo in ("hospedaje", "frigobar", "servicios", "total", "cobros_caja"):
-        assert isinstance(ing[campo], (int, float))
-        assert ing[campo] >= 0
-    assert abs(ing["total"] - (ing["hospedaje"] + ing["frigobar"] + ing["servicios"])) < 0.01
+async def test_pnl_lineas_y_variacion(client, gerente_headers):
+    lineas = (await client.get("/api/agents/pnl?fecha=2026-04-30", headers=gerente_headers)).json()["lineas"]
+    conceptos = [l["concepto"] for l in lineas]
+    assert "= Ingresos Netos por Ventas" in conceptos
+    assert "= Margen Bruto" in conceptos
+    assert "= EBITDA" in conceptos
+    assert "= Resultado Neto" in conceptos
+    for l in lineas:
+        assert l["var_abs"] == pytest.approx(l["actual"] - l["anterior"], abs=1.0)
+        assert "tipo" in l
 
 
 @pytest.mark.asyncio
-async def test_pnl_resultado_gop(client, gerente_headers):
-    data = (await client.get("/api/agents/pnl-mensual?mes=4&anio=2026", headers=gerente_headers)).json()
-    res = data["actual"]["resultado"]
-    ing = data["actual"]["ingresos"]["total"]
-    gas = data["actual"]["gastos"]["total"]
-    assert abs(res["gop"] - (ing - gas)) < 0.01
-    assert res["estado"] in ("positivo", "negativo")
+async def test_pnl_resumen(client, gerente_headers):
+    r = (await client.get("/api/agents/pnl?fecha=2026-04-30", headers=gerente_headers)).json()["resumen"]
+    for k in ("ingresos_netos", "margen_bruto", "margen_bruto_pct", "ebitda", "resultado_neto"):
+        assert k in r
 
 
 @pytest.mark.asyncio
-async def test_pnl_metricas_rango(client, gerente_headers):
-    met = (await client.get("/api/agents/pnl-mensual?mes=4&anio=2026", headers=gerente_headers)).json()["actual"]["metricas"]
-    assert met["hab_activas"] > 0
-    assert met["cap_noches"]  > 0
-    if met["ocupacion_pct"] is not None:
-        assert 0 <= met["ocupacion_pct"] <= 100
-
-
-@pytest.mark.asyncio
-async def test_pnl_comparativas_estructura(client, gerente_headers):
-    comp = (await client.get("/api/agents/pnl-mensual?mes=4&anio=2026", headers=gerente_headers)).json()["comparativas"]
-    for key in ("ingresos_total", "gop", "ocupacion", "revpar"):
-        assert key in comp
-        assert "vs_mes_anterior" in comp[key]
-        assert "vs_año_anterior" in comp[key]
-
-
-@pytest.mark.asyncio
-async def test_pnl_default_mes_anterior(client, gerente_headers):
-    """Sin parámetros devuelve el mes anterior al actual."""
-    resp = await client.get("/api/agents/pnl-mensual", headers=gerente_headers)
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["mes"] in range(1, 13)
-    assert data["año"] >= 2025
-
-
-@pytest.mark.asyncio
-async def test_pnl_formato_markdown(client, gerente_headers):
-    resp = await client.get("/api/agents/pnl-mensual?mes=4&anio=2026&formato=markdown", headers=gerente_headers)
+async def test_pnl_markdown(client, gerente_headers):
+    resp = await client.get("/api/agents/pnl?fecha=2026-04-30&formato=markdown", headers=gerente_headers)
     assert resp.status_code == 200
     assert "text/markdown" in resp.headers["content-type"]
-    assert "P&L Mensual" in resp.text
-    assert "GOP" in resp.text
-    assert "RevPAR" in resp.text
+    assert "P&L comparativo" in resp.text
 
 
 @pytest.mark.asyncio
 async def test_pnl_requiere_auth(client):
-    resp = await client.get("/api/agents/pnl-mensual")
+    resp = await client.get("/api/agents/pnl")
     assert resp.status_code == 403

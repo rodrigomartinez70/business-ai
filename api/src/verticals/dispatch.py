@@ -29,6 +29,10 @@ def conversacional():
     return registry.cargar(_vertical()).conversacional
 
 
+def pnl():
+    return importlib.import_module(f"src.verticals.{_vertical()}.agents.pnl_mensual")
+
+
 def conciliacion():
     # Conciliación es horizontal (no tiene diferenciador por vertical).
     return importlib.import_module("src.finanzas.conciliacion")
