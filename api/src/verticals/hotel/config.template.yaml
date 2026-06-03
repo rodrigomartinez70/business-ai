@@ -1,0 +1,176 @@
+# ─────────────────────────────────────────────────────────────
+# Plantilla de configuración — vertical HOTEL
+# provision_tenant.py copia este archivo a api/tenants/<tenant_id>/config.yaml
+# y reemplaza business.name por el nombre del cliente.
+# ─────────────────────────────────────────────────────────────
+
+business:
+  name: "Hotel"                  # ← provision_tenant lo reemplaza por el nombre real
+  vertical: "hotel"
+  description: "Consultas sobre operaciones del negocio"
+  language: "es"
+  model_id: "asistente-ia"       # ID que expone el endpoint /api/v1/models
+
+# ─── Formato de moneda ───────────────────────────────────────
+currency:
+  symbol: "$"
+  thousands_separator: "."
+  decimal_separator: ","
+  decimal_places: 0
+
+# ─── Tributario (F29) ────────────────────────────────────────
+tributario:
+  ppm_tasa: 0.0025               # PPM: % sobre ingresos brutos (régimen del contribuyente)
+  iva_postergacion_meses: 0      # 0 = sin postergación; 1-2 = diferir el pago del IVA
+
+# ─── Roles y API keys ────────────────────────────────────────
+roles:
+  - name: gerente
+    env_key: API_KEY_GERENTE
+    default_key: ger_cambia_esto
+    excluded_tables: []
+
+  - name: administracion
+    env_key: API_KEY_ADMINISTRACION
+    default_key: adm_cambia_esto
+    excluded_tables: []
+
+  - name: recepcion
+    env_key: API_KEY_RECEPCION
+    default_key: rec_cambia_esto
+    excluded_tables:
+      - gastos
+      - categorias_gasto
+      - canales_venta
+
+# ─── Schema ──────────────────────────────────────────────────
+schema:
+  exclude_tables:
+    - audit_log
+
+  annotations:
+    habitaciones:
+      description: "Catálogo de habitaciones"
+      columns:
+        tipo: "Valores: 'Simple', 'Doble', 'Triple', 'Suite'"
+        tarifa_base: "Tarifa rack por noche en moneda local"
+
+    reservas:
+      columns:
+        estado: "Valores: 'confirmada', 'checkin', 'checkout', 'cancelada', 'no_show'"
+        noches: "Calculado automáticamente: fecha_salida - fecha_entrada"
+        total_hospedaje: "Calculado: noches * tarifa_noche"
+
+    canales_venta:
+      columns:
+        nombre: "Valores: 'Directo', 'Booking.com', 'Airbnb', 'Despegar', 'Agencia'"
+        comision_pct: "Porcentaje de comisión del canal"
+
+    consumos_frigobar:
+      columns:
+        total: "Calculado: cantidad * precio_unitario"
+        costo_total: "Calculado: cantidad * costo_unitario"
+        margen: "Calculado: cantidad * (precio_unitario - costo_unitario)"
+
+    consumos_servicios:
+      columns:
+        servicio: "Valores: 'Lavandería', 'Estacionamiento', 'Traslado'"
+        total: "Calculado: cantidad * precio_unitario"
+        costo_total: "Calculado: cantidad * costo_unitario"
+        margen: "Calculado: cantidad * (precio_unitario - costo_unitario)"
+
+# ─── KPIs del dominio ────────────────────────────────────────
+kpis:
+  - name: "Ocupación próximos 7 días"
+    description: "Porcentaje de habitaciones ocupadas o confirmadas en los próximos 7 días"
+    sql: "SELECT ROUND(COALESCE(SUM(LEAST(fecha_salida, CURRENT_DATE + 7) - GREATEST(fecha_entrada, CURRENT_DATE)), 0) * 100.0 / NULLIF((SELECT COUNT(*) FROM habitaciones WHERE activa = TRUE) * 7, 0), 1) FROM reservas WHERE estado IN ('confirmada', 'checkin') AND fecha_entrada < CURRENT_DATE + 7 AND fecha_salida > CURRENT_DATE"
+    unidad: "%"
+    umbral_warning_minimo: 50
+    umbral_critico_minimo: 35
+
+  - name: "Pickup últimos 7 días"
+    description: "Nuevas reservas confirmadas creadas en los últimos 7 días"
+    sql: "SELECT COUNT(*) FROM reservas WHERE created_at >= CURRENT_DATE - INTERVAL '7 days' AND estado NOT IN ('cancelada', 'no_show')"
+    unidad: "número"
+    umbral_warning_minimo: 10
+    umbral_critico_minimo: 5
+
+  - name: "Cancelaciones últimas 24h"
+    description: "Reservas con estado cancelada creadas en las últimas 24 horas"
+    sql: "SELECT COUNT(*) FROM reservas WHERE created_at >= NOW() - INTERVAL '24 hours' AND estado = 'cancelada'"
+    unidad: "número"
+    umbral_warning_maximo: 2
+    umbral_critico_maximo: 4
+
+# ─── Clasificación de columnas para el formateador ───────────
+money_columns:
+  - monto
+  - total
+  - venta
+  - ingreso
+  - gasto
+  - tarifa
+  - precio
+  - pago
+  - comision
+  - adr
+  - revpar
+  - gop
+  - revenue
+  - facturado
+  - hospedaje
+  - unitario
+  - rack
+  - honorario
+  - sueldo
+  - pagado
+  - margen
+  - ticket
+  - promedio
+  - valor
+  - variacion
+  - diferencia
+
+non_money_columns:
+  - habitacion
+  - cantidad
+  - numero
+  - _pct
+  - porcentaje
+  - dias
+  - noches
+  - año
+  - mes
+  - num
+  - registro
+  - count
+  - crecimiento
+  - pct_
+
+# ─── Keywords para calcular GOP en síntesis local ────────────
+income_keywords:
+  - ingreso
+  - hospedaje
+  - frigobar
+  - servicio
+  - total
+  - revenue
+  - monto
+
+expense_keywords:
+  - gasto
+  - costo
+  - egreso
+  - expense
+
+# ─── Aliases SQL sugeridos ───────────────────────────────────
+table_aliases:
+  habitaciones: h
+  reservas: r
+  huespedes: hu
+  pagos: p
+  gastos: g
+  canales_venta: c
+  consumos_frigobar: f
+  consumos_servicios: cs
+  categorias_gasto: cg

@@ -43,6 +43,7 @@ Lo que hace en modo completo:
     3. Otorga permisos a negocio_user y negocio_ingest
     4. Inserta en public.tenants
     5. Hashea e inserta las API keys en public.api_keys
+    6. Genera api/tenants/{tenant_id}/config.yaml desde la plantilla del vertical
 
   Open WebUI (si se pasa --dominio):
     6. Escribe caddy/tenants/{tenant_id}.caddy con el bloque del subdominio
@@ -90,6 +91,32 @@ def _schema_sql_path(vertical: str) -> Path:
     return _PROYECTO_DIR / "api" / "src" / "verticals" / vertical / "schema.sql"
 
 
+def _config_template_path(vertical: str) -> Path:
+    return _PROYECTO_DIR / "api" / "src" / "verticals" / vertical / "config.template.yaml"
+
+
+def _generar_config(args: argparse.Namespace) -> None:
+    """Genera api/tenants/<tenant_id>/config.yaml desde la plantilla del vertical."""
+    template = Path(args.config_template) if args.config_template else _config_template_path(args.vertical)
+    if not template.exists():
+        print(f"  ⚠️  Plantilla no encontrada ({template}); config NO generada. "
+              f"Crear manualmente /app/tenants/{args.tenant_id}/config.yaml.", file=sys.stderr)
+        return
+
+    with open(template) as f:
+        cfg = yaml.safe_load(f) or {}
+    cfg.setdefault("business", {})
+    if args.nombre:
+        cfg["business"]["name"] = args.nombre
+    cfg["business"]["vertical"] = args.vertical
+
+    dest = _PROYECTO_DIR / "api" / "tenants" / args.tenant_id / "config.yaml"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    with open(dest, "w") as f:
+        yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+    print(f"  ✓ Config generada: {dest}")
+
+
 async def _provision_completo(conn: asyncpg.Connection, args: argparse.Namespace) -> None:
     tenant_id = args.tenant_id
     vertical  = args.vertical
@@ -124,6 +151,8 @@ async def _provision_completo(conn: asyncpg.Connection, args: argparse.Namespace
     print(f"  ✓ Registrado en public.tenants.")
 
     await _insertar_keys(conn, args)
+
+    _generar_config(args)
 
 
 async def _grant_permisos(conn: asyncpg.Connection, tenant_id: str) -> None:
@@ -299,7 +328,7 @@ def provision_webui(args: argparse.Namespace) -> None:
 
     print(f"\n  ✅  Open WebUI listo en http://{dominio}")
     print(f"  ⚠️  DNS pendiente: apuntar {dominio} → IP del servidor")
-    print(f"  ⚠️  Config pendiente: crear /app/tenants/{tenant_id}/config.yaml")
+    print(f"  Config del tenant: api/tenants/{tenant_id}/config.yaml (generada).")
     print(f"  Después: docker compose restart api  (recarga el registry)")
 
 
@@ -338,6 +367,7 @@ def main() -> None:
     parser.add_argument("--nombre",       default="",     help="Nombre visible del negocio")
     parser.add_argument("--vertical",     default="hotel", help="Vertical del negocio (default: hotel)")
     parser.add_argument("--config-path",  default=None,   help="Ruta al config.yaml dentro del container")
+    parser.add_argument("--config-template", default=None, help="Plantilla de config (default: verticals/<vertical>/config.template.yaml)")
     parser.add_argument("--db-url",       default=None,   help="DATABASE_URL (default: var de entorno)")
     parser.add_argument("--insert-keys-only", action="store_true",
                         help="Solo inserta API keys, sin crear schema ni tablas")
