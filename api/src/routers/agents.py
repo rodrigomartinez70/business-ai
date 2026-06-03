@@ -33,15 +33,7 @@ from ..verticals.hotel.agents.revenue_management import (
     renderizar_revenue_markdown,
 )
 from ..auth import get_role
-from ..verticals.hotel.dashboard import calcular_dashboard, renderizar_dashboard_html
-from ..verticals.hotel.agents.tributario import (
-    calcular_tributario_semanal,
-    renderizar_tributario_markdown,
-)
-from ..verticals.hotel.agents.conciliacion import (
-    calcular_conciliacion,
-    renderizar_conciliacion_markdown,
-)
+from ..verticals import dispatch
 from ..delivery import enviar_dashboard_email
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
@@ -261,12 +253,13 @@ async def agente_dashboard_semanal(
     - **email**: genera y envía el dashboard por correo (SMTP)
     - **json**: estructura completa de datos (sin render)
     """
-    data = await calcular_dashboard()
+    mod  = dispatch.dashboard()
+    data = await mod.calcular_dashboard()
 
     if formato == "json":
         return data
 
-    html = renderizar_dashboard_html(data, config.get_config())
+    html = mod.renderizar_dashboard_html(data, config.get_config())
 
     if formato == "email":
         resultado = enviar_dashboard_email(html, config.get_config())
@@ -292,10 +285,11 @@ async def agente_tributario(
     - **markdown**: reporte listo para leer.
     """
     corte = fecha or date.today()
-    data  = await calcular_tributario_semanal(corte)
+    mod   = dispatch.tributario()
+    data  = await mod.calcular_tributario_semanal(corte)
 
     if formato == "markdown":
-        md = renderizar_tributario_markdown(data)
+        md = mod.renderizar_tributario_markdown(data)
         return PlainTextResponse(content=md, media_type="text/markdown; charset=utf-8")
 
     return data
@@ -316,10 +310,11 @@ async def agente_conciliacion(
     El agente no se conecta al banco: solo lee la cartola que subiste por CSV.
     """
     corte = fecha or date.today()
-    data  = await calcular_conciliacion(corte, dias)
+    mod   = dispatch.conciliacion()
+    data  = await mod.calcular_conciliacion(corte, dias)
 
     if formato == "markdown":
-        md = renderizar_conciliacion_markdown(data)
+        md = mod.renderizar_conciliacion_markdown(data)
         return PlainTextResponse(content=md, media_type="text/markdown; charset=utf-8")
 
     return data

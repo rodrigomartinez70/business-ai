@@ -15,7 +15,7 @@ from ..audit import registrar_auditoria
 from ..auth import get_role
 from ..formatting import formatear_respuesta
 from ..ratelimit import rate_limit
-from ..verticals.hotel.agents.tributario.conversacional import responder_tributario
+from ..verticals import dispatch
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -152,7 +152,7 @@ async def chat_completions(request: ChatRequest, rol: str = Depends(get_role), _
         estado, error_msg = "ok", None
         try:
             historial = [{"role": m.role, "content": m.content} for m in request.messages]
-            respuesta = await responder_tributario(pregunta, historial)
+            respuesta = await dispatch.conversacional().responder_tributario(pregunta, historial)
         except Exception as e:
             logger.error(f"Error en copiloto tributario: {e}")
             respuesta = "Ocurrió un error al responder tu consulta tributaria."

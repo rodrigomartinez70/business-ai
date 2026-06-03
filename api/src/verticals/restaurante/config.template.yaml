@@ -1,0 +1,162 @@
+# ─────────────────────────────────────────────────────────────
+# Plantilla de configuración — vertical RESTAURANTE
+# provision_tenant.py copia este archivo a api/tenants/<tenant_id>/config.yaml
+# ─────────────────────────────────────────────────────────────
+
+business:
+  name: "Restaurante"            # ← provision_tenant lo reemplaza por el nombre real
+  vertical: "restaurante"
+  description: "Consultas sobre operaciones del restaurante"
+  language: "es"
+  model_id: "asistente-ia"
+
+currency:
+  symbol: "$"
+  thousands_separator: "."
+  decimal_separator: ","
+  decimal_places: 0
+
+# ─── Tributario (F29) ────────────────────────────────────────
+tributario:
+  ppm_tasa: 0.0025
+  iva_postergacion_meses: 0
+
+# ─── Roles y API keys ────────────────────────────────────────
+roles:
+  - name: gerente
+    env_key: API_KEY_GERENTE
+    default_key: ger_cambia_esto
+    excluded_tables: []
+
+  - name: administracion
+    env_key: API_KEY_ADMINISTRACION
+    default_key: adm_cambia_esto
+    excluded_tables: []
+
+  - name: cajero
+    env_key: API_KEY_CAJERO
+    default_key: caj_cambia_esto
+    excluded_tables:
+      - gastos
+      - categorias_gasto
+      - documentos_tributarios
+
+# ─── Schema ──────────────────────────────────────────────────
+schema:
+  exclude_tables:
+    - audit_log
+
+  annotations:
+    productos:
+      description: "Carta / menú del restaurante"
+      columns:
+        precio: "Precio de venta unitario"
+        costo: "Costo unitario del producto (food cost)"
+
+    pedidos:
+      columns:
+        estado: "Valores: 'abierto', 'pagado', 'anulado'"
+        comensales: "Número de personas del pedido"
+        mesa_id: "NULL cuando es delivery o takeaway"
+
+    detalle_pedido:
+      columns:
+        total: "Calculado: cantidad * precio_unitario"
+        costo_total: "Calculado: cantidad * costo_unitario"
+        margen: "Calculado: cantidad * (precio_unitario - costo_unitario)"
+
+    canales_venta:
+      columns:
+        nombre: "Valores: 'Salón', 'Delivery', 'Takeaway', 'Rappi', 'PedidosYa', 'Uber Eats'"
+        comision_pct: "Comisión del canal (apps de delivery)"
+
+# ─── KPIs del dominio ────────────────────────────────────────
+kpis:
+  - name: "Ventas últimos 7 días"
+    description: "Total vendido (pedidos pagados) en los últimos 7 días"
+    sql: "SELECT COALESCE(SUM(d.total), 0) FROM detalle_pedido d JOIN pedidos p ON p.id = d.pedido_id WHERE p.estado = 'pagado' AND p.fecha >= CURRENT_DATE - INTERVAL '7 days'"
+    unidad: "moneda"
+    umbral_warning_minimo: 3000000
+    umbral_critico_minimo: 1500000
+
+  - name: "Ticket promedio últimos 7 días"
+    description: "Venta promedio por pedido pagado en los últimos 7 días"
+    sql: "SELECT COALESCE(ROUND(SUM(d.total) / NULLIF(COUNT(DISTINCT p.id), 0)), 0) FROM detalle_pedido d JOIN pedidos p ON p.id = d.pedido_id WHERE p.estado = 'pagado' AND p.fecha >= CURRENT_DATE - INTERVAL '7 days'"
+    unidad: "moneda"
+    umbral_warning_minimo: 12000
+    umbral_critico_minimo: 8000
+
+  - name: "Pedidos anulados últimas 24h"
+    description: "Pedidos anulados creados en las últimas 24 horas"
+    sql: "SELECT COUNT(*) FROM pedidos WHERE created_at >= NOW() - INTERVAL '24 hours' AND estado = 'anulado'"
+    unidad: "número"
+    umbral_warning_maximo: 3
+    umbral_critico_maximo: 6
+
+# ─── Clasificación de columnas para el formateador ───────────
+money_columns:
+  - monto
+  - total
+  - venta
+  - ingreso
+  - gasto
+  - precio
+  - costo
+  - pago
+  - comision
+  - propina
+  - ticket
+  - margen
+  - revenue
+  - facturado
+  - unitario
+  - honorario
+  - sueldo
+  - pagado
+  - promedio
+  - valor
+  - variacion
+  - diferencia
+
+non_money_columns:
+  - mesa
+  - cantidad
+  - numero
+  - comensales
+  - _pct
+  - porcentaje
+  - dias
+  - año
+  - mes
+  - num
+  - registro
+  - count
+  - crecimiento
+  - pct_
+
+income_keywords:
+  - ingreso
+  - venta
+  - pedido
+  - total
+  - revenue
+  - monto
+  - propina
+
+expense_keywords:
+  - gasto
+  - costo
+  - egreso
+  - expense
+
+# ─── Aliases SQL sugeridos ───────────────────────────────────
+table_aliases:
+  mesas: m
+  productos: pr
+  categorias_menu: cm
+  pedidos: p
+  detalle_pedido: d
+  pagos: pg
+  canales_venta: c
+  gastos: g
+  categorias_gasto: cg
