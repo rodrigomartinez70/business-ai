@@ -26,6 +26,7 @@ En `api/src/verticals/<vertical>/`:
 | Hook de ingresos | `agents/tributario/ingresos.py` | `async ingresos(conn, ini, fin) -> float` |
 | Conversacional | `agents/tributario/conversacional.py` | `responder_tributario(pregunta, historial)` |
 | Diferenciadores | `agents/ventas.py`, `pnl_mensual.py`, `cierre_diario.py`, `cash_flow.py` | lógica de dominio del rubro |
+| Guías SQL (opcional) | `sql_guidelines.md` | reglas/ejemplos SQL del rubro (se suman a las genéricas de `api/sql_guidelines.md`) |
 
 El `agents/tributario/__init__.py` y `conversacional.py` son **wrappers de 3
 líneas** sobre el motor horizontal (ver el vertical hotel/restaurante como molde):

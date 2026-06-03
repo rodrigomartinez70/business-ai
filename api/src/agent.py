@@ -19,15 +19,28 @@ from . import config
 
 logger = logging.getLogger(__name__)
 
-# Carga guidelines de SQL desde archivo externo (opcional)
-_GUIDELINES_PATH = Path(__file__).parent.parent / "sql_guidelines.md"
+# Guidelines de SQL: genéricas (horizontal) + específicas del vertical activo.
+import functools
 
-def _load_guidelines() -> str:
-    if _GUIDELINES_PATH.exists():
-        return "\n\n" + _GUIDELINES_PATH.read_text(encoding="utf-8")
-    return ""
+_GUIDELINES_GENERICO = Path(__file__).parent.parent / "sql_guidelines.md"
+_VERTICALS_DIR       = Path(__file__).parent / "verticals"
 
-SQL_GUIDELINES = _load_guidelines()
+
+@functools.lru_cache(maxsize=None)
+def _leer_guidelines(path_str: str) -> str:
+    p = Path(path_str)
+    return p.read_text(encoding="utf-8") if p.exists() else ""
+
+
+def _guidelines() -> str:
+    """Genéricas + las del vertical del tenant activo (default hotel)."""
+    from .tenant import get_tenant_or_none
+    partes = [_leer_guidelines(str(_GUIDELINES_GENERICO))]
+    ctx = get_tenant_or_none()
+    vertical = ctx.vertical if (ctx and ctx.vertical) else "hotel"
+    partes.append(_leer_guidelines(str(_VERTICALS_DIR / vertical / "sql_guidelines.md")))
+    contenido = "\n\n".join(p for p in partes if p)
+    return ("\n\n" + contenido) if contenido else ""
 
 
 # ─── Ollama ──────────────────────────────────────────────────
@@ -141,7 +154,7 @@ Los únicos JOINs seguros son los de dimensión (1-a-1).
 
 - Si la pregunta requiere datos inexistentes en el schema: {{"pasos": null, "sin_datos": "motivo"}}
 - Responde SOLO con el JSON, sin texto adicional
-{SQL_GUIDELINES}"""
+{_guidelines()}"""
 
     prompt = f"Schema:\n{schema}\n\nPregunta: {pregunta}"
 
@@ -402,7 +415,7 @@ Reglas:
 - CRÍTICO — si todos los datos necesarios están en UNA sola tabla, NO hagas JOIN con otras tablas
 - Si la pregunta requiere datos que NO existen en el schema, responde EXACTAMENTE: SIN_DATOS: No tengo información de [dato faltante] en la base de datos para responder esa consulta.
 - Nunca: INSERT, UPDATE, DELETE, DROP, SET
-{SQL_GUIDELINES}"""
+{_guidelines()}"""
 
     schema_prompt = f"Schema:\n{schema}"
     user_content  = f"{schema_prompt}\n\nPregunta: {pregunta}\n\nSQL:"
