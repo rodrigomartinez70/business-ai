@@ -12,7 +12,7 @@ from ..verticals.hotel.agents.cierre_diario import (
     calcular_cierre,
     renderizar_cierre_markdown,
 )
-from ..verticals.hotel.agents.control_gastos import (
+from ..finanzas.control_gastos import (
     calcular_control_gastos,
     renderizar_control_gastos_markdown,
 )

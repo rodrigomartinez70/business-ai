@@ -14,8 +14,8 @@ Regla de match: mismo monto (±$1) y fecha dentro de ±3 días.
 import logging
 from datetime import date, timedelta
 
-from .... import config
-from ....agents._common import to_float
+from src import config
+from src.agents._common import to_float
 
 logger = logging.getLogger(__name__)
 

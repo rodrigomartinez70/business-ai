@@ -12,10 +12,10 @@ from datetime import date, timedelta
 
 from src import config
 from src.agents.insights import generar_insights
-from src.verticals.hotel.dashboard import _CSS, _card, _kpis, _fm, _subt, _aviso
+from src.render import _CSS, _card, _kpis, _fm, _subt, _aviso
 from src.finanzas.economia import obtener_ipc
-from src.verticals.hotel.agents.control_gastos import calcular_control_gastos
-from src.verticals.hotel.agents.conciliacion import calcular_conciliacion
+from src.finanzas.control_gastos import calcular_control_gastos
+from src.finanzas.conciliacion import calcular_conciliacion
 from .agents.ventas import calcular_ventas
 from .agents.pnl_mensual import calcular_pnl
 from .agents.cash_flow import calcular_cash_flow

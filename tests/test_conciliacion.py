@@ -5,7 +5,7 @@ Tests del Agente Conciliación bancaria.
 import pytest
 from datetime import date
 
-from src.verticals.hotel.agents.conciliacion import _buscar
+from src.finanzas.conciliacion import _buscar
 
 
 FECHA = date(2026, 1, 31)   # ventana que cubre la cartola de ejemplo del seed

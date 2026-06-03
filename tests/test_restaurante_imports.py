@@ -8,8 +8,11 @@ import pytest
 
 MODULOS = [
     "src.verticals.dispatch",
-    # Capa horizontal (motor tributario + economía)
+    # Capa horizontal (motor tributario, finanzas, render)
+    "src.render",
     "src.finanzas.economia",
+    "src.finanzas.control_gastos",
+    "src.finanzas.conciliacion",
     "src.finanzas.tributario",
     "src.finanzas.tributario.iva",
     "src.finanzas.tributario.riesgo",
@@ -22,7 +25,6 @@ MODULOS = [
     "src.verticals.restaurante.agents.pnl_mensual",
     "src.verticals.restaurante.agents.cierre_diario",
     "src.verticals.restaurante.agents.cash_flow",
-    "src.verticals.restaurante.agents.conciliacion",
     "src.verticals.restaurante.agents.tributario",
     "src.verticals.restaurante.agents.tributario.ingresos",
     "src.verticals.restaurante.agents.tributario.conversacional",

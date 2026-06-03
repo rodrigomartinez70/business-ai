@@ -25,7 +25,8 @@ def tributario():
 
 
 def conciliacion():
-    return importlib.import_module(f"src.verticals.{_vertical()}.agents.conciliacion")
+    # Conciliación es horizontal (no tiene diferenciador por vertical).
+    return importlib.import_module("src.finanzas.conciliacion")
 
 
 def conversacional():
