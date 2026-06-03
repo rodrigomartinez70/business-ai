@@ -1,16 +1,16 @@
 """
-Agente IVA / F29 — restaurante.
+Motor IVA / F29 (horizontal) — débito, crédito, remanente, PPM y retenciones.
 
-Misma lógica de F29 que el vertical hotel (débito, crédito, remanente, PPM,
-retención de honorarios, postergación), pero los ingresos afectos vienen de los
-pedidos pagados. Reutiliza las constantes/calendario tributario (agnósticos).
+Agnóstico al vertical: recibe `ingresos_fn(conn, ini, fin) -> float` que define
+qué cuenta como ingreso afecto (hotel: hospedaje+consumos; restaurante: pedidos).
+El crédito, remanente, PPM, retención y postergación son comunes a todos.
 """
 
 from datetime import date, timedelta
 
 from src import config
 from src.agents._common import to_float
-from src.verticals.hotel.agents.tributario import _common as c
+from . import _common as c
 
 
 def _fin_de_mes(d: date) -> date:
@@ -30,16 +30,9 @@ def _sumar_meses(d: date, n: int) -> date:
     return date(total // 12, total % 12 + 1, min(d.day, 28))
 
 
-async def _ingresos(conn, ini: date, fin: date) -> float:
-    """Ingresos afectos del período: ventas de pedidos pagados."""
-    return to_float(await conn.fetchval("""
-        SELECT COALESCE(SUM(d.total), 0)
-        FROM pedidos p JOIN detalle_pedido d ON d.pedido_id = p.id
-        WHERE p.estado = 'pagado' AND p.fecha BETWEEN $1 AND $2
-    """, ini, fin) or 0)
-
-
 async def _credito(conn, ini: date, fin: date) -> tuple[float, str]:
+    """IVA crédito: facturas registradas (netea notas de crédito) si existen;
+    si no, estimación gastos × 19% excluyendo categorías no afectas."""
     docs = await conn.fetchrow("""
         SELECT COUNT(*) AS n,
                COALESCE(SUM(CASE WHEN tipo = 'nota_credito' THEN -monto_iva
@@ -57,18 +50,19 @@ async def _credito(conn, ini: date, fin: date) -> tuple[float, str]:
     return round(to_float(g) * 0.19, 2), "estimado"
 
 
-async def calcular_iva(conn, hasta: date, uf: float | None = None) -> dict:
+async def calcular_iva(conn, hasta: date, ingresos_fn, uf: float | None = None) -> dict:
+    """Motor F29. `ingresos_fn(conn, ini, fin)` provee los ingresos afectos del vertical."""
     uf_valor   = uf or c.UF_VALOR
     desde      = hasta - timedelta(days=6)
     inicio_mes = date(hasta.year, hasta.month, 1)
 
-    ing_sem = await _ingresos(conn, desde, hasta)
+    ing_sem = await ingresos_fn(conn, desde, hasta)
     gastos_semana = dict(await conn.fetchrow(
         "SELECT COALESCE(SUM(monto), 0) AS total_gastos, COUNT(*) AS n_gastos "
         "FROM gastos WHERE fecha BETWEEN $1 AND $2", desde, hasta))
     gasto_sem = to_float(gastos_semana.get("total_gastos", 0))
 
-    ingresos_mes = await _ingresos(conn, inicio_mes, hasta)
+    ingresos_mes = await ingresos_fn(conn, inicio_mes, hasta)
     iva_debito   = round(ingresos_mes * c.IVA_TASA, 2)
     iva_credito, credito_fuente = await _credito(conn, inicio_mes, hasta)
 
@@ -76,7 +70,7 @@ async def calcular_iva(conn, hasta: date, uf: float | None = None) -> dict:
     cur = date(hasta.year, 1, 1)
     while cur < inicio_mes:
         fin = _fin_de_mes(cur)
-        deb_m = round(await _ingresos(conn, cur, fin) * c.IVA_TASA, 2)
+        deb_m = round(await ingresos_fn(conn, cur, fin) * c.IVA_TASA, 2)
         cred_m, _ = await _credito(conn, cur, fin)
         remanente = max(0.0, round(cred_m + remanente - deb_m, 2))
         cur = _siguiente_mes(cur)

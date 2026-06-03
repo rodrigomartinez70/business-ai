@@ -13,7 +13,7 @@ from datetime import date, timedelta
 from src import config
 from src.agents.insights import generar_insights
 from src.verticals.hotel.dashboard import _CSS, _card, _kpis, _fm, _subt, _aviso
-from src.verticals.hotel.economia import obtener_ipc
+from src.finanzas.economia import obtener_ipc
 from src.verticals.hotel.agents.control_gastos import calcular_control_gastos
 from src.verticals.hotel.agents.conciliacion import calcular_conciliacion
 from .agents.ventas import calcular_ventas
