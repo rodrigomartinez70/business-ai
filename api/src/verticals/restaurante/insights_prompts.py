@@ -21,8 +21,8 @@ Generá exactamente 3 insights accionables:
 - Uno sobre el canal (salón/delivery) o producto a potenciar
 - Uno sobre una acción concreta para subir la venta o el margen
 """,
-    "pnl_mensual": """
-Analizá el P&L mensual de un restaurante:
+    "pnl": """
+Analizá el P&L comparativo YTD de un restaurante:
 {resumen}
 
 Generá exactamente 3 insights accionables:
@@ -110,7 +110,7 @@ def resumir_cierre(data: dict) -> str:
 
 RESUMIDORES: dict[str, object] = {
     "ventas":         resumir_ventas,
-    "pnl_mensual":    resumir_pnl,
+    "pnl":    resumir_pnl,
     "control_gastos": resumir_control_gastos,
     "cierre_diario":  resumir_cierre,
 }

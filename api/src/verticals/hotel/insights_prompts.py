@@ -29,8 +29,8 @@ Generá exactamente 3 insights accionables:
 - Uno sobre proveedores o gastos sin clasificar si los hay
 - Uno sobre una acción concreta para reducir o controlar costos
 """,
-    "pnl_mensual": """
-Analizá el P&L mensual de un hotel:
+    "pnl": """
+Analizá el P&L comparativo YTD de un hotel:
 {resumen}
 
 Generá exactamente 3 insights accionables:
@@ -187,7 +187,7 @@ def resumir_alertas(data: dict) -> str:
 RESUMIDORES: dict[str, object] = {
     "cierre_diario":      resumir_cierre,
     "control_gastos":     resumir_control_gastos,
-    "pnl_mensual":        resumir_pnl,
+    "pnl":        resumir_pnl,
     "revenue_management": resumir_revenue,
     "cash_flow":          resumir_cash_flow,
     "rentabilidad_canal": resumir_rentabilidad_canal,

@@ -30,7 +30,7 @@ def conversacional():
 
 
 def pnl():
-    return importlib.import_module(f"src.verticals.{_vertical()}.agents.pnl_mensual")
+    return importlib.import_module(f"src.verticals.{_vertical()}.agents.pnl")
 
 
 def conciliacion():

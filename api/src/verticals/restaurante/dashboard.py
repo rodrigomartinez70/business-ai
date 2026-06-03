@@ -1,7 +1,7 @@
 """
 Dashboard semanal — vertical restaurante.
 
-Reúne Ventas, P&L mensual, Cash Flow, Control de Gastos, Copiloto Tributario,
+Reúne Ventas, P&L YTD, Cash Flow, Control de Gastos, Copiloto Tributario,
 Conciliación y el cierre de la última semana en un HTML para enviar por correo.
 Reutiliza helpers de render, conciliación, control de gastos y economía (IPC)
 del vertical hotel (agnósticos).
@@ -17,7 +17,7 @@ from src.finanzas.economia import obtener_ipc
 from src.finanzas.control_gastos import calcular_control_gastos
 from src.finanzas.conciliacion import calcular_conciliacion
 from .agents.ventas import calcular_ventas
-from .agents.pnl_mensual import calcular_pnl
+from .agents.pnl import calcular_pnl
 from src.finanzas.pnl import renderizar_pnl_html
 from .agents.cash_flow import calcular_cash_flow
 from .agents.cierre_diario import calcular_cierre_semanal
@@ -45,7 +45,7 @@ async def calcular_dashboard() -> dict:
     cierre       = await calcular_cierre_semanal(desde, corte)
 
     insights_ventas = await generar_insights("ventas", ventas)
-    insights_pnl    = await generar_insights("pnl_mensual", pnl)
+    insights_pnl    = await generar_insights("pnl", pnl)
 
     ipc = await obtener_ipc(12)
 

@@ -27,7 +27,7 @@ from src.finanzas.control_gastos import calcular_control_gastos, calcular_gastos
 from .agents.tributario import calcular_tributario_semanal
 from src.finanzas.conciliacion import calcular_conciliacion
 from ...agents.insights import generar_insights
-from .agents.pnl_mensual import calcular_pnl
+from .agents.pnl import calcular_pnl
 from src.finanzas.pnl import renderizar_pnl_html
 from .agents.rentabilidad_canal import calcular_rentabilidad_canal
 from .agents.revenue_management import calcular_revenue_management
@@ -60,7 +60,7 @@ async def calcular_dashboard() -> dict:
     conciliacion = await calcular_conciliacion(corte, 30)
 
     # Insights IA solo para los dos reportes estratégicos
-    insights_pnl  = await generar_insights("pnl_mensual", pnl)
+    insights_pnl  = await generar_insights("pnl", pnl)
     insights_rent = await generar_insights("rentabilidad_canal", rent)
 
     # Contexto económico (IPC Chile) — None si la fuente no responde

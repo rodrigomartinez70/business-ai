@@ -22,7 +22,7 @@ MODULOS = [
     "src.verticals.restaurante.insights_prompts",
     "src.verticals.restaurante.dashboard",
     "src.verticals.restaurante.agents.ventas",
-    "src.verticals.restaurante.agents.pnl_mensual",
+    "src.verticals.restaurante.agents.pnl",
     "src.verticals.restaurante.agents.cierre_diario",
     "src.verticals.restaurante.agents.cash_flow",
     "src.verticals.restaurante.agents.tributario",
