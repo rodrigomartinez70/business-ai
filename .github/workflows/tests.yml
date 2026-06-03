@@ -102,6 +102,9 @@ jobs:
             grep -q 'generar_datos' /etc/cron.d/hotel_data 2>/dev/null || \
             echo '0 2 * * * root docker run --rm --network ia_hotel_default --env-file /opt/ia_hotel/.env hotel_scripts --ayer >> /var/log/hotel_data.log 2>&1' \
             > /etc/cron.d/hotel_data
+            grep -q 'generar_datos_restaurante' /etc/cron.d/restaurante_data 2>/dev/null || \
+            echo '0 3 * * * root docker run --rm --entrypoint python --network ia_hotel_default --env-file /opt/ia_hotel/.env hotel_scripts generar_datos_restaurante.py --tenant-id restaurante_demo --ayer >> /var/log/restaurante_data.log 2>&1' \
+            > /etc/cron.d/restaurante_data
           "
 
       - name: Health check
