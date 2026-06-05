@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import config, tenant_registry
 from .db import TenantAwarePool
-from .routers import agents, chat, ingest, reports
+from .routers import agents, chat, ingest, integraciones, reports
 from .schema import build_schema_cache
 
 logging.basicConfig(level=logging.INFO)
@@ -137,3 +137,4 @@ app.include_router(chat.router)
 app.include_router(reports.router)
 app.include_router(agents.router)
 app.include_router(ingest.router)
+app.include_router(integraciones.router)

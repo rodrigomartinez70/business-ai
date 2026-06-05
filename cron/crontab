@@ -6,5 +6,8 @@
 # Dashboard semanal del RESTAURANTE — lunes 08:10 (destinatarios por-tenant)
 10 8 * * 1 /cron/dashboard_restaurante.sh >> /reportes/cron.log 2>&1
 
+# Sync diario de Meta Ads (inmobiliaria) → Postgres — todos los días 07:00
+0 7 * * * /cron/sync_meta.sh >> /reportes/cron.log 2>&1
+
 # Reporte de uso/auditoría del sistema (markdown local) — lunes a las 09:00
 0 9 * * 1 /cron/reporte_semanal.sh >> /reportes/cron.log 2>&1
