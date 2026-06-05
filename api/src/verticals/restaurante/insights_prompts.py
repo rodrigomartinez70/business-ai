@@ -48,6 +48,15 @@ Generá exactamente 3 insights accionables:
 - Uno sobre la caja y la conciliación de cobros
 - Uno sobre una palanca para mejorar mañana
 """,
+    "marketing": """
+Analizá el resumen de marketing digital (Meta Ads) de un negocio:
+{resumen}
+
+Generá exactamente 3 insights accionables:
+- Uno sobre la eficiencia de la inversión (CPL / conversión) y su tendencia
+- Uno sobre qué campaña potenciar o pausar
+- Uno sobre una acción concreta para bajar el costo por lead o subir los leads
+""",
 }
 
 
@@ -109,9 +118,28 @@ def resumir_cierre(data: dict) -> str:
     )
 
 
+def resumir_marketing(data: dict) -> str:
+    r = data.get("resumen", {})
+    vi = r.get("var_inversion_pct"); vl = r.get("var_leads_pct")
+    vi_txt = f"{vi:+.1f}%" if vi is not None else "sin referencia"
+    vl_txt = f"{vl:+.1f}%" if vl is not None else "sin referencia"
+    # Privacidad: solo %, ratios y nombres — sin montos absolutos.
+    return (
+        "Marketing digital (Meta Ads), período vs anterior:\n"
+        f"Inversión vs período anterior: {vi_txt}\n"
+        f"Leads vs período anterior: {vl_txt}\n"
+        f"Conversión clic→lead: {r.get('conversion_clic_lead', 0):.1f}%\n"
+        f"CTR: {r.get('ctr', 0):.2f}%\n"
+        f"Campaña más eficiente (mejor CPL): {data.get('mejor_campana') or '—'}\n"
+        f"Campaña menos eficiente: {data.get('peor_campana') or '—'}\n"
+        f"Alertas activas: {len(data.get('alertas', []))}"
+    )
+
+
 RESUMIDORES: dict[str, object] = {
     "ventas":         resumir_ventas,
     "pnl":    resumir_pnl,
     "control_gastos": resumir_control_gastos,
     "cierre_diario":  resumir_cierre,
+    "marketing":      resumir_marketing,
 }

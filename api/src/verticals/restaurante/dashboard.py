@@ -19,6 +19,7 @@ from src.finanzas.conciliacion import calcular_conciliacion
 from .agents.ventas import calcular_ventas
 from .agents.pnl import calcular_pnl
 from src.finanzas.pnl import renderizar_pnl_html
+from src.marketing.dashboard import calcular_marketing, renderizar_marketing_html
 from .agents.cash_flow import calcular_cash_flow
 from .agents.cierre_diario import calcular_cierre_semanal
 from .agents.tributario import calcular_tributario_semanal
@@ -43,9 +44,11 @@ async def calcular_dashboard() -> dict:
     tributario   = await calcular_tributario_semanal(corte)
     conciliacion = await calcular_conciliacion(corte, 30)
     cierre       = await calcular_cierre_semanal(desde, corte)
+    marketing    = await calcular_marketing(corte, 61)
 
     insights_ventas = await generar_insights("ventas", ventas)
     insights_pnl    = await generar_insights("pnl", pnl)
+    insights_marketing = await generar_insights("marketing", marketing) if marketing else None
 
     ipc = await obtener_ipc(12)
 
@@ -56,6 +59,8 @@ async def calcular_dashboard() -> dict:
         "insights_ventas": insights_ventas,
         "pnl":         pnl,
         "insights_pnl": insights_pnl,
+        "marketing":   marketing,
+        "insights_marketing": insights_marketing,
         "cash":        cash,
         "gastos":      gastos,
         "tributario":  tributario,
@@ -101,6 +106,12 @@ def _sec_ventas(v: dict, cfg, insights) -> str:
         top = (f'<div style="margin-top:10px;font-size:12px;font-weight:700;color:#374151;">Top productos</div>'
                f'<table class="dt"><tr><th>Producto</th><th>Cant.</th><th>Ventas</th></tr>{tf}</table>')
     return _card("📊 Ventas", _kpis(rows) + tabla + top + _ins(insights))
+
+
+def _sec_marketing(m, cfg, insights) -> str:
+    if not m:
+        return ""   # tenant sin data de marketing → se omite la sección
+    return renderizar_marketing_html(m, cfg, insights)
 
 
 def _sec_pnl(p: dict, cfg, insights) -> str:
@@ -216,6 +227,7 @@ def renderizar_dashboard_html(data: dict, cfg: dict) -> str:
     sem = data["semana"]
     body = (
         _sec_ventas(data["ventas"], cfg, data.get("insights_ventas"))
+        + _sec_marketing(data.get("marketing"), cfg, data.get("insights_marketing"))
         + _sec_pnl(data["pnl"], cfg, data.get("insights_pnl"))
         + _sec_cash(data["cash"], cfg)
         + _sec_gastos(data["gastos"], cfg)
