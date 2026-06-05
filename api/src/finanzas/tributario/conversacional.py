@@ -16,12 +16,33 @@ logger = logging.getLogger(__name__)
 
 _SYSTEM = (
     "Eres un copiloto tributario para pequeñas y medianas empresas en Chile. "
-    "Explicas conceptos tributarios (IVA, F29, PPM, declaraciones juradas, UF) "
-    "en lenguaje simple y das recomendaciones accionables. Usas SIEMPRE el "
-    "contexto tributario provisto (son los datos reales de la empresa). "
-    "No inventas cifras: si algo no está en el contexto, dilo. No reemplazas al "
-    "contador; ante temas complejos sugieres validarlo con él. Respondes en "
-    "español, conciso y claro."
+    "Respondes en español, conciso y claro.\n\n"
+    "REGLAS ESTRICTAS:\n"
+    "- Para CIFRAS usa SOLO el CONTEXTO TRIBUTARIO provisto (son los datos reales "
+    "de la empresa). Si un número no está en el contexto, dilo; NO lo calcules ni "
+    "lo inventes.\n"
+    "- Para CONCEPTOS usa SOLO las DEFINICIONES de abajo. NUNCA expliques un "
+    "concepto tributario desde tu conocimiento propio; si te preguntan algo que no "
+    "está en estas definiciones ni en el contexto, dilo y sugiere consultarlo con "
+    "el contador.\n"
+    "- No reemplazas al contador; ante temas complejos sugieres validarlo con él.\n\n"
+    "DEFINICIONES CORRECTAS (Chile):\n"
+    "- IVA (Impuesto al Valor Agregado): impuesto del 19%. El IVA débito es el "
+    "recargado en las VENTAS del período; el IVA crédito es el soportado en las "
+    "COMPRAS/gastos. Se paga la diferencia (débito menos crédito).\n"
+    "- Remanente de crédito fiscal: IVA crédito no usado que queda a favor de la "
+    "empresa para descontar en períodos siguientes.\n"
+    "- F29: formulario MENSUAL donde se declara y paga el IVA y el PPM. Vence el "
+    "día 20 del mes siguiente al período declarado.\n"
+    "- PPM (Pago Provisional Mensual): anticipo mensual OBLIGATORIO del IMPUESTO A "
+    "LA RENTA, calculado como un porcentaje sobre los ingresos brutos del mes. "
+    "NO es una cotización previsional ni tiene relación con pensiones.\n"
+    "- Retención de honorarios: impuesto retenido sobre las boletas de honorarios "
+    "(servicios de personas naturales) que la empresa entera al SII.\n"
+    "- UF (Unidad de Fomento): unidad de cuenta reajustable según la inflación, "
+    "usada como referencia de valores.\n"
+    "- Declaraciones Juradas (DJ): formularios informativos ANUALES que se "
+    "presentan al SII (ej. DJ1879, DJ1887)."
 )
 
 
@@ -32,22 +53,22 @@ def _resumen_contexto(data: dict) -> str:
     acum = iva.get("acumulado_mes", {})
     f29  = iva.get("f29", {})
 
+    # Una cifra por línea: un modelo local pequeño extrae los montos de forma más
+    # fiable que en una línea densa con varios valores separados por ';'.
     lineas = ["CONTEXTO TRIBUTARIO (datos reales de la empresa):"]
-    lineas.append(
-        f"- IVA del mes: débito ${acum.get('iva_debito_acum', 0):,.0f}, "
-        f"crédito ${acum.get('iva_credito_acum', 0):,.0f} "
-        f"(fuente {acum.get('iva_credito_fuente', 'n/a')})."
-    )
-    lineas.append(
-        f"- F29 período {f29.get('periodo', '')}: remanente mes anterior "
-        f"${f29.get('remanente_anterior', 0):,.0f}; IVA a pagar ${f29.get('iva_a_pagar', 0):,.0f}; "
-        f"PPM ${f29.get('ppm', 0):,.0f}; retención honorarios "
-        f"${f29.get('retencion_honorarios', 0):,.0f}; TOTAL a pagar "
-        f"${f29.get('total_a_pagar', 0):,.0f}; vence {f29.get('vencimiento', '')} "
-        f"(en {f29.get('dias_para_vencimiento', 0)} días)."
-    )
+    lineas.append(f"- IVA débito del mes: ${acum.get('iva_debito_acum', 0):,.0f}")
+    lineas.append(f"- IVA crédito del mes: ${acum.get('iva_credito_acum', 0):,.0f} "
+                  f"(fuente {acum.get('iva_credito_fuente', 'n/a')})")
+    lineas.append(f"- F29 período {f29.get('periodo', '')}:")
+    lineas.append(f"  - Remanente mes anterior: ${f29.get('remanente_anterior', 0):,.0f}")
+    lineas.append(f"  - IVA a pagar: ${f29.get('iva_a_pagar', 0):,.0f}")
+    lineas.append(f"  - PPM: ${f29.get('ppm', 0):,.0f}")
+    lineas.append(f"  - Retención de honorarios: ${f29.get('retencion_honorarios', 0):,.0f}")
+    lineas.append(f"  - TOTAL F29 a pagar: ${f29.get('total_a_pagar', 0):,.0f}")
+    lineas.append(f"  - Vence: {f29.get('vencimiento', '')} "
+                  f"(en {f29.get('dias_para_vencimiento', 0)} días)")
     if iva.get("uf_referencia"):
-        lineas.append(f"- UF de referencia: ${iva['uf_referencia']:,.2f}.")
+        lineas.append(f"- UF de referencia: ${iva['uf_referencia']:,.2f}")
 
     venc = cum.get("proximos_vencimientos", [])
     if venc:
