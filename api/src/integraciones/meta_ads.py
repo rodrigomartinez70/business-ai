@@ -33,6 +33,18 @@ _CONVERSION_ACTIONS = {
     "leadgen_grouped",
 }
 
+# Mapeo de métricas adicionales → action_types de Meta (vienen en el campo `actions`).
+_ACTION_TYPES = {
+    "mensajes": {  # conversaciones de mensajes iniciadas
+        "onsite_conversion.messaging_conversation_started_7d",
+        "messaging_conversation_started_7d",
+        "onsite_conversion.total_messaging_connection",
+    },
+    "interacciones": {"post_engagement", "page_engagement"},
+    "reproducciones": {"video_view"},
+    "visitas_perfil": {"onsite_conversion.ig_profile_visit", "profile_visit"},
+}
+
 
 # ─────────────────────────────────────────────────────────────
 # Credenciales
@@ -124,12 +136,13 @@ def _parse_campana(raw: dict) -> dict:
     }
 
 
-def _conversiones_de_actions(actions) -> float:
+def _sum_actions(actions, tipos: set) -> float:
+    """Suma los `value` de las acciones cuyo action_type está en `tipos`."""
     if not actions:
         return 0.0
     total = 0.0
     for a in actions:
-        if a.get("action_type") in _CONVERSION_ACTIONS:
+        if a.get("action_type") in tipos:
             try:
                 total += float(a.get("value", 0))
             except (TypeError, ValueError):
@@ -137,7 +150,12 @@ def _conversiones_de_actions(actions) -> float:
     return total
 
 
+def _conversiones_de_actions(actions) -> float:
+    return _sum_actions(actions, _CONVERSION_ACTIONS)
+
+
 def _parse_insight(raw: dict) -> dict:
+    acts = raw.get("actions")
     return {
         "campana_externa": raw.get("campaign_id"),
         "fecha": _to_date(raw.get("date_start")),
@@ -145,7 +163,11 @@ def _parse_insight(raw: dict) -> dict:
         "impresiones": int(raw.get("impressions", 0) or 0),
         "clics": int(raw.get("clicks", 0) or 0),
         "alcance": int(raw.get("reach", 0) or 0),
-        "conversiones": _conversiones_de_actions(raw.get("actions")),
+        "conversiones": _conversiones_de_actions(acts),
+        "mensajes": int(_sum_actions(acts, _ACTION_TYPES["mensajes"])),
+        "interacciones": int(_sum_actions(acts, _ACTION_TYPES["interacciones"])),
+        "reproducciones": int(_sum_actions(acts, _ACTION_TYPES["reproducciones"])),
+        "visitas_perfil": int(_sum_actions(acts, _ACTION_TYPES["visitas_perfil"])),
         "moneda": raw.get("account_currency", "CLP"),
     }
 
@@ -180,6 +202,11 @@ def _mock_insights(desde: date, hasta: date, campanas: list[dict]) -> list[dict]
             impresiones = rng.randint(8000, 25000)
             clics = int(impresiones * rng.uniform(0.01, 0.04))
             leads = int(clics * rng.uniform(0.03, 0.10))
+            inter = int(clics * rng.uniform(1.5, 4.0))         # interacciones
+            videos = int(impresiones * rng.uniform(0.1, 0.4))  # reproducciones
+            es_msg = c.get("objective") in ("OUTCOME_LEADS", "OUTCOME_SALES")
+            msgs = int(clics * rng.uniform(0.02, 0.08)) if es_msg else 0
+            visitas = int(clics * rng.uniform(0.1, 0.3))
             filas.append({
                 "campaign_id": c["id"],
                 "date_start": dia.isoformat(),
@@ -187,7 +214,14 @@ def _mock_insights(desde: date, hasta: date, campanas: list[dict]) -> list[dict]
                 "impressions": str(impresiones),
                 "clicks": str(clics),
                 "reach": str(int(impresiones * rng.uniform(0.6, 0.9))),
-                "actions": [{"action_type": "lead", "value": str(leads)}],
+                "actions": [
+                    {"action_type": "lead", "value": str(leads)},
+                    {"action_type": "post_engagement", "value": str(inter)},
+                    {"action_type": "video_view", "value": str(videos)},
+                    {"action_type": "onsite_conversion.messaging_conversation_started_7d",
+                     "value": str(msgs)},
+                    {"action_type": "onsite_conversion.ig_profile_visit", "value": str(visitas)},
+                ],
                 "account_currency": "CLP",
             })
         dia += timedelta(days=1)
@@ -225,16 +259,20 @@ async def _upsert_campana(conn, canal_id: int, c: dict) -> int:
 async def _upsert_insight(conn, campana_id: int, ins: dict) -> None:
     await conn.execute(
         """INSERT INTO insights_marketing
-               (campana_id, fecha, gasto, impresiones, clics, alcance,
-                conversiones, moneda, actualizado_en)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8, CURRENT_TIMESTAMP)
+               (campana_id, fecha, gasto, impresiones, clics, alcance, conversiones,
+                mensajes, interacciones, reproducciones, visitas_perfil,
+                moneda, actualizado_en)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12, CURRENT_TIMESTAMP)
            ON CONFLICT (campana_id, fecha) DO UPDATE SET
                gasto = EXCLUDED.gasto, impresiones = EXCLUDED.impresiones,
                clics = EXCLUDED.clics, alcance = EXCLUDED.alcance,
-               conversiones = EXCLUDED.conversiones, moneda = EXCLUDED.moneda,
+               conversiones = EXCLUDED.conversiones, mensajes = EXCLUDED.mensajes,
+               interacciones = EXCLUDED.interacciones, reproducciones = EXCLUDED.reproducciones,
+               visitas_perfil = EXCLUDED.visitas_perfil, moneda = EXCLUDED.moneda,
                actualizado_en = CURRENT_TIMESTAMP""",
         campana_id, ins["fecha"], ins["gasto"], ins["impresiones"], ins["clics"],
-        ins["alcance"], ins["conversiones"], ins["moneda"],
+        ins["alcance"], ins["conversiones"], ins["mensajes"], ins["interacciones"],
+        ins["reproducciones"], ins["visitas_perfil"], ins["moneda"],
     )
 
 

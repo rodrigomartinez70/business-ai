@@ -39,12 +39,16 @@ async def _calcular_marketing(conn, hasta: date, dias: int) -> dict | None:
 
     try:
         tot = await conn.fetchrow("""
-            SELECT COALESCE(SUM(gasto),0)        AS gasto,
-                   COALESCE(SUM(conversiones),0) AS leads,
-                   COALESCE(SUM(clics),0)        AS clics,
-                   COALESCE(SUM(impresiones),0)  AS impresiones,
-                   COALESCE(SUM(alcance),0)      AS alcance,
-                   COUNT(*)                      AS filas
+            SELECT COALESCE(SUM(gasto),0)         AS gasto,
+                   COALESCE(SUM(conversiones),0)  AS leads,
+                   COALESCE(SUM(clics),0)         AS clics,
+                   COALESCE(SUM(impresiones),0)   AS impresiones,
+                   COALESCE(SUM(alcance),0)       AS alcance,
+                   COALESCE(SUM(mensajes),0)      AS mensajes,
+                   COALESCE(SUM(interacciones),0) AS interacciones,
+                   COALESCE(SUM(reproducciones),0) AS reproducciones,
+                   COALESCE(SUM(visitas_perfil),0) AS visitas_perfil,
+                   COUNT(*)                       AS filas
               FROM insights_marketing WHERE fecha BETWEEN $1 AND $2
         """, desde, hasta)
         if not tot or tot["filas"] == 0:
@@ -52,27 +56,37 @@ async def _calcular_marketing(conn, hasta: date, dias: int) -> dict | None:
 
         ant = await conn.fetchrow("""
             SELECT COALESCE(SUM(gasto),0) AS gasto, COALESCE(SUM(conversiones),0) AS leads,
-                   COALESCE(SUM(impresiones),0) AS impresiones, COALESCE(SUM(clics),0) AS clics
+                   COALESCE(SUM(impresiones),0) AS impresiones, COALESCE(SUM(clics),0) AS clics,
+                   COALESCE(SUM(interacciones),0) AS interacciones,
+                   COALESCE(SUM(mensajes),0) AS mensajes
               FROM insights_marketing WHERE fecha BETWEEN $1 AND $2
         """, ant_desde, ant_hasta)
 
         serie = await conn.fetch("""
             SELECT fecha,
-                   COALESCE(SUM(gasto),0)        AS gasto,
-                   COALESCE(SUM(impresiones),0)  AS impresiones,
-                   COALESCE(SUM(clics),0)        AS clics,
-                   COALESCE(SUM(alcance),0)      AS alcance,
-                   COALESCE(SUM(conversiones),0) AS conversiones
+                   COALESCE(SUM(gasto),0)         AS gasto,
+                   COALESCE(SUM(impresiones),0)   AS impresiones,
+                   COALESCE(SUM(clics),0)         AS clics,
+                   COALESCE(SUM(alcance),0)       AS alcance,
+                   COALESCE(SUM(conversiones),0)  AS conversiones,
+                   COALESCE(SUM(mensajes),0)      AS mensajes,
+                   COALESCE(SUM(interacciones),0) AS interacciones,
+                   COALESCE(SUM(reproducciones),0) AS reproducciones,
+                   COALESCE(SUM(visitas_perfil),0) AS visitas_perfil
               FROM insights_marketing WHERE fecha BETWEEN $1 AND $2
              GROUP BY fecha ORDER BY fecha
         """, desde, hasta)
 
         camp = await conn.fetch("""
             SELECT c.nombre, c.estado, c.objetivo, c.presupuesto_diario,
-                   COALESCE(SUM(i.gasto),0)        AS gasto,
-                   COALESCE(SUM(i.conversiones),0) AS leads,
-                   COALESCE(SUM(i.clics),0)        AS clics,
-                   COALESCE(SUM(i.impresiones),0)  AS impresiones
+                   COALESCE(SUM(i.gasto),0)         AS gasto,
+                   COALESCE(SUM(i.conversiones),0)  AS leads,
+                   COALESCE(SUM(i.clics),0)         AS clics,
+                   COALESCE(SUM(i.impresiones),0)   AS impresiones,
+                   COALESCE(SUM(i.mensajes),0)      AS mensajes,
+                   COALESCE(SUM(i.interacciones),0) AS interacciones,
+                   COALESCE(SUM(i.reproducciones),0) AS reproducciones,
+                   COALESCE(SUM(i.visitas_perfil),0) AS visitas_perfil
               FROM campanas c
               LEFT JOIN insights_marketing i
                      ON i.campana_id = c.id AND i.fecha BETWEEN $1 AND $2
@@ -87,19 +101,26 @@ async def _calcular_marketing(conn, hasta: date, dias: int) -> dict | None:
 
     gasto = float(tot["gasto"]); leads = float(tot["leads"])
     clics = int(tot["clics"]); impresiones = int(tot["impresiones"]); alcance = int(tot["alcance"])
+    mensajes = int(tot["mensajes"]); interacciones = int(tot["interacciones"])
+    reproducciones = int(tot["reproducciones"]); visitas_perfil = int(tot["visitas_perfil"])
     g_ant = float(ant["gasto"]); l_ant = float(ant["leads"])
     i_ant = int(ant["impresiones"]); c_ant = int(ant["clics"])
+    int_ant = int(ant["interacciones"]); m_ant = int(ant["mensajes"])
 
     resumen = {
         "inversion": gasto, "leads": leads, "clics": clics, "impresiones": impresiones,
-        "alcance": alcance,
+        "alcance": alcance, "mensajes": mensajes, "interacciones": interacciones,
+        "reproducciones": reproducciones, "visitas_perfil": visitas_perfil,
         "cpl": _div(gasto, leads), "cpc": _div(gasto, clics),
+        "costo_mensaje": _div(gasto, mensajes), "costo_visita": _div(gasto, visitas_perfil),
         "ctr": _div(clics, impresiones) * 100, "cpm": _div(gasto, impresiones) * 1000,
         "conversion_clic_lead": _div(leads, clics) * 100,
-        "var_inversion_pct":   (_div(gasto - g_ant, g_ant) * 100) if g_ant else None,
-        "var_leads_pct":       (_div(leads - l_ant, l_ant) * 100) if l_ant else None,
-        "var_impresiones_pct": (_div(impresiones - i_ant, i_ant) * 100) if i_ant else None,
-        "var_clics_pct":       (_div(clics - c_ant, c_ant) * 100) if c_ant else None,
+        "var_inversion_pct":     (_div(gasto - g_ant, g_ant) * 100) if g_ant else None,
+        "var_leads_pct":         (_div(leads - l_ant, l_ant) * 100) if l_ant else None,
+        "var_impresiones_pct":   (_div(impresiones - i_ant, i_ant) * 100) if i_ant else None,
+        "var_clics_pct":         (_div(clics - c_ant, c_ant) * 100) if c_ant else None,
+        "var_interacciones_pct": (_div(interacciones - int_ant, int_ant) * 100) if int_ant else None,
+        "var_mensajes_pct":      (_div(mensajes - m_ant, m_ant) * 100) if m_ant else None,
     }
 
     campanas: list[dict] = []
@@ -108,7 +129,10 @@ async def _calcular_marketing(conn, hasta: date, dias: int) -> dict | None:
         g = float(c["gasto"]); l = float(c["leads"])
         campanas.append({"nombre": c["nombre"], "estado": c["estado"], "objetivo": c["objetivo"],
                          "gasto": g, "leads": l, "cpl": _div(g, l),
-                         "clics": int(c["clics"]), "impresiones": int(c["impresiones"])})
+                         "clics": int(c["clics"]), "impresiones": int(c["impresiones"]),
+                         "mensajes": int(c["mensajes"]), "interacciones": int(c["interacciones"]),
+                         "reproducciones": int(c["reproducciones"]),
+                         "visitas_perfil": int(c["visitas_perfil"])})
         if c["estado"] == "PAUSED" and (c["presupuesto_diario"] or 0) > 0:
             alertas.append({"nivel": "info", "titulo": f"Campaña pausada con presupuesto: {c['nombre']}",
                             "desc": "Tiene presupuesto asignado pero está en pausa."})
@@ -122,7 +146,10 @@ async def _calcular_marketing(conn, hasta: date, dias: int) -> dict | None:
 
     serie_diaria = [{"fecha": str(s["fecha"]), "gasto": float(s["gasto"]),
                      "impresiones": int(s["impresiones"]), "clics": int(s["clics"]),
-                     "alcance": int(s["alcance"]), "conversiones": float(s["conversiones"])}
+                     "alcance": int(s["alcance"]), "conversiones": float(s["conversiones"]),
+                     "mensajes": int(s["mensajes"]), "interacciones": int(s["interacciones"]),
+                     "reproducciones": int(s["reproducciones"]),
+                     "visitas_perfil": int(s["visitas_perfil"])}
                     for s in serie]
 
     return {
@@ -256,24 +283,33 @@ def _kpi_card(titulo: str, valor: str, var_pct, serie) -> str:
 
 def _tabla_objetivo(grupo: str, camps: list[dict], cfg: dict) -> str:
     total_g = sum(c["gasto"] for c in camps)
-    if grupo == "Leads":
-        cols = "<th>Campaña</th><th>Inversión</th><th>Conversiones</th><th>Costo x conv.</th>"
-        filas = ""
+    filas = ""
+    if grupo in ("Leads", "Ventas"):
+        cols = ("<th>Campaña</th><th>Inversión</th><th>Mensajes</th>"
+                "<th>Costo x mensaje</th><th>Conversiones</th>")
         for c in camps:
-            cpl = _fm(c["cpl"], cfg) if c["leads"] else "—"
+            cm = _fm(_div(c["gasto"], c["mensajes"]), cfg) if c["mensajes"] else "—"
             filas += (f'<tr><td>{c["nombre"]}</td><td>{_fm(c["gasto"], cfg)}</td>'
-                      f'<td style="text-align:right;">{_num(c["leads"])}</td><td>{cpl}</td></tr>')
-    else:
-        cols = "<th>Campaña</th><th>Inversión</th><th>Impresiones</th><th>Clics</th><th>Costo x clic</th>"
-        filas = ""
+                      f'<td style="text-align:right;">{_num(c["mensajes"])}</td><td>{cm}</td>'
+                      f'<td style="text-align:right;">{_num(c["leads"])}</td></tr>')
+    elif grupo == "Tráfico":
+        cols = ("<th>Campaña</th><th>Inversión</th><th>Reproducciones</th>"
+                "<th>Visitas al perfil</th><th>Costo x visita</th>")
         for c in camps:
-            cpc = _fm(_div(c["gasto"], c["clics"]), cfg) if c["clics"] else "—"
+            cv = _fm(_div(c["gasto"], c["visitas_perfil"]), cfg) if c["visitas_perfil"] else "—"
+            filas += (f'<tr><td>{c["nombre"]}</td><td>{_fm(c["gasto"], cfg)}</td>'
+                      f'<td style="text-align:right;">{_num(c["reproducciones"])}</td>'
+                      f'<td style="text-align:right;">{_num(c["visitas_perfil"])}</td><td>{cv}</td></tr>')
+    else:  # Interacción, Reconocimiento, Otras
+        cols = ("<th>Campaña</th><th>Inversión</th><th>Impresiones</th>"
+                "<th>Interacciones</th><th>Clics</th>")
+        for c in camps:
             filas += (f'<tr><td>{c["nombre"]}</td><td>{_fm(c["gasto"], cfg)}</td>'
                       f'<td style="text-align:right;">{_num(c["impresiones"])}</td>'
-                      f'<td style="text-align:right;">{_num(c["clics"])}</td><td>{cpc}</td></tr>')
-    return _card(
-        f"Campañas de {grupo} · inversión {_fm(total_g, cfg)}",
-        f'<table class="dt"><tr>{cols}</tr>{filas}</table>')
+                      f'<td style="text-align:right;">{_num(c["interacciones"])}</td>'
+                      f'<td style="text-align:right;">{_num(c["clics"])}</td></tr>')
+    return _card(f"Campañas de {grupo} · inversión {_fm(total_g, cfg)}",
+                 f'<table class="dt"><tr>{cols}</tr>{filas}</table>')
 
 
 def renderizar_marketing_grafico(data: dict, cfg: dict, titulo: str = "Marketing") -> str:
@@ -282,14 +318,14 @@ def renderizar_marketing_grafico(data: dict, cfg: dict, titulo: str = "Marketing
     n_camp = len([c for c in data["campanas"] if c["gasto"] > 0])
 
     cards = (
-        _kpi_card("Inversión", _fm(r["inversion"], cfg), r.get("var_inversion_pct"),
-                  [d["gasto"] for d in serie])
-        + _kpi_card("Espectadores (impresiones)", _num(r["impresiones"]),
-                    r.get("var_impresiones_pct"), [d["impresiones"] for d in serie])
+        _kpi_card("Espectadores", _num(r["impresiones"]),
+                  r.get("var_impresiones_pct"), [d["impresiones"] for d in serie])
+        + _kpi_card("Interacciones", _num(r["interacciones"]),
+                    r.get("var_interacciones_pct"), [d["interacciones"] for d in serie])
         + _kpi_card("Clics en el enlace", _num(r["clics"]),
                     r.get("var_clics_pct"), [d["clics"] for d in serie])
-        + _kpi_card("Conversiones", _num(r["leads"]),
-                    r.get("var_leads_pct"), [d["conversiones"] for d in serie])
+        + _kpi_card("Conversaciones con mensajes iniciadas", _num(r["mensajes"]),
+                    r.get("var_mensajes_pct"), [d["mensajes"] for d in serie])
     )
     cards_row = f'<div style="display:flex;gap:12px;flex-wrap:wrap;margin:4px 0 18px;">{cards}</div>'
 

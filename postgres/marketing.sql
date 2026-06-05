@@ -39,6 +39,10 @@ CREATE TABLE IF NOT EXISTS insights_marketing (
     clics          BIGINT DEFAULT 0,
     alcance        BIGINT DEFAULT 0,
     conversiones   NUMERIC(14,2) DEFAULT 0,    -- acciones de conversión (ej. leads)
+    mensajes       BIGINT DEFAULT 0,           -- conversaciones de mensajes iniciadas
+    interacciones  BIGINT DEFAULT 0,           -- post/page engagement
+    reproducciones BIGINT DEFAULT 0,           -- video views
+    visitas_perfil BIGINT DEFAULT 0,           -- visitas al perfil (IG/FB)
     moneda         VARCHAR(8) DEFAULT 'CLP',
     actualizado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (campana_id, fecha)
