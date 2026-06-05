@@ -149,6 +149,7 @@ def _parse_producto(raw: dict) -> dict:
                               if raw.get("referencePrice") not in (None, "") else None),
         "categoria": raw.get("category"),
         "categoria_id": str(raw.get("categoryId")) if raw.get("categoryId") is not None else None,
+        "costo": float(raw.get("cost", 0) or 0),   # Toteat /products NO trae costo → 0 (real)
         "es_modificador": bool(raw.get("isModifier", False)),
         "sorting": raw.get("sorting"),
     }
@@ -168,6 +169,7 @@ def _parse_venta(raw: dict) -> dict:
             "medio_id": mid,
             "medio": MEDIOS_PAGO.get(mid, p.get("paymentMethod") or "Otro"),
             "monto": float(p.get("amount", p.get("total", 0)) or 0),
+            "propina": float(p.get("tip", 0) or 0),
             "fiscal_type": p.get("fiscalType"),  # 'NC' → montos en negativo
         })
     lineas = []
@@ -188,6 +190,8 @@ def _parse_venta(raw: dict) -> dict:
         "estado": raw.get("orderStatus", "CLOSED"),
         "mesa": raw.get("tableId") or raw.get("table"),
         "canal": raw.get("channel"),
+        "comensales": int(raw.get("guests") or raw.get("pax") or raw.get("diners") or 1),
+        "propina": sum(p["propina"] for p in pagos) or float(raw.get("tip", 0) or 0),
         "total": float(raw.get("total", 0) or 0) or sum(p["monto"] for p in pagos),
         "lineas": lineas,
         "pagos": pagos,
@@ -212,10 +216,10 @@ _MOCK_MENU = [
 
 def _mock_products() -> list[dict]:
     out = []
-    for i, (nombre, cat, precio, _costo) in enumerate(_MOCK_MENU):
-        out.append({"id": 9000 + i, "name": nombre, "price": precio, "referencePrice": None,
-                    "category": cat, "categoryId": 100 + (i % 4), "localCode": f"P{i:03d}",
-                    "isModifier": False, "sorting": f"{i:03d}"})
+    for i, (nombre, cat, precio, costo) in enumerate(_MOCK_MENU):
+        out.append({"id": 9000 + i, "name": nombre, "price": precio, "cost": costo,
+                    "referencePrice": None, "category": cat, "categoryId": 100 + (i % 4),
+                    "localCode": f"P{i:03d}", "isModifier": False, "sorting": f"{i:03d}"})
     return out
 
 
@@ -243,10 +247,11 @@ def _mock_sales(desde: date, hasta: date) -> list[dict]:
                 "closeDate": f"{dia.isoformat()}T{rng.randint(12,23):02d}:{rng.randint(0,59):02d}:00",
                 "orderStatus": "CLOSED",
                 "tableId": rng.randint(1, 20), "channel": rng.choice(canales),
+                "guests": rng.randint(1, 5),
                 "total": total,
                 "line": line,
                 "payments": [{"paymentMethodId": rng.choice(medios), "amount": total,
-                              "fiscalType": "BOL"}],
+                              "tip": int(total * rng.uniform(0, 0.10)), "fiscalType": "BOL"}],
             })
         dia += timedelta(days=1)
     return ventas
@@ -327,6 +332,10 @@ async def sincronizar(conn, tenant_id: str, desde: date, hasta: date,
 
     cat_cache: dict = {}
     prod_por_clave: dict = {}   # id_externo y nombre → producto_id
+    prod_costo: dict = {}       # producto_id → costo unitario
+
+    # Toteat /products NO entrega costo → si falta, se estima food cost (35%).
+    FOOD_COST_PCT = 0.35
 
     # 1) Productos → categorias_menu + productos
     for p in data["productos"]:
@@ -335,16 +344,18 @@ async def sincronizar(conn, tenant_id: str, desde: date, hasta: date,
             cat_id = await _ensure_id(
                 conn, cat_cache, "categorias_menu", p["categoria"],
                 "INSERT INTO categorias_menu (nombre) VALUES ($1) RETURNING id")
+        costo = p["costo"] if p.get("costo", 0) > 0 else round(p["precio"] * FOOD_COST_PCT, 2)
         pid = await conn.fetchval(
             """INSERT INTO productos (id_externo, categoria_id, nombre, precio, costo, activo)
-               VALUES ($1,$2,$3,$4,0,TRUE)
+               VALUES ($1,$2,$3,$4,$5,TRUE)
                ON CONFLICT (id_externo) WHERE id_externo IS NOT NULL DO UPDATE SET
                    categoria_id = EXCLUDED.categoria_id, nombre = EXCLUDED.nombre,
-                   precio = EXCLUDED.precio
+                   precio = EXCLUDED.precio, costo = EXCLUDED.costo
                RETURNING id""",
-            p["id_externo"], cat_id, p["nombre"], p["precio"])
+            p["id_externo"], cat_id, p["nombre"], p["precio"], costo)
         prod_por_clave[p["id_externo"]] = pid
         prod_por_clave[p["nombre"]] = pid
+        prod_costo[pid] = costo
 
     # 2) Ventas → pedidos / detalle_pedido / pagos
     canal_cache: dict = {}
@@ -358,12 +369,14 @@ async def sincronizar(conn, tenant_id: str, desde: date, hasta: date,
         estado = "anulado" if v["estado"] in ("CANCELLED", "CANCELED") else "pagado"
 
         ped_id = await conn.fetchval(
-            """INSERT INTO pedidos (id_externo, canal_id, fecha, estado)
-               VALUES ($1,$2,$3,$4)
+            """INSERT INTO pedidos (id_externo, canal_id, fecha, estado, comensales, propina)
+               VALUES ($1,$2,$3,$4,$5,$6)
                ON CONFLICT (id_externo) WHERE id_externo IS NOT NULL DO UPDATE SET
-                   canal_id = EXCLUDED.canal_id, fecha = EXCLUDED.fecha, estado = EXCLUDED.estado
+                   canal_id = EXCLUDED.canal_id, fecha = EXCLUDED.fecha, estado = EXCLUDED.estado,
+                   comensales = EXCLUDED.comensales, propina = EXCLUDED.propina
                RETURNING id""",
-            v["order_id"], canal_id, fecha, estado)
+            v["order_id"], canal_id, fecha, estado,
+            max(1, int(v.get("comensales", 1))), v.get("propina", 0))
 
         # Reemplazo idempotente del detalle y pagos de la orden
         await conn.execute("DELETE FROM detalle_pedido WHERE pedido_id = $1", ped_id)
@@ -373,21 +386,24 @@ async def sincronizar(conn, tenant_id: str, desde: date, hasta: date,
         for ln in v["lineas"]:
             pid = prod_por_clave.get(ln["codigo"]) or prod_por_clave.get(ln["producto"])
             if pid is None:  # producto fuera del menú → crearlo al vuelo
+                costo_ln = round(ln["precio_unitario"] * FOOD_COST_PCT, 2)
                 pid = await conn.fetchval(
-                    "INSERT INTO productos (nombre, precio, costo, activo) VALUES ($1,$2,0,TRUE) RETURNING id",
-                    ln["producto"] or "Producto", ln["precio_unitario"])
+                    "INSERT INTO productos (nombre, precio, costo, activo) VALUES ($1,$2,$3,TRUE) RETURNING id",
+                    ln["producto"] or "Producto", ln["precio_unitario"], costo_ln)
                 prod_por_clave[ln["producto"]] = pid
-            det_rows.append((ped_id, pid, int(ln["cantidad"]), ln["precio_unitario"]))
+                prod_costo[pid] = costo_ln
+            det_rows.append((ped_id, pid, int(ln["cantidad"]), ln["precio_unitario"], prod_costo.get(pid, 0)))
         if det_rows:
             await conn.executemany(
                 "INSERT INTO detalle_pedido (pedido_id, producto_id, cantidad, precio_unitario, costo_unitario) "
-                "VALUES ($1,$2,$3,$4,0)", det_rows)
+                "VALUES ($1,$2,$3,$4,$5)", det_rows)
 
-        pago_rows = [(ped_id, fecha, pg["monto"], _metodo_pago(pg["medio"])) for pg in v["pagos"]]
+        pago_rows = [(ped_id, fecha, pg["monto"], _metodo_pago(pg["medio"]), pg.get("propina", 0))
+                     for pg in v["pagos"]]
         if pago_rows:
             await conn.executemany(
-                "INSERT INTO pagos (pedido_id, fecha, monto, metodo, estado) VALUES ($1,$2,$3,$4,'pagado')",
-                pago_rows)
+                "INSERT INTO pagos (pedido_id, fecha, monto, metodo, propina, estado) "
+                "VALUES ($1,$2,$3,$4,$5,'pagado')", pago_rows)
         n_ped += 1
 
     return {"tenant": tenant_id, "productos": len(data["productos"]), "pedidos": n_ped,
