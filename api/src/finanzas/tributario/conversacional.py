@@ -1,10 +1,13 @@
 """
 Motor Conversacional Tributario (horizontal) — Q&A en lenguaje natural.
 
-Agnóstico al vertical: `responder_tributario(pregunta, historial, calcular_fn)`
-arma el contexto con `calcular_fn(hasta)` (el orquestador tributario del vertical)
-y responde 100% con Ollama (local) — los montos NUNCA salen a Claude. Si Ollama
-no está disponible, degrada al resumen de contexto crudo.
+Agnóstico al vertical: `responder_tributario(pregunta, historial, calcular_fn)`.
+Ruteo HÍBRIDO con garantía de privacidad:
+  - Preguntas CONCEPTUALES (qué es / cómo se calcula / plazos / reglas) → Claude,
+    que solo ve la PREGUNTA (nunca los montos de la empresa).
+  - Preguntas sobre las CIFRAS de la empresa → Claude devuelve 'NECESITA_DATOS' y
+    se responde con Ollama LOCAL usando el contexto; los montos NUNCA salen a Claude.
+Ambos caminos están anclados a las mismas DEFINICIONES correctas (Chile).
 """
 
 import logging
@@ -14,6 +17,30 @@ from src import config
 
 logger = logging.getLogger(__name__)
 
+# Definiciones correctas (Chile) — compartidas por Claude (conceptos) y Ollama (datos).
+_DEFINICIONES = (
+    "DEFINICIONES CORRECTAS (Chile):\n"
+    "- IVA (Impuesto al Valor Agregado): impuesto del 19%. El IVA débito es el "
+    "recargado en las VENTAS del período; el IVA crédito es el soportado en las "
+    "COMPRAS/gastos. Se paga la diferencia (débito menos crédito).\n"
+    "- Remanente de crédito fiscal: IVA crédito no usado que queda a favor de la "
+    "empresa para descontar en períodos siguientes.\n"
+    "- F29: formulario MENSUAL donde se declara y paga el IVA y el PPM. Vence el "
+    "día 20 del mes siguiente al período declarado (declaración y pago por internet).\n"
+    "- PPM (Pago Provisional Mensual): anticipo mensual OBLIGATORIO del IMPUESTO A "
+    "LA RENTA, calculado como un porcentaje sobre los ingresos brutos del mes. "
+    "NO es una cotización previsional ni tiene relación con pensiones.\n"
+    "- Retención de honorarios: retención que la empresa aplica al pagar boletas de "
+    "honorarios (servicios de personas naturales) y entera al SII. Es una tasa FIJA "
+    "sobre el monto bruto de la boleta, que aumenta gradualmente cada año por ley; "
+    "NO depende de tener título universitario.\n"
+    "- UF (Unidad de Fomento): unidad de cuenta reajustable según la inflación, "
+    "usada como referencia de valores.\n"
+    "- Declaraciones Juradas (DJ): formularios informativos ANUALES que se "
+    "presentan al SII (ej. DJ1879, DJ1887)."
+)
+
+# System para Ollama (camino con datos de la empresa).
 _SYSTEM = (
     "Eres un copiloto tributario para pequeñas y medianas empresas en Chile. "
     "Respondes en español, conciso y claro.\n\n"
@@ -29,23 +56,25 @@ _SYSTEM = (
     "- NUNCA describas el PPM como 'cotización previsional', de pensiones o de "
     "seguridad social: eso es FALSO. El PPM es un anticipo del impuesto a la renta. "
     "No agregues parafraseos que contradigan estas definiciones.\n\n"
-    "DEFINICIONES CORRECTAS (Chile):\n"
-    "- IVA (Impuesto al Valor Agregado): impuesto del 19%. El IVA débito es el "
-    "recargado en las VENTAS del período; el IVA crédito es el soportado en las "
-    "COMPRAS/gastos. Se paga la diferencia (débito menos crédito).\n"
-    "- Remanente de crédito fiscal: IVA crédito no usado que queda a favor de la "
-    "empresa para descontar en períodos siguientes.\n"
-    "- F29: formulario MENSUAL donde se declara y paga el IVA y el PPM. Vence el "
-    "día 20 del mes siguiente al período declarado.\n"
-    "- PPM (Pago Provisional Mensual): anticipo mensual OBLIGATORIO del IMPUESTO A "
-    "LA RENTA, calculado como un porcentaje sobre los ingresos brutos del mes. "
-    "NO es una cotización previsional ni tiene relación con pensiones.\n"
-    "- Retención de honorarios: impuesto retenido sobre las boletas de honorarios "
-    "(servicios de personas naturales) que la empresa entera al SII.\n"
-    "- UF (Unidad de Fomento): unidad de cuenta reajustable según la inflación, "
-    "usada como referencia de valores.\n"
-    "- Declaraciones Juradas (DJ): formularios informativos ANUALES que se "
-    "presentan al SII (ej. DJ1879, DJ1887)."
+    + _DEFINICIONES
+)
+
+# System para Claude (camino conceptual, SIN datos de la empresa).
+_SYSTEM_CONCEPTO = (
+    "Eres un experto tributario chileno (normativa del SII). Respondés preguntas "
+    "CONCEPTUALES sobre tributación en Chile (IVA, F29, PPM, retención de "
+    "honorarios, UF, declaraciones juradas, plazos y reglas generales) en español, "
+    "claro y conciso.\n"
+    "- Para conceptos y reglas, prioriza SIEMPRE las DEFINICIONES de abajo por sobre "
+    "cualquier cosa que recuerdes; son las correctas para Chile.\n"
+    "- REGLA CRÍTICA: si la pregunta requiere los DATOS o CIFRAS específicos de la "
+    "empresa del usuario (sus montos, su IVA, su F29, cuánto debe pagar él, su "
+    "remanente, su PPM concreto), NO la respondas. Esto incluye preguntas como "
+    "'¿tengo...?', '¿cuál es mi...?', '¿cuánto debo pagar?'. NUNCA expliques qué "
+    "datos te faltan ni des una respuesta parcial: en esos casos devolvé EXACTAMENTE "
+    "el texto 'NECESITA_DATOS' y nada más.\n"
+    "- No reemplazás al contador; ante temas complejos sugerí validarlo con él.\n\n"
+    + _DEFINICIONES
 )
 
 
@@ -88,6 +117,29 @@ def _resumen_contexto(data: dict) -> str:
     return "\n".join(lineas)
 
 
+async def _responder_concepto_claude(pregunta: str) -> str | None:
+    """Responde conceptos con Claude SIN datos de la empresa (Claude solo ve la
+    pregunta). Devuelve None si la pregunta requiere cifras propias (Claude
+    responde 'NECESITA_DATOS') o si Claude no está disponible."""
+    if not config.claude_disponible():
+        return None
+    try:
+        client = config.get_anthropic_client()
+        message = await client.messages.create(
+            model=config.CLAUDE_MODEL,
+            max_tokens=700,
+            system=_SYSTEM_CONCEPTO,
+            messages=[{"role": "user", "content": pregunta}],
+        )
+        txt = message.content[0].text.strip()
+        if "NECESITA_DATOS" in txt:
+            return None
+        return txt
+    except Exception as e:
+        logger.warning(f"Claude concepto falló: {e}")
+        return None
+
+
 async def _llamar_ollama(prompt: str, system: str) -> str | None:
     import httpx
     payload = {
@@ -105,7 +157,13 @@ async def _llamar_ollama(prompt: str, system: str) -> str | None:
 
 
 async def responder_tributario(pregunta: str, historial: list[dict] | None, calcular_fn) -> str:
-    """Q&A tributario. `calcular_fn(hasta)` = orquestador tributario del vertical."""
+    """Q&A tributario híbrido. `calcular_fn(hasta)` = orquestador tributario del vertical."""
+    # 1) CONCEPTOS → Claude, que solo ve la pregunta (nunca los montos de la empresa).
+    concepto = await _responder_concepto_claude(pregunta)
+    if concepto is not None:
+        return concepto
+
+    # 2) CIFRAS de la empresa → Ollama local con el contexto. Los montos NO salen a Claude.
     try:
         data = await calcular_fn(date.today())
         contexto = _resumen_contexto(data)
@@ -114,9 +172,6 @@ async def responder_tributario(pregunta: str, historial: list[dict] | None, calc
         contexto = "CONTEXTO TRIBUTARIO: no disponible en este momento."
 
     prompt = f"{contexto}\n\nPregunta del usuario: {pregunta}"
-
-    # Copiloto financiero 100% local: el contexto tributario (montos F29, IVA, etc.)
-    # NUNCA sale a Claude. Si Ollama no responde, se degrada al contexto crudo.
     respuesta = await _llamar_ollama(prompt, _SYSTEM)
     if respuesta:
         return respuesta

@@ -160,7 +160,7 @@ async def chat_completions(request: ChatRequest, rol: str = Depends(get_role), _
         _fire_audit(
             rol, pregunta, "[tributario]", 0,
             int((time.monotonic() - t0) * 1000), estado, "tributario",
-            "ollama", error_msg,
+            "hibrido", error_msg,
         )
         if request.stream:
             return StreamingResponse(
