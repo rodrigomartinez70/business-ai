@@ -89,8 +89,8 @@ services:
     container_name: ollama
     restart: unless-stopped
     environment:
-      # Mantener el modelo en RAM 30 min para evitar el cold-start (~22s) entre consultas.
-      - OLLAMA_KEEP_ALIVE=30m
+      # Mantener el modelo SIEMPRE en RAM (la RAM aguanta) para eliminar el cold-start.
+      - OLLAMA_KEEP_ALIVE=-1
       - OLLAMA_NUM_PARALLEL=1
       - OLLAMA_MAX_LOADED_MODELS=1
     volumes:

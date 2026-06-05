@@ -48,6 +48,9 @@ _SYSTEM = (
     "- Para CIFRAS usa SOLO el CONTEXTO TRIBUTARIO provisto (son los datos reales "
     "de la empresa). Si un número no está en el contexto, dilo; NO lo calcules ni "
     "lo inventes.\n"
+    "- Cuando reportes un MONTO o una FECHA del contexto, cópialos TEXTUALMENTE tal "
+    "como aparecen (mismo número, misma fecha exacta). NO los recalcules, reformules, "
+    "ni cambies el día/mes/año.\n"
     "- Para CONCEPTOS usa SOLO las DEFINICIONES de abajo. NUNCA expliques un "
     "concepto tributario desde tu conocimiento propio; si te preguntan algo que no "
     "está en estas definiciones ni en el contexto, dilo y sugiere consultarlo con "
@@ -144,7 +147,7 @@ async def _llamar_ollama(prompt: str, system: str) -> str | None:
     import httpx
     payload = {
         "model": config.OLLAMA_MODEL, "prompt": prompt, "system": system,
-        "stream": False, "options": {"temperature": 0.3, "num_predict": 600},
+        "stream": False, "options": {"temperature": 0.1, "num_predict": 600},
     }
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
