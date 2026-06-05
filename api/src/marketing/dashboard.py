@@ -51,19 +51,32 @@ async def _calcular_marketing(conn, hasta: date, dias: int) -> dict | None:
             return None
 
         ant = await conn.fetchrow("""
-            SELECT COALESCE(SUM(gasto),0) AS gasto, COALESCE(SUM(conversiones),0) AS leads
+            SELECT COALESCE(SUM(gasto),0) AS gasto, COALESCE(SUM(conversiones),0) AS leads,
+                   COALESCE(SUM(impresiones),0) AS impresiones, COALESCE(SUM(clics),0) AS clics
               FROM insights_marketing WHERE fecha BETWEEN $1 AND $2
         """, ant_desde, ant_hasta)
 
+        serie = await conn.fetch("""
+            SELECT fecha,
+                   COALESCE(SUM(gasto),0)        AS gasto,
+                   COALESCE(SUM(impresiones),0)  AS impresiones,
+                   COALESCE(SUM(clics),0)        AS clics,
+                   COALESCE(SUM(alcance),0)      AS alcance,
+                   COALESCE(SUM(conversiones),0) AS conversiones
+              FROM insights_marketing WHERE fecha BETWEEN $1 AND $2
+             GROUP BY fecha ORDER BY fecha
+        """, desde, hasta)
+
         camp = await conn.fetch("""
-            SELECT c.nombre, c.estado, c.presupuesto_diario,
+            SELECT c.nombre, c.estado, c.objetivo, c.presupuesto_diario,
                    COALESCE(SUM(i.gasto),0)        AS gasto,
                    COALESCE(SUM(i.conversiones),0) AS leads,
-                   COALESCE(SUM(i.clics),0)        AS clics
+                   COALESCE(SUM(i.clics),0)        AS clics,
+                   COALESCE(SUM(i.impresiones),0)  AS impresiones
               FROM campanas c
               LEFT JOIN insights_marketing i
                      ON i.campana_id = c.id AND i.fecha BETWEEN $1 AND $2
-             GROUP BY c.id, c.nombre, c.estado, c.presupuesto_diario
+             GROUP BY c.id, c.nombre, c.estado, c.objetivo, c.presupuesto_diario
              ORDER BY SUM(i.gasto) DESC NULLS LAST
         """, desde, hasta)
     except (asyncpg.UndefinedTableError, asyncpg.InvalidSchemaNameError):
@@ -75,26 +88,27 @@ async def _calcular_marketing(conn, hasta: date, dias: int) -> dict | None:
     gasto = float(tot["gasto"]); leads = float(tot["leads"])
     clics = int(tot["clics"]); impresiones = int(tot["impresiones"]); alcance = int(tot["alcance"])
     g_ant = float(ant["gasto"]); l_ant = float(ant["leads"])
+    i_ant = int(ant["impresiones"]); c_ant = int(ant["clics"])
 
     resumen = {
-        "inversion": gasto,
-        "leads": leads,
-        "cpl": _div(gasto, leads),
-        "cpc": _div(gasto, clics),
-        "ctr": _div(clics, impresiones) * 100,
-        "cpm": _div(gasto, impresiones) * 1000,
+        "inversion": gasto, "leads": leads, "clics": clics, "impresiones": impresiones,
         "alcance": alcance,
+        "cpl": _div(gasto, leads), "cpc": _div(gasto, clics),
+        "ctr": _div(clics, impresiones) * 100, "cpm": _div(gasto, impresiones) * 1000,
         "conversion_clic_lead": _div(leads, clics) * 100,
-        "var_inversion_pct": (_div(gasto - g_ant, g_ant) * 100) if g_ant else None,
-        "var_leads_pct":     (_div(leads - l_ant, l_ant) * 100) if l_ant else None,
+        "var_inversion_pct":   (_div(gasto - g_ant, g_ant) * 100) if g_ant else None,
+        "var_leads_pct":       (_div(leads - l_ant, l_ant) * 100) if l_ant else None,
+        "var_impresiones_pct": (_div(impresiones - i_ant, i_ant) * 100) if i_ant else None,
+        "var_clics_pct":       (_div(clics - c_ant, c_ant) * 100) if c_ant else None,
     }
 
     campanas: list[dict] = []
     alertas: list[dict] = []
     for c in camp:
         g = float(c["gasto"]); l = float(c["leads"])
-        campanas.append({"nombre": c["nombre"], "estado": c["estado"],
-                         "gasto": g, "leads": l, "cpl": _div(g, l), "clics": int(c["clics"])})
+        campanas.append({"nombre": c["nombre"], "estado": c["estado"], "objetivo": c["objetivo"],
+                         "gasto": g, "leads": l, "cpl": _div(g, l),
+                         "clics": int(c["clics"]), "impresiones": int(c["impresiones"])})
         if c["estado"] == "PAUSED" and (c["presupuesto_diario"] or 0) > 0:
             alertas.append({"nivel": "info", "titulo": f"Campaña pausada con presupuesto: {c['nombre']}",
                             "desc": "Tiene presupuesto asignado pero está en pausa."})
@@ -106,11 +120,17 @@ async def _calcular_marketing(conn, hasta: date, dias: int) -> dict | None:
     mejor = min(activas, key=lambda c: c["cpl"]) if activas else None
     peor  = max(activas, key=lambda c: c["cpl"]) if activas else None
 
+    serie_diaria = [{"fecha": str(s["fecha"]), "gasto": float(s["gasto"]),
+                     "impresiones": int(s["impresiones"]), "clics": int(s["clics"]),
+                     "alcance": int(s["alcance"]), "conversiones": float(s["conversiones"])}
+                    for s in serie]
+
     return {
         "periodo": {"desde": str(desde), "hasta": str(hasta), "dias": dias},
         "resumen": resumen,
         "campanas": campanas,
         "alertas": alertas,
+        "serie_diaria": serie_diaria,
         "mejor_campana": mejor["nombre"] if mejor else None,
         "peor_campana":  peor["nombre"] if peor else None,
     }
@@ -174,5 +194,131 @@ def renderizar_marketing_pagina(data: dict, cfg: dict, titulo: str = "Marketing"
 <div class="head"><h1>📣 Dashboard de Marketing — {titulo}</h1>
 <div class="sub">Período {p.get('desde', '')} → {p.get('hasta', '')} · fuente: Meta Ads</div></div>
 {card}
+<div class="foot">Datos de Meta Ads almacenados en PostgreSQL · generado automáticamente.</div>
+</div></body></html>"""
+
+
+# ─────────────────────────────────────────────────────────────
+# Render GRÁFICO (estilo "Resumen de publicidad" de Meta)
+# ─────────────────────────────────────────────────────────────
+
+_SPARK = "#0a7d6b"
+
+_OBJ_LABEL = {
+    "OUTCOME_LEADS": "Leads", "LEAD_GENERATION": "Leads",
+    "OUTCOME_TRAFFIC": "Tráfico", "LINK_CLICKS": "Tráfico",
+    "OUTCOME_AWARENESS": "Reconocimiento", "BRAND_AWARENESS": "Reconocimiento",
+    "REACH": "Reconocimiento", "OUTCOME_ENGAGEMENT": "Interacción",
+    "POST_ENGAGEMENT": "Interacción", "OUTCOME_SALES": "Ventas", "CONVERSIONS": "Ventas",
+}
+
+
+def _num(n) -> str:
+    """Entero con separador de miles estilo chileno (punto)."""
+    return f"{n:,.0f}".replace(",", ".")
+
+
+def _sparkline(valores, w: int = 260, h: int = 44, color: str = _SPARK) -> str:
+    vals = [float(v) for v in valores] if valores else []
+    if len(vals) < 2:
+        vals = (vals * 2) if vals else [0.0, 0.0]
+    mn, mx = min(vals), max(vals)
+    rng = (mx - mn) or 1.0
+    n = len(vals); pad = 3
+    pts = []
+    for i, v in enumerate(vals):
+        x = pad + i / (n - 1) * (w - 2 * pad)
+        y = pad + (1 - (v - mn) / rng) * (h - 2 * pad)
+        pts.append(f"{x:.1f},{y:.1f}")
+    return (f'<svg width="100%" height="{h}" viewBox="0 0 {w} {h}" preserveAspectRatio="none" '
+            f'style="display:block;margin-top:8px;">'
+            f'<polyline points="{" ".join(pts)}" fill="none" stroke="{color}" '
+            f'stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></svg>')
+
+
+def _kpi_card(titulo: str, valor: str, var_pct, serie) -> str:
+    if var_pct is None:
+        trend = '<span style="color:#9ca3af;font-size:13px;font-weight:600;">—</span>'
+    else:
+        up = var_pct >= 0
+        col = "#16a34a" if up else "#dc2626"
+        trend = (f'<span style="color:{col};font-size:13px;font-weight:700;">'
+                 f'{"▲" if up else "▼"} {abs(var_pct):.1f}%</span>')
+    return (
+        '<div style="flex:1 1 200px;border:1px solid #e5e7eb;border-radius:12px;'
+        'padding:14px 16px;background:#fff;">'
+        f'<div style="font-size:13px;color:#374151;font-weight:600;margin-bottom:8px;">{titulo}</div>'
+        f'<div style="font-size:30px;font-weight:800;line-height:1;color:#111827;">'
+        f'{valor} &nbsp;{trend}</div>'
+        f'{_sparkline(serie)}</div>'
+    )
+
+
+def _tabla_objetivo(grupo: str, camps: list[dict], cfg: dict) -> str:
+    total_g = sum(c["gasto"] for c in camps)
+    if grupo == "Leads":
+        cols = "<th>Campaña</th><th>Inversión</th><th>Conversiones</th><th>Costo x conv.</th>"
+        filas = ""
+        for c in camps:
+            cpl = _fm(c["cpl"], cfg) if c["leads"] else "—"
+            filas += (f'<tr><td>{c["nombre"]}</td><td>{_fm(c["gasto"], cfg)}</td>'
+                      f'<td style="text-align:right;">{_num(c["leads"])}</td><td>{cpl}</td></tr>')
+    else:
+        cols = "<th>Campaña</th><th>Inversión</th><th>Impresiones</th><th>Clics</th><th>Costo x clic</th>"
+        filas = ""
+        for c in camps:
+            cpc = _fm(_div(c["gasto"], c["clics"]), cfg) if c["clics"] else "—"
+            filas += (f'<tr><td>{c["nombre"]}</td><td>{_fm(c["gasto"], cfg)}</td>'
+                      f'<td style="text-align:right;">{_num(c["impresiones"])}</td>'
+                      f'<td style="text-align:right;">{_num(c["clics"])}</td><td>{cpc}</td></tr>')
+    return _card(
+        f"Campañas de {grupo} · inversión {_fm(total_g, cfg)}",
+        f'<table class="dt"><tr>{cols}</tr>{filas}</table>')
+
+
+def renderizar_marketing_grafico(data: dict, cfg: dict, titulo: str = "Marketing") -> str:
+    r = data["resumen"]; p = data["periodo"]
+    serie = data.get("serie_diaria", [])
+    n_camp = len([c for c in data["campanas"] if c["gasto"] > 0])
+
+    cards = (
+        _kpi_card("Inversión", _fm(r["inversion"], cfg), r.get("var_inversion_pct"),
+                  [d["gasto"] for d in serie])
+        + _kpi_card("Espectadores (impresiones)", _num(r["impresiones"]),
+                    r.get("var_impresiones_pct"), [d["impresiones"] for d in serie])
+        + _kpi_card("Clics en el enlace", _num(r["clics"]),
+                    r.get("var_clics_pct"), [d["clics"] for d in serie])
+        + _kpi_card("Conversiones", _num(r["leads"]),
+                    r.get("var_leads_pct"), [d["conversiones"] for d in serie])
+    )
+    cards_row = f'<div style="display:flex;gap:12px;flex-wrap:wrap;margin:4px 0 18px;">{cards}</div>'
+
+    # Tablas agrupadas por objetivo (orden: Leads, Tráfico, resto por inversión)
+    grupos: dict[str, list[dict]] = {}
+    for c in data["campanas"]:
+        if c["gasto"] <= 0:
+            continue
+        grupos.setdefault(_OBJ_LABEL.get(c.get("objetivo"), "Otras"), []).append(c)
+    orden = sorted(grupos, key=lambda g: (g != "Leads", g != "Tráfico",
+                                          -sum(x["gasto"] for x in grupos[g])))
+    tablas = "".join(_tabla_objetivo(g, grupos[g], cfg) for g in orden)
+
+    avisos = "".join(_aviso(a["nivel"], a["titulo"], a["desc"]) for a in data.get("alertas", []))
+    avisos_card = _card("⚠️ Puntos de atención", avisos) if avisos else ""
+
+    return f"""<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Resumen de publicidad — {titulo}</title>
+<style>{_CSS}</style></head>
+<body><div class="wrap">
+<div class="head" style="text-align:left;">
+  <h1 style="font-size:20px;">Resumen de publicidad — {titulo}</h1>
+  <div class="sub">{titulo} gastó <b>{_fm(r['inversion'], cfg)}</b> en {n_camp} campañas
+  en los últimos {p['dias']} días · {p['desde']} → {p['hasta']} · fuente: Meta Ads</div>
+</div>
+{cards_row}
+{tablas}
+{avisos_card}
 <div class="foot">Datos de Meta Ads almacenados en PostgreSQL · generado automáticamente.</div>
 </div></body></html>"""
