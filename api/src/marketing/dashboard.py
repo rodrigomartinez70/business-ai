@@ -339,9 +339,6 @@ def renderizar_marketing_grafico(data: dict, cfg: dict, titulo: str = "Marketing
                                           -sum(x["gasto"] for x in grupos[g])))
     tablas = "".join(_tabla_objetivo(g, grupos[g], cfg) for g in orden)
 
-    avisos = "".join(_aviso(a["nivel"], a["titulo"], a["desc"]) for a in data.get("alertas", []))
-    avisos_card = _card("⚠️ Puntos de atención", avisos) if avisos else ""
-
     return f"""<!DOCTYPE html>
 <html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -355,6 +352,5 @@ def renderizar_marketing_grafico(data: dict, cfg: dict, titulo: str = "Marketing
 </div>
 {cards_row}
 {tablas}
-{avisos_card}
 <div class="foot">Datos de Meta Ads almacenados en PostgreSQL · generado automáticamente.</div>
 </div></body></html>"""
