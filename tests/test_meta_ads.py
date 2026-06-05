@@ -19,7 +19,7 @@ def test_parse_campana_convierte_presupuesto_y_fechas():
     assert c["id_externo"] == "23851000000000001"
     assert c["objetivo"] == "OUTCOME_LEADS"
     assert c["presupuesto_diario"] == 50000.0
-    assert c["fecha_inicio"] == "2026-03-01"
+    assert c["fecha_inicio"] == date(2026, 3, 1)
     assert c["fecha_fin"] is None
 
 
@@ -39,7 +39,7 @@ def test_parse_insight_extrae_metricas_y_conversiones():
     }
     ins = meta_ads._parse_insight(raw)
     assert ins["campana_externa"] == "23851000000000001"
-    assert ins["fecha"] == "2026-04-10"
+    assert ins["fecha"] == date(2026, 4, 10)
     assert ins["gasto"] == 45000.5
     assert ins["impresiones"] == 12000
     assert ins["clics"] == 320

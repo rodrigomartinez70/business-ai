@@ -15,7 +15,7 @@ NO trae Lead Ads (sin PII en esta integración). El access_token nunca se loguea
 
 import logging
 import random
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 import httpx
@@ -103,9 +103,14 @@ async def fetch_insights(creds: dict, desde: date, hasta: date,
 # Parseo (Graph API → filas normalizadas)
 # ─────────────────────────────────────────────────────────────
 
+def _to_date(s: Optional[str]) -> Optional[date]:
+    """'2026-03-01T00:00:00-0300' o '2026-03-01' → date. None si vacío."""
+    if not s:
+        return None
+    return datetime.strptime(s[:10], "%Y-%m-%d").date()
+
+
 def _parse_campana(raw: dict) -> dict:
-    def _fecha(v):
-        return v[:10] if v else None
     daily = raw.get("daily_budget")
     return {
         "id_externo": raw["id"],
@@ -114,8 +119,8 @@ def _parse_campana(raw: dict) -> dict:
         "estado": raw.get("status"),
         # daily_budget viene en la unidad menor de la moneda (centavos) → a unidad.
         "presupuesto_diario": (float(daily) / 100) if daily else None,
-        "fecha_inicio": _fecha(raw.get("start_time")),
-        "fecha_fin": _fecha(raw.get("stop_time")),
+        "fecha_inicio": _to_date(raw.get("start_time")),
+        "fecha_fin": _to_date(raw.get("stop_time")),
     }
 
 
@@ -135,7 +140,7 @@ def _conversiones_de_actions(actions) -> float:
 def _parse_insight(raw: dict) -> dict:
     return {
         "campana_externa": raw.get("campaign_id"),
-        "fecha": raw.get("date_start"),
+        "fecha": _to_date(raw.get("date_start")),
         "gasto": float(raw.get("spend", 0) or 0),
         "impresiones": int(raw.get("impressions", 0) or 0),
         "clics": int(raw.get("clicks", 0) or 0),
