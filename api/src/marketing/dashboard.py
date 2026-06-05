@@ -14,7 +14,7 @@ from datetime import date, timedelta
 import asyncpg
 
 from src import config
-from src.render import _card, _kpis, _fm, _aviso
+from src.render import _CSS, _card, _kpis, _fm, _aviso
 
 logger = logging.getLogger(__name__)
 
@@ -23,41 +23,49 @@ def _div(a: float, b: float) -> float:
     return (a / b) if b else 0.0
 
 
-async def calcular_marketing(hasta: date, dias: int = 61) -> dict | None:
+async def calcular_marketing(hasta: date, dias: int = 61, *, conn=None) -> dict | None:
+    """Métricas de marketing del período. Si se pasa `conn` (asyncpg) usa esa
+    conexión; si no, toma una del pool tenant-aware (contexto de request)."""
+    if conn is not None:
+        return await _calcular_marketing(conn, hasta, dias)
+    async with config.db_pool.acquire() as c:
+        return await _calcular_marketing(c, hasta, dias)
+
+
+async def _calcular_marketing(conn, hasta: date, dias: int) -> dict | None:
     desde     = hasta - timedelta(days=dias - 1)
     ant_hasta = desde - timedelta(days=1)
     ant_desde = ant_hasta - timedelta(days=dias - 1)
 
     try:
-        async with config.db_pool.acquire() as conn:
-            tot = await conn.fetchrow("""
-                SELECT COALESCE(SUM(gasto),0)        AS gasto,
-                       COALESCE(SUM(conversiones),0) AS leads,
-                       COALESCE(SUM(clics),0)        AS clics,
-                       COALESCE(SUM(impresiones),0)  AS impresiones,
-                       COALESCE(SUM(alcance),0)      AS alcance,
-                       COUNT(*)                      AS filas
-                  FROM insights_marketing WHERE fecha BETWEEN $1 AND $2
-            """, desde, hasta)
-            if not tot or tot["filas"] == 0:
-                return None
+        tot = await conn.fetchrow("""
+            SELECT COALESCE(SUM(gasto),0)        AS gasto,
+                   COALESCE(SUM(conversiones),0) AS leads,
+                   COALESCE(SUM(clics),0)        AS clics,
+                   COALESCE(SUM(impresiones),0)  AS impresiones,
+                   COALESCE(SUM(alcance),0)      AS alcance,
+                   COUNT(*)                      AS filas
+              FROM insights_marketing WHERE fecha BETWEEN $1 AND $2
+        """, desde, hasta)
+        if not tot or tot["filas"] == 0:
+            return None
 
-            ant = await conn.fetchrow("""
-                SELECT COALESCE(SUM(gasto),0) AS gasto, COALESCE(SUM(conversiones),0) AS leads
-                  FROM insights_marketing WHERE fecha BETWEEN $1 AND $2
-            """, ant_desde, ant_hasta)
+        ant = await conn.fetchrow("""
+            SELECT COALESCE(SUM(gasto),0) AS gasto, COALESCE(SUM(conversiones),0) AS leads
+              FROM insights_marketing WHERE fecha BETWEEN $1 AND $2
+        """, ant_desde, ant_hasta)
 
-            camp = await conn.fetch("""
-                SELECT c.nombre, c.estado, c.presupuesto_diario,
-                       COALESCE(SUM(i.gasto),0)        AS gasto,
-                       COALESCE(SUM(i.conversiones),0) AS leads,
-                       COALESCE(SUM(i.clics),0)        AS clics
-                  FROM campanas c
-                  LEFT JOIN insights_marketing i
-                         ON i.campana_id = c.id AND i.fecha BETWEEN $1 AND $2
-                 GROUP BY c.id, c.nombre, c.estado, c.presupuesto_diario
-                 ORDER BY SUM(i.gasto) DESC NULLS LAST
-            """, desde, hasta)
+        camp = await conn.fetch("""
+            SELECT c.nombre, c.estado, c.presupuesto_diario,
+                   COALESCE(SUM(i.gasto),0)        AS gasto,
+                   COALESCE(SUM(i.conversiones),0) AS leads,
+                   COALESCE(SUM(i.clics),0)        AS clics
+              FROM campanas c
+              LEFT JOIN insights_marketing i
+                     ON i.campana_id = c.id AND i.fecha BETWEEN $1 AND $2
+             GROUP BY c.id, c.nombre, c.estado, c.presupuesto_diario
+             ORDER BY SUM(i.gasto) DESC NULLS LAST
+        """, desde, hasta)
     except (asyncpg.UndefinedTableError, asyncpg.InvalidSchemaNameError):
         return None  # tenant sin esquema de marketing
     except Exception as e:  # defensivo: nunca romper el dashboard por marketing
@@ -149,3 +157,22 @@ def renderizar_marketing_html(data: dict, cfg: dict, insights=None) -> str:
 
     return _card(f"📣 Marketing — Meta Ads (últimos {p['dias']} días)",
                  _kpis(rows) + tabla + avisos + _insights_block(insights))
+
+
+def renderizar_marketing_pagina(data: dict, cfg: dict, titulo: str = "Marketing",
+                                insights=None) -> str:
+    """Página HTML standalone (documento completo) con la sección de marketing.
+    Útil para generar un dashboard de marketing independiente por tenant."""
+    p = data.get("periodo", {})
+    card = renderizar_marketing_html(data, cfg, insights)
+    return f"""<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dashboard de Marketing — {titulo}</title>
+<style>{_CSS}</style></head>
+<body><div class="wrap">
+<div class="head"><h1>📣 Dashboard de Marketing — {titulo}</h1>
+<div class="sub">Período {p.get('desde', '')} → {p.get('hasta', '')} · fuente: Meta Ads</div></div>
+{card}
+<div class="foot">Datos de Meta Ads almacenados en PostgreSQL · generado automáticamente.</div>
+</div></body></html>"""
