@@ -133,6 +133,7 @@ services:
       - API_KEY_GERENTE=${API_KEY_GERENTE}
       - API_KEY_RESTAURANTE=${API_KEY_RESTAURANTE:-}
       - API_KEY_INMOBILIARIA=${API_KEY_INMOBILIARIA:-}
+      - API_KEY_RESTAURANTE_TOTEAT=${API_KEY_RESTAURANTE_TOTEAT:-}
     volumes:
       - ./cron:/cron:ro
       - reportes_data:/reportes

@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS categorias_menu (
 
 CREATE TABLE IF NOT EXISTS productos (
     id           SERIAL PRIMARY KEY,
+    id_externo   VARCHAR(64),                 -- id en POS externo (Toteat) para upsert idempotente
     categoria_id INTEGER REFERENCES categorias_menu(id),
     nombre       VARCHAR(120) NOT NULL,
     precio       NUMERIC(10,2) NOT NULL,
@@ -41,6 +42,7 @@ CREATE TABLE IF NOT EXISTS productos (
 
 CREATE TABLE IF NOT EXISTS pedidos (
     id            SERIAL PRIMARY KEY,
+    id_externo    VARCHAR(64),                           -- id de orden en POS externo (Toteat)
     mesa_id       INTEGER REFERENCES mesas(id),          -- NULL si es delivery/takeaway
     canal_id      INTEGER REFERENCES canales_venta(id),
     fecha         DATE NOT NULL,
@@ -131,6 +133,8 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 
 -- Índices
+CREATE UNIQUE INDEX IF NOT EXISTS ux_productos_id_externo ON productos(id_externo) WHERE id_externo IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_pedidos_id_externo   ON pedidos(id_externo)   WHERE id_externo IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_pedidos_fecha        ON pedidos(fecha);
 CREATE INDEX IF NOT EXISTS idx_pedidos_estado       ON pedidos(estado);
 CREATE INDEX IF NOT EXISTS idx_pedidos_canal        ON pedidos(canal_id);

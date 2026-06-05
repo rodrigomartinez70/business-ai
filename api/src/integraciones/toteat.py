@@ -227,7 +227,7 @@ def _mock_sales(desde: date, hasta: date) -> list[dict]:
     dia = desde
     oid = 1089400000000000
     while dia <= hasta:
-        for _ in range(rng.randint(18, 40)):  # órdenes del turno
+        for _ in range(rng.randint(8, 16)):  # órdenes del turno
             oid += rng.randint(1, 50)
             n = rng.randint(1, 4)
             line = []
@@ -283,3 +283,112 @@ async def obtener_datos(creds: Optional[dict], desde: date, hasta: date,
         "ventas": [_parse_venta(v) for v in sales_raw],
         "recaudaciones": colecciones,
     }
+
+
+# ─────────────────────────────────────────────────────────────
+# Mapeo al vertical restaurante (pedidos/detalle_pedido/pagos/productos)
+# ─────────────────────────────────────────────────────────────
+
+_CANAL_MAP = {"salon": "Salón", "salón": "Salón", "delivery": "Delivery",
+              "takeaway": "Takeaway", "pickup": "Takeaway", "pos": "Salón"}
+
+
+def _metodo_pago(medio: str) -> str:
+    m = (medio or "").lower()
+    if "efectivo" in m:
+        return "efectivo"
+    if "tarjeta" in m or "web pay" in m or "paypal" in m or "débito" in m or "crédito" in m:
+        return "tarjeta"
+    if "transfer" in m:
+        return "transferencia"
+    return m[:30] or "otro"
+
+
+def _solo_fecha(s) -> date:
+    if not s:
+        return date.today()
+    return datetime.strptime(str(s)[:10], "%Y-%m-%d").date()
+
+
+async def _ensure_id(conn, cache: dict, tabla: str, nombre: str, insert_sql: str) -> int:
+    if nombre in cache:
+        return cache[nombre]
+    row = await conn.fetchrow(f"SELECT id FROM {tabla} WHERE nombre = $1 LIMIT 1", nombre)
+    cache[nombre] = row["id"] if row else await conn.fetchval(insert_sql, nombre)
+    return cache[nombre]
+
+
+async def sincronizar(conn, tenant_id: str, desde: date, hasta: date,
+                      *, mock: bool = False) -> dict:
+    """Trae datos de Toteat y los mapea a las tablas del vertical restaurante.
+    Idempotente (upsert por id_externo). Requiere search_path en el schema del tenant."""
+    creds = None if mock else await obtener_credenciales(conn, tenant_id)
+    data = await obtener_datos(creds, desde, hasta, mock=mock)
+
+    cat_cache: dict = {}
+    prod_por_clave: dict = {}   # id_externo y nombre → producto_id
+
+    # 1) Productos → categorias_menu + productos
+    for p in data["productos"]:
+        cat_id = None
+        if p.get("categoria"):
+            cat_id = await _ensure_id(
+                conn, cat_cache, "categorias_menu", p["categoria"],
+                "INSERT INTO categorias_menu (nombre) VALUES ($1) RETURNING id")
+        pid = await conn.fetchval(
+            """INSERT INTO productos (id_externo, categoria_id, nombre, precio, costo, activo)
+               VALUES ($1,$2,$3,$4,0,TRUE)
+               ON CONFLICT (id_externo) WHERE id_externo IS NOT NULL DO UPDATE SET
+                   categoria_id = EXCLUDED.categoria_id, nombre = EXCLUDED.nombre,
+                   precio = EXCLUDED.precio
+               RETURNING id""",
+            p["id_externo"], cat_id, p["nombre"], p["precio"])
+        prod_por_clave[p["id_externo"]] = pid
+        prod_por_clave[p["nombre"]] = pid
+
+    # 2) Ventas → pedidos / detalle_pedido / pagos
+    canal_cache: dict = {}
+    n_ped = 0
+    for v in data["ventas"]:
+        canal_nombre = _CANAL_MAP.get((v.get("canal") or "").lower(), "Salón")
+        canal_id = await _ensure_id(
+            conn, canal_cache, "canales_venta", canal_nombre,
+            "INSERT INTO canales_venta (nombre) VALUES ($1) RETURNING id")
+        fecha = _solo_fecha(v["fecha"])
+        estado = "anulado" if v["estado"] in ("CANCELLED", "CANCELED") else "pagado"
+
+        ped_id = await conn.fetchval(
+            """INSERT INTO pedidos (id_externo, canal_id, fecha, estado)
+               VALUES ($1,$2,$3,$4)
+               ON CONFLICT (id_externo) WHERE id_externo IS NOT NULL DO UPDATE SET
+                   canal_id = EXCLUDED.canal_id, fecha = EXCLUDED.fecha, estado = EXCLUDED.estado
+               RETURNING id""",
+            v["order_id"], canal_id, fecha, estado)
+
+        # Reemplazo idempotente del detalle y pagos de la orden
+        await conn.execute("DELETE FROM detalle_pedido WHERE pedido_id = $1", ped_id)
+        await conn.execute("DELETE FROM pagos WHERE pedido_id = $1", ped_id)
+
+        det_rows = []
+        for ln in v["lineas"]:
+            pid = prod_por_clave.get(ln["codigo"]) or prod_por_clave.get(ln["producto"])
+            if pid is None:  # producto fuera del menú → crearlo al vuelo
+                pid = await conn.fetchval(
+                    "INSERT INTO productos (nombre, precio, costo, activo) VALUES ($1,$2,0,TRUE) RETURNING id",
+                    ln["producto"] or "Producto", ln["precio_unitario"])
+                prod_por_clave[ln["producto"]] = pid
+            det_rows.append((ped_id, pid, int(ln["cantidad"]), ln["precio_unitario"]))
+        if det_rows:
+            await conn.executemany(
+                "INSERT INTO detalle_pedido (pedido_id, producto_id, cantidad, precio_unitario, costo_unitario) "
+                "VALUES ($1,$2,$3,$4,0)", det_rows)
+
+        pago_rows = [(ped_id, fecha, pg["monto"], _metodo_pago(pg["medio"])) for pg in v["pagos"]]
+        if pago_rows:
+            await conn.executemany(
+                "INSERT INTO pagos (pedido_id, fecha, monto, metodo, estado) VALUES ($1,$2,$3,$4,'pagado')",
+                pago_rows)
+        n_ped += 1
+
+    return {"tenant": tenant_id, "productos": len(data["productos"]), "pedidos": n_ped,
+            "desde": str(desde), "hasta": str(hasta), "modo": "mock" if mock else "api"}
