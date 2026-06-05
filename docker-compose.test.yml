@@ -8,6 +8,7 @@ services:
     volumes:
       - ./postgres/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
       - ./postgres/seed.sql:/docker-entrypoint-initdb.d/02_seed.sql:ro
+      - ./postgres/marketing.sql:/docker-entrypoint-initdb.d/03_marketing.sql:ro
     ports:
       - "5435:5432"   # Puerto distinto para no colisionar con el DB de desarrollo
     healthcheck:
