@@ -1,4 +1,4 @@
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from . import tenant_registry
@@ -20,6 +20,26 @@ async def get_tenant_ctx(
     ctx = tenant_registry.resolve_api_key(credentials.credentials)
     if ctx is None:
         raise HTTPException(status_code=401, detail="API key inválida.")
+    set_tenant(ctx)
+    return ctx
+
+
+async def get_tenant_ctx_web(request: Request, key: str | None = None) -> TenantContext:
+    """Auth flexible para vistas HTML abribles en el navegador: acepta la API key
+    por query param `?key=...` o por header `Authorization: Bearer`. Resuelve el
+    tenant y lo setea en el contextvar.
+
+    Nota: pasar la key por URL queda en logs/historial del navegador; usar solo
+    para dashboards de lectura."""
+    api_key = key
+    if not api_key:
+        h = request.headers.get("Authorization", "")
+        if h.startswith("Bearer "):
+            api_key = h[len("Bearer "):].strip()
+    ctx = tenant_registry.resolve_api_key(api_key) if api_key else None
+    if ctx is None:
+        raise HTTPException(status_code=401,
+                            detail="API key inválida o ausente (usá ?key=... o Authorization: Bearer).")
     set_tenant(ctx)
     return ctx
 

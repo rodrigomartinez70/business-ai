@@ -2,7 +2,7 @@ from datetime import date, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, Body
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, HTMLResponse
 from pydantic import BaseModel
 
 from .. import config
@@ -28,11 +28,48 @@ from ..verticals.hotel.agents.revenue_management import (
     calcular_revenue_management,
     renderizar_revenue_markdown,
 )
-from ..auth import get_role
+from ..auth import get_role, get_tenant_ctx_web
+from ..marketing.dashboard import calcular_marketing, renderizar_marketing_grafico
 from ..verticals import dispatch
 from ..delivery import enviar_dashboard_email
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
+
+
+@router.get("/marketing")
+async def agente_marketing(
+    dias:    int = Query(60, ge=1, le=365, description="Tamaño de ventana en días (compara vs ventana previa)"),
+    formato: str = Query("html", description="html | json"),
+    _ctx=Depends(get_tenant_ctx_web),
+):
+    """
+    Dashboard de Marketing (HORIZONTAL) — estilo "Resumen de publicidad" de Meta.
+
+    Disponible para cualquier negocio que tenga datos de marketing cargados
+    (tablas canales_marketing / campanas / insights_marketing). Compara la ventana
+    de `dias` contra la ventana previa de igual tamaño.
+
+    - **html**: página gráfica (tarjetas con sparklines + tablas por objetivo).
+      Abrible en el navegador: `/api/agents/marketing?formato=html&key=<API_KEY>`
+    - **json**: estructura completa de métricas.
+    """
+    data = await calcular_marketing(date.today(), dias)
+    if not data:
+        if formato == "json":
+            return {"disponible": False,
+                    "mensaje": "Este negocio no tiene datos de marketing cargados."}
+        return HTMLResponse(
+            '<div style="font-family:sans-serif;padding:40px;color:#374151;">'
+            '<h2>Sin datos de marketing</h2><p>Este negocio todavía no tiene una '
+            'integración de marketing (ej. Meta Ads) con datos cargados.</p></div>',
+            status_code=200)
+
+    if formato == "json":
+        return data
+
+    cfg = config.get_config()
+    biz = cfg.get("business", {}).get("name", "Negocio")
+    return HTMLResponse(content=renderizar_marketing_grafico(data, cfg, biz))
 
 
 @router.get("/alertas")
