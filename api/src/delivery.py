@@ -38,7 +38,14 @@ def _strip_emojis(html: str) -> str:
 
 
 def _destinatarios() -> list[str]:
-    return [d.strip() for d in config.REPORT_EMAIL_TO.split(",") if d.strip()]
+    # Por-tenant: si el config del tenant define report.email_to, se usa eso;
+    # si no, se cae al global REPORT_EMAIL_TO (env). Acepta lista o string coma-separado.
+    lista = (config.get_config().get("report") or {}).get("email_to")
+    if not lista:
+        lista = config.REPORT_EMAIL_TO
+    if isinstance(lista, str):
+        lista = lista.split(",")
+    return [d.strip() for d in lista if d and str(d).strip()]
 
 
 def enviar_dashboard_email(html: str, cfg: dict, asunto: str | None = None) -> dict:
