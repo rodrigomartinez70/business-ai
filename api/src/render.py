@@ -71,3 +71,63 @@ def _aviso(nivel: str, titulo: str, desc: str, extra: str = "") -> str:
             f'<div style="font-weight:600;font-size:13px;">{ico} {titulo}</div>'
             f'<div style="font-size:12px;color:#6b7280;margin-top:3px;">{desc}</div>'
             f'{extra_html}</div>')
+
+
+_MESES_ABBR = {1: "ene", 2: "feb", 3: "mar", 4: "abr", 5: "may", 6: "jun",
+               7: "jul", 8: "ago", 9: "sep", 10: "oct", 11: "nov", 12: "dic"}
+
+
+def renderizar_ipc_html(ipc: dict | None) -> str:
+    """
+    Gráfico de barras (CSS puro) de la variación mensual del IPC de Chile,
+    con eje cero real: los meses con inflación crecen hacia arriba y los de
+    deflación hacia abajo del eje. Horizontal — usado por todos los verticales.
+    """
+    if not ipc or not ipc.get("serie"):
+        return ""
+    serie    = ipc["serie"]
+    valores  = [p["valor"] for p in serie]
+    escala   = max((abs(v) for v in valores), default=0) or 1
+    alto_max = 46  # px por cada mitad (arriba del eje / abajo del eje)
+
+    pos_cells = neg_cells = eje_cells = mes_cells = ""
+    for p in serie:
+        v   = p["valor"]
+        mes = _MESES_ABBR.get(int(p["mes"][5:7]), p["mes"][5:7])
+        if v > 0:   # inflación → barra hacia arriba (celda superior, pegada al eje)
+            h = max(2, round(v / escala * alto_max))
+            pos_cells += (
+                '<td style="vertical-align:bottom;text-align:center;padding:0 2px;">'
+                f'<div style="font-size:9px;color:#6b7280;">{v:+.1f}</div>'
+                f'<div style="height:{h}px;background:#F39C12;border-radius:2px 2px 0 0;"></div></td>'
+            )
+            neg_cells += '<td></td>'
+        elif v < 0:  # deflación → barra hacia abajo (celda inferior, pegada al eje)
+            h = max(2, round(abs(v) / escala * alto_max))
+            pos_cells += '<td></td>'
+            neg_cells += (
+                '<td style="vertical-align:top;text-align:center;padding:0 2px;">'
+                f'<div style="height:{h}px;background:#3b82f6;border-radius:0 0 2px 2px;"></div>'
+                f'<div style="font-size:9px;color:#6b7280;">{v:+.1f}</div></td>'
+            )
+        else:        # 0.0 → marca sobre el eje
+            pos_cells += ('<td style="vertical-align:bottom;text-align:center;">'
+                          '<div style="font-size:9px;color:#9ca3af;">0.0</div></td>')
+            neg_cells += '<td></td>'
+        eje_cells += '<td style="border-top:2px solid #cbd5e1;font-size:0;line-height:0;">&nbsp;</td>'
+        mes_cells += f'<td style="text-align:center;font-size:9px;color:#9ca3af;padding-top:3px;">{mes}</td>'
+
+    acum = ipc.get("acumulado_pct")
+    sub  = (f"Inflación mensual (última medición): <b>{acum:+.1f}%</b> · "
+            if acum is not None else "")
+    body = (
+        f'<div style="font-size:12px;color:#6b7280;margin-bottom:8px;">'
+        f'{sub}variación mensual (%) · fuente: {ipc["fuente"]}</div>'
+        '<table style="width:100%;border-collapse:collapse;table-layout:fixed;">'
+        f'<tr style="height:{alto_max + 12}px">{pos_cells}</tr>'
+        f'<tr>{eje_cells}</tr>'
+        f'<tr style="height:{alto_max + 12}px">{neg_cells}</tr>'
+        f'<tr>{mes_cells}</tr>'
+        '</table>'
+    )
+    return _card("📉 Contexto económico — Inflación Chile", body)

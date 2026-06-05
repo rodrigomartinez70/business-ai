@@ -12,7 +12,7 @@ from datetime import date, timedelta
 
 from src import config
 from src.agents.insights import generar_insights
-from src.render import _CSS, _card, _kpis, _fm, _subt, _aviso
+from src.render import _CSS, _card, _kpis, _fm, _subt, _aviso, renderizar_ipc_html
 from src.finanzas.economia import obtener_ipc
 from src.finanzas.control_gastos import calcular_control_gastos
 from src.finanzas.conciliacion import calcular_conciliacion
@@ -227,13 +227,14 @@ def renderizar_dashboard_html(data: dict, cfg: dict) -> str:
     sem = data["semana"]
     body = (
         _sec_ventas(data["ventas"], cfg, data.get("insights_ventas"))
-        + _sec_marketing(data.get("marketing"), cfg, data.get("insights_marketing"))
         + _sec_pnl(data["pnl"], cfg, data.get("insights_pnl"))
         + _sec_cash(data["cash"], cfg)
         + _sec_gastos(data["gastos"], cfg)
         + _sec_tributario(data.get("tributario", {}))
         + _sec_conciliacion(data.get("conciliacion", {}))
         + _sec_cierre(data["cierre"], cfg)
+        + _sec_marketing(data.get("marketing"), cfg, data.get("insights_marketing"))
+        + renderizar_ipc_html(data.get("ipc"))
     )
     return f"""<!DOCTYPE html>
 <html lang="es"><head><meta charset="utf-8">
