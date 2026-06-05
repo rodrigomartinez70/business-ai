@@ -3,7 +3,8 @@ Motor Conversacional Tributario (horizontal) — Q&A en lenguaje natural.
 
 Agnóstico al vertical: `responder_tributario(pregunta, historial, calcular_fn)`
 arma el contexto con `calcular_fn(hasta)` (el orquestador tributario del vertical)
-y responde con Claude (fallback Ollama, luego resumen de contexto).
+y responde 100% con Ollama (local) — los montos NUNCA salen a Claude. Si Ollama
+no está disponible, degrada al resumen de contexto crudo.
 """
 
 import logging
@@ -12,7 +13,6 @@ from datetime import date
 from src import config
 
 logger = logging.getLogger(__name__)
-_MAX_TOKENS = 700
 
 _SYSTEM = (
     "Eres un copiloto tributario para pequeñas y medianas empresas en Chile. "
@@ -91,22 +91,8 @@ async def responder_tributario(pregunta: str, historial: list[dict] | None, calc
 
     prompt = f"{contexto}\n\nPregunta del usuario: {pregunta}"
 
-    if config.claude_disponible():
-        try:
-            client = config.get_anthropic_client()
-            msgs = []
-            for m in (historial or [])[-6:]:
-                if m.get("role") in ("user", "assistant") and m.get("content"):
-                    msgs.append({"role": m["role"], "content": m["content"]})
-            msgs.append({"role": "user", "content": prompt})
-            message = await client.messages.create(
-                model=config.CLAUDE_MODEL, max_tokens=_MAX_TOKENS,
-                system=_SYSTEM, messages=msgs,
-            )
-            return message.content[0].text.strip()
-        except Exception as e:
-            logger.warning(f"Claude tributario falló, usando Ollama: {e}")
-
+    # Copiloto financiero 100% local: el contexto tributario (montos F29, IVA, etc.)
+    # NUNCA sale a Claude. Si Ollama no responde, se degrada al contexto crudo.
     respuesta = await _llamar_ollama(prompt, _SYSTEM)
     if respuesta:
         return respuesta

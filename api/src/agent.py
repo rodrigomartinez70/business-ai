@@ -374,19 +374,7 @@ INSTRUCCIONES ESTRICTAS:
         "Si no tienes datos, lo dices claramente. NUNCA inventas números."
     )
 
-    if config.claude_disponible():
-        try:
-            client = config.get_anthropic_client()
-            message = await client.messages.create(
-                model=config.CLAUDE_MODEL,
-                max_tokens=2048,
-                system=system,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            return message.content[0].text.strip()
-        except Exception as e:
-            logger.warning(f"Claude no pudo sintetizar, usando Ollama: {e}")
-
+    # Síntesis 100% local: los datos del cliente (montos, tablas) NUNCA salen a Claude.
     return await llamar_ollama(prompt, system)
 
 
@@ -425,10 +413,14 @@ Reglas:
             client = config.get_anthropic_client()
 
             # Incluir historial reciente para preguntas de seguimiento ("el mismo cuadro anterior", etc.)
+            # Privacidad: a Claude solo van las PREGUNTAS del usuario. Las respuestas
+            # previas (que contienen montos del cliente) se omiten; se conserva el turno
+            # como placeholder para mantener la alternancia user/assistant que exige la API.
             messages: list[dict] = []
             if historial:
-                for m in historial[:-1]:  # todos menos el último (que es la pregunta actual)
-                    messages.append({"role": m["role"], "content": m["content"]})
+                for m in historial[:-1]:  # todos menos el último (la pregunta actual)
+                    content = m["content"] if m["role"] == "user" else "[respuesta previa omitida]"
+                    messages.append({"role": m["role"], "content": content})
             messages.append({"role": "user", "content": user_content})
 
             message = await client.messages.create(

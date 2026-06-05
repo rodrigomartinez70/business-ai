@@ -133,7 +133,6 @@ def resumir_revenue(data: dict) -> str:
     return (
         f"Ocupación hoy: {s['ocupacion_pct']:.1f}% vs promedio 30d: {h30['ocupacion_pct']:.1f}%\n"
         f"ADR hoy vs promedio 30d: {'por encima' if s['adr'] > h30['adr'] else 'por debajo'}\n"
-        f"RevPAR 30d: {h30['revpar']:.0f}\n"
         f"Oportunidades de precio próximos días: {len(oport)} "
         f"({'días con alta ocupación y tarifa baja' if oport else 'ninguna detectada'})\n"
         f"Canal más rentable (30d): {canales[0]['canal'] if canales else '—'}\n"

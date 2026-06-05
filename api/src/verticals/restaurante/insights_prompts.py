@@ -100,11 +100,12 @@ def resumir_control_gastos(data: dict) -> str:
 
 def resumir_cierre(data: dict) -> str:
     t = data.get("totales", {})
+    estado = "positivo" if t.get("resultado", 0) >= 0 else "negativo"
     return (
         f"Ventas del día/semana: {'sí' if t.get('ventas', 0) else 'sin ventas'}\n"
         f"Cobrado vs ventas: {'completo' if t.get('cobrado', 0) >= t.get('ventas', 0) else 'pendiente'}\n"
-        f"Resultado: {t.get('resultado', 0):,.0f}\n"
-        f"Ticket promedio: {t.get('ticket_promedio', 0):,.0f}"
+        f"Resultado: {estado}\n"
+        f"Ticket promedio: {'registrado' if t.get('ticket_promedio', 0) else 'sin datos'}"
     )
 
 
