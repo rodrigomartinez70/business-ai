@@ -10,10 +10,11 @@ import logging
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import HTMLResponse
 
 from .. import config
-from ..auth import get_tenant_ctx
-from ..integraciones import meta_ads, toteat
+from ..auth import get_tenant_ctx, get_tenant_ctx_web
+from ..integraciones import meta_ads, sii_dte, toteat
 from ..tenant import TenantContext
 
 logger = logging.getLogger(__name__)
@@ -73,3 +74,30 @@ async def sync_toteat(
         raise HTTPException(status_code=502, detail="No se pudo sincronizar con Toteat.")
     logger.info(f"Sync Toteat OK '{ctx.tenant_id}': {res}")
     return res
+
+
+@router.get("/sii/estado-dte")
+async def sii_estado_dte(
+    formato: str = Query("json", description="json | html"),
+    mock: bool = Query(False, description="Genera datos de muestra (sin llamar al SII)"),
+    ctx: TenantContext = Depends(get_tenant_ctx_web),
+):
+    """
+    Sección agéntica: estado en el SII de los DTE del MES EN CURSO. Cuenta cuántos
+    NO están en 'DOK' y lista esos documentos (con su estado y glosa).
+
+    Real: requiere certificado digital (token vía CrSeed→firma→GetTokenFromSeed) y
+    Consulta RCV — pendiente. Por ahora usar mock=true.
+    """
+    try:
+        async with config.db_pool.acquire() as conn:
+            data = await sii_dte.verificar_estado_dte(conn, ctx.tenant_id, date.today(), mock=mock)
+    except (RuntimeError, NotImplementedError) as e:
+        if formato == "html":
+            return HTMLResponse(f'<div style="font-family:sans-serif;padding:40px;">'
+                                f'<h2>Estado DTE — SII</h2><p>{e}</p></div>')
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if formato == "html":
+        return HTMLResponse(sii_dte.renderizar_estado_dte_html(data, config.get_config()))
+    return data
