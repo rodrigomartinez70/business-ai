@@ -142,10 +142,31 @@ async def verificar_estado_dte(conn, tenant_id: str, hasta: date, *, mock: bool 
         "total": total,
         "dok": por_estado.get(ESTADO_OK, 0),
         "no_dok": total - por_estado.get(ESTADO_OK, 0),
+        "monto_total": sum(float(d.get("monto", 0)) for d in dtes),
+        "monto_no_dok": sum(x["monto"] for x in listado),   # dinero comprometido por docs con reparos
         "por_estado": por_estado,
         "listado": listado,
         "modo": "mock" if mock else "api",
     }
+
+
+async def estado_dte_dashboard(hasta: date):
+    """Para el dashboard (horizontal): usa datos reales del SII si hay certificado; si
+    no, cae a mock (queda marcado como modo='mock'). Toma el tenant del contexto y la
+    conexión del pool. Devuelve None si falla todo (la sección se omite)."""
+    from src import config
+    from src.tenant import get_tenant_or_none
+    ctx = get_tenant_or_none()
+    tenant_id = ctx.tenant_id if ctx else ""
+    try:
+        async with config.db_pool.acquire() as conn:
+            try:
+                return await verificar_estado_dte(conn, tenant_id, hasta, mock=False)
+            except (RuntimeError, NotImplementedError):
+                return await verificar_estado_dte(conn, tenant_id, hasta, mock=True)
+    except Exception as e:
+        logger.warning(f"estado DTE no disponible: {e}")
+        return None
 
 
 # ─────────────────────────────────────────────────────────────
@@ -159,10 +180,13 @@ def renderizar_estado_dte_html(data: dict, cfg: dict) -> str:
     rows = [
         ("Período", r["periodo"]["mes"]),
         ("DTE del período", str(r["total"])),
-        (f"En estado DOK", f"{r['dok']}"),
+        ("En estado DOK", f"{r['dok']}"),
         (f"Con reparos (≠ DOK) {sem}", f"{r['no_dok']}"),
+        ("Monto comprometido (≠ DOK)", _fm(r["monto_no_dok"], cfg)),
     ]
-    body = _kpis(rows)
+    nota = ('<div style="font-size:11px;color:#9ca3af;margin-bottom:6px;">Datos de muestra '
+            '(sin certificado digital del SII configurado).</div>') if r.get("modo") == "mock" else ""
+    body = nota + _kpis(rows)
     if r["listado"]:
         filas = ""
         for d in r["listado"]:

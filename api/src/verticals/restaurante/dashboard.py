@@ -20,6 +20,7 @@ from .agents.ventas import calcular_ventas
 from .agents.pnl import calcular_pnl
 from src.finanzas.pnl import renderizar_pnl_html
 from src.marketing.dashboard import calcular_marketing, renderizar_marketing_html
+from src.integraciones.sii_dte import estado_dte_dashboard, renderizar_estado_dte_html
 from .agents.cash_flow import calcular_cash_flow
 from .agents.cierre_diario import calcular_cierre_semanal
 from .agents.tributario import calcular_tributario_semanal
@@ -45,6 +46,7 @@ async def calcular_dashboard() -> dict:
     conciliacion = await calcular_conciliacion(corte, 30)
     cierre       = await calcular_cierre_semanal(desde, corte)
     marketing    = await calcular_marketing(corte, 61)
+    estado_dte   = await estado_dte_dashboard(corte)
 
     insights_ventas = await generar_insights("ventas", ventas)
     insights_pnl    = await generar_insights("pnl", pnl)
@@ -65,6 +67,7 @@ async def calcular_dashboard() -> dict:
         "gastos":      gastos,
         "tributario":  tributario,
         "conciliacion": conciliacion,
+        "estado_dte":  estado_dte,
         "cierre":      cierre,
         "ipc":         ipc,
     }
@@ -112,6 +115,12 @@ def _sec_marketing(m, cfg, insights) -> str:
     if not m:
         return ""   # tenant sin data de marketing → se omite la sección
     return renderizar_marketing_html(m, cfg, insights)
+
+
+def _sec_estado_dte(d, cfg) -> str:
+    if not d:
+        return ""   # sin datos de estado DTE → se omite
+    return renderizar_estado_dte_html(d, cfg)
 
 
 def _sec_pnl(p: dict, cfg, insights) -> str:
@@ -232,6 +241,7 @@ def renderizar_dashboard_html(data: dict, cfg: dict) -> str:
         + _sec_gastos(data["gastos"], cfg)
         + _sec_tributario(data.get("tributario", {}))
         + _sec_conciliacion(data.get("conciliacion", {}))
+        + _sec_estado_dte(data.get("estado_dte"), cfg)
         + _sec_cierre(data["cierre"], cfg)
         + _sec_marketing(data.get("marketing"), cfg, data.get("insights_marketing"))
         + renderizar_ipc_html(data.get("ipc"))
