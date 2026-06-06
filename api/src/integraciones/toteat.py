@@ -136,6 +136,22 @@ async def fetch_collection(creds: dict, dia: date) -> dict:
     return body.get("data", {}) or {}
 
 
+async def fetch_inventory(creds: dict, desde: date, hasta: date) -> list[dict]:
+    """Estado/movimientos de inventario (costo estándar por ítem). Trocea ≤15 días, 3/min."""
+    base = creds["base_url"]
+    filas: list[dict] = []
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        primero = True
+        for ini, fin in _chunks(desde, hasta):
+            if not primero:
+                await asyncio.sleep(_THROTTLE_SEG)
+            primero = False
+            params = {**_auth_params(creds), "initial_date": _ymd(ini), "final_date": _ymd(fin)}
+            body = await _get(client, base, "inventorystate", params)
+            filas.extend(body.get("data", []) or [])
+    return filas
+
+
 # ─────────────────────────────────────────────────────────────
 # Parseo → estructuras normalizadas
 # ─────────────────────────────────────────────────────────────
@@ -198,6 +214,21 @@ def _parse_venta(raw: dict) -> dict:
     }
 
 
+def _parse_inventory(items) -> dict:
+    """De /inventorystate → {clave_producto: costo_estándar}. Tolerante a nombres de campo."""
+    costos: dict = {}
+    for it in items or []:
+        clave = (it.get("productCode") or it.get("localCode") or it.get("name")
+                 or it.get("product") or it.get("ingredient"))
+        costo = it.get("cost", it.get("standardCost", it.get("unitCost")))
+        if clave and costo not in (None, ""):
+            try:
+                costos[str(clave)] = float(costo)
+            except (TypeError, ValueError):
+                pass
+    return costos
+
+
 # ─────────────────────────────────────────────────────────────
 # Datos de muestra (modo mock)
 # ─────────────────────────────────────────────────────────────
@@ -215,12 +246,19 @@ _MOCK_MENU = [
 
 
 def _mock_products() -> list[dict]:
+    # Toteat /products NO trae costo → el costo viene de /inventorystate.
     out = []
-    for i, (nombre, cat, precio, costo) in enumerate(_MOCK_MENU):
-        out.append({"id": 9000 + i, "name": nombre, "price": precio, "cost": costo,
+    for i, (nombre, cat, precio, _costo) in enumerate(_MOCK_MENU):
+        out.append({"id": 9000 + i, "name": nombre, "price": precio,
                     "referencePrice": None, "category": cat, "categoryId": 100 + (i % 4),
                     "localCode": f"P{i:03d}", "isModifier": False, "sorting": f"{i:03d}"})
     return out
+
+
+def _mock_inventory() -> list[dict]:
+    # /inventorystate: costo estándar por producto (la fuente real del food cost).
+    return [{"name": nombre, "productCode": nombre, "cost": costo, "use": 0}
+            for (nombre, _cat, _precio, costo) in _MOCK_MENU]
 
 
 def _mock_sales(desde: date, hasta: date) -> list[dict]:
@@ -274,6 +312,7 @@ async def obtener_datos(creds: Optional[dict], desde: date, hasta: date,
         prod_raw = _mock_products()
         sales_raw = _mock_sales(desde, hasta)
         colecciones = [_mock_collection(hasta)]
+        inv_raw = _mock_inventory()
         logger.info(f"[toteat] modo MOCK {desde}→{hasta}")
     else:
         if not creds:
@@ -282,12 +321,15 @@ async def obtener_datos(creds: Optional[dict], desde: date, hasta: date,
         prod_raw = await fetch_products(creds)
         sales_raw = await fetch_sales(creds, desde, hasta)
         colecciones = [await fetch_collection(creds, hasta)]
+        # Costo estándar: alcanza el snapshot reciente (≤15 días); no hace falta 2 años.
+        inv_raw = await fetch_inventory(creds, max(desde, hasta - timedelta(days=14)), hasta)
         logger.info(f"[toteat] {len(prod_raw)} productos, {len(sales_raw)} ventas desde la API")
 
     return {
         "productos": [_parse_producto(p) for p in prod_raw if not p.get("isModifier")],
         "ventas": [_parse_venta(v) for v in sales_raw],
         "recaudaciones": colecciones,
+        "costos_inventario": _parse_inventory(inv_raw),
     }
 
 
@@ -330,12 +372,13 @@ async def sincronizar(conn, tenant_id: str, desde: date, hasta: date,
     Idempotente (upsert por id_externo). Requiere search_path en el schema del tenant."""
     creds = None if mock else await obtener_credenciales(conn, tenant_id)
     data = await obtener_datos(creds, desde, hasta, mock=mock)
+    costos_inv = data.get("costos_inventario", {})   # costo estándar real (de /inventorystate)
 
     cat_cache: dict = {}
     prod_por_clave: dict = {}   # id_externo y nombre → producto_id
     prod_costo: dict = {}       # producto_id → costo unitario
 
-    # Toteat /products NO entrega costo → si falta, se estima food cost (35%).
+    # Costo: prioridad inventario (/inventorystate) > /products > estimación food cost 35%.
     FOOD_COST_PCT = 0.35
 
     # 1) Productos → categorias_menu + productos
@@ -345,7 +388,10 @@ async def sincronizar(conn, tenant_id: str, desde: date, hasta: date,
             cat_id = await _ensure_id(
                 conn, cat_cache, "categorias_menu", p["categoria"],
                 "INSERT INTO categorias_menu (nombre) VALUES ($1) RETURNING id")
-        costo = p["costo"] if p.get("costo", 0) > 0 else round(p["precio"] * FOOD_COST_PCT, 2)
+        costo_inv = costos_inv.get(p["nombre"]) or costos_inv.get(p["id_externo"])
+        costo = (costo_inv if costo_inv
+                 else p["costo"] if p.get("costo", 0) > 0
+                 else round(p["precio"] * FOOD_COST_PCT, 2))
         pid = await conn.fetchval(
             """INSERT INTO productos (id_externo, categoria_id, nombre, precio, costo, activo)
                VALUES ($1,$2,$3,$4,$5,TRUE)
@@ -387,7 +433,7 @@ async def sincronizar(conn, tenant_id: str, desde: date, hasta: date,
         for ln in v["lineas"]:
             pid = prod_por_clave.get(ln["codigo"]) or prod_por_clave.get(ln["producto"])
             if pid is None:  # producto fuera del menú → crearlo al vuelo
-                costo_ln = round(ln["precio_unitario"] * FOOD_COST_PCT, 2)
+                costo_ln = costos_inv.get(ln["producto"]) or round(ln["precio_unitario"] * FOOD_COST_PCT, 2)
                 pid = await conn.fetchval(
                     "INSERT INTO productos (nombre, precio, costo, activo) VALUES ($1,$2,$3,TRUE) RETURNING id",
                     ln["producto"] or "Producto", ln["precio_unitario"], costo_ln)
