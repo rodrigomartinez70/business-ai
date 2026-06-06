@@ -1,10 +1,9 @@
-# Dashboard semanal por correo — todos los lunes a las 08:00
-# Consolida P&L YTD, Cash Flow, Rentabilidad, Revenue, Control de Gastos y
-# el cierre de la semana en un único HTML enviado al dueño por email.
-0 8 * * 1 /cron/dashboard_semanal.sh >> /reportes/cron.log 2>&1
+# [SUSPENDIDO] Dashboard semanal por correo (hotel) — lunes 08:00.
+# Reactivar descomentando la línea de abajo.
+# 0 8 * * 1 /cron/dashboard_semanal.sh >> /reportes/cron.log 2>&1
 
-# Dashboard semanal del RESTAURANTE — lunes 08:10 (destinatarios por-tenant)
-10 8 * * 1 /cron/dashboard_restaurante.sh >> /reportes/cron.log 2>&1
+# [SUSPENDIDO] Dashboard semanal del RESTAURANTE por correo — lunes 08:10.
+# 10 8 * * 1 /cron/dashboard_restaurante.sh >> /reportes/cron.log 2>&1
 
 # Sync diario de Meta Ads (inmobiliaria) → Postgres — todos los días 07:00
 0 7 * * * /cron/sync_meta.sh >> /reportes/cron.log 2>&1
