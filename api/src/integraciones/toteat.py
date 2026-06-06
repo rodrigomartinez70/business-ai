@@ -224,15 +224,16 @@ def _mock_products() -> list[dict]:
 
 
 def _mock_sales(desde: date, hasta: date) -> list[dict]:
-    rng = random.Random(7)
     medios = [1000, 2000, 3000, 5000]
     canales = ["salon", "delivery", "takeaway"]
     ventas = []
     dia = desde
-    oid = 1089400000000000
     while dia <= hasta:
-        for _ in range(rng.randint(8, 16)):  # órdenes del turno
-            oid += rng.randint(1, 50)
+        # Semilla por día → mismos orderId y valores en cada corrida (idempotente).
+        rng = random.Random(int(dia.strftime("%Y%m%d")))
+        n_ordenes = rng.randint(8, 16)
+        for j in range(n_ordenes):  # órdenes del turno
+            oid = int(dia.strftime("%Y%m%d")) * 1000 + j
             n = rng.randint(1, 4)
             line = []
             total = 0
