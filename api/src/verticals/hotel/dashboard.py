@@ -31,6 +31,7 @@ from .agents.pnl import calcular_pnl
 from src.finanzas.pnl import renderizar_pnl_html
 from .agents.rentabilidad_canal import calcular_rentabilidad_canal
 from .agents.revenue_management import calcular_revenue_management
+from src.integraciones.sii_dte import estado_dte_dashboard, renderizar_estado_dte_html
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +59,7 @@ async def calcular_dashboard() -> dict:
     gastos  = await calcular_control_gastos(desde, corte)
     tributario = await calcular_tributario_semanal(corte)
     conciliacion = await calcular_conciliacion(corte, 30)
+    estado_dte = await estado_dte_dashboard(corte)
 
     # Insights IA solo para los dos reportes estratégicos
     insights_pnl  = await generar_insights("pnl", pnl)
@@ -86,6 +88,7 @@ async def calcular_dashboard() -> dict:
         "gastos_analitico": gastos_analitico,
         "tributario":  tributario,
         "conciliacion": conciliacion,
+        "estado_dte":  estado_dte,
         "cierre":      cierre,
         "ipc":         ipc,
     }
@@ -402,6 +405,12 @@ def _sec_cierre(c: dict, cfg) -> str:
     return _card("🧾 Cierre de la semana", _kpis(rows) + tabla)
 
 
+def _sec_estado_dte(d, cfg) -> str:
+    if not d:
+        return ""   # sin datos de estado DTE → se omite
+    return renderizar_estado_dte_html(d, cfg)
+
+
 def renderizar_dashboard_html(data: dict, cfg: dict) -> str:
     biz = cfg.get("business", {}).get("name", "Negocio")
     sem = data["semana"]
@@ -414,6 +423,7 @@ def renderizar_dashboard_html(data: dict, cfg: dict) -> str:
         + _sec_gastos(data["gastos"], cfg, data.get("gastos_analitico"))
         + _sec_tributario(data.get("tributario", {}))
         + _sec_conciliacion(data.get("conciliacion", {}))
+        + _sec_estado_dte(data.get("estado_dte"), cfg)
         + _sec_cierre(data["cierre"], cfg)
         + renderizar_ipc_html(data.get("ipc"))
     )
