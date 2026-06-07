@@ -26,15 +26,27 @@ import httpx
 
 BASE_DEFAULT = "https://api.toteat.com/mw/or/1.0/"
 
+# URLs candidatas de Toteat (prod/dev, nuevas y legacy) para diagnosticar el ambiente.
+BASES_CANDIDATAS = [
+    "https://api.toteat.com/mw/or/1.0/",
+    "https://apidev.toteat.com/mw/or/1.0/",
+    "https://toteatglobal.appspot.com/mw/or/1.0/",
+    "https://toteatdev.appspot.com/mw/or/1.0/",
+    "https://www.toteatdev.appspot.com/mw/or/1.0/",
+]
 
-async def _validar(base: str, token: str, xir: str, xil: str, xiu: str):
-    url = base.rstrip("/") + "/shiftstatus"
+
+async def _validar(base: str, token: str, xir: str, xil: str, xiu: str, endpoint: str = "shiftstatus"):
+    url = base.rstrip("/") + "/" + endpoint
     params = {"xapitoken": token, "xir": xir, "xil": xil, "xiu": xiu}
     async with httpx.AsyncClient(timeout=30) as c:
         r = await c.get(url, params=params)
-        r.raise_for_status()
+    info = f"HTTP {r.status_code}"
+    try:
         body = r.json()
-    return bool(body.get("ok", True)), body.get("msg")
+    except Exception:
+        return False, f"{info} (respuesta no-JSON): {r.text[:400]}"
+    return bool(body.get("ok", False)), f"{info} · body={json.dumps(body, ensure_ascii=False)[:600]}"
 
 
 async def run(args: argparse.Namespace) -> None:
@@ -51,15 +63,37 @@ async def run(args: argparse.Namespace) -> None:
         print("ERROR: faltan datos (xir/xil/xiu/xapitoken).", file=sys.stderr)
         sys.exit(1)
 
+    if args.probe:
+        print(f"\nProbe (no guarda nada). Credenciales: xir={xir} xil={xil} xiu={xiu} "
+              f"token_len={len(token)}")
+        print("— Endpoints en prod (api.toteat.com):")
+        for ep in ("products", "shiftstatus", "tables"):
+            try:
+                ok, info = await _validar(args.base_url, token, xir, xil, xiu, endpoint=ep)
+                print(f"  {'✅' if ok else '  '} /{ep}\n        {info}")
+            except Exception as e:
+                print(f"     /{ep}\n        ERROR: {e}")
+        print("— /shiftstatus en otras URLs:")
+        for base in BASES_CANDIDATAS[1:4]:
+            try:
+                ok, info = await _validar(base, token, xir, xil, xiu)
+                print(f"  {'✅' if ok else '  '} {base} → {info}")
+            except Exception as e:
+                print(f"     {base} → ERROR: {e}")
+        print("\nSi NINGÚN endpoint da ok=true → el token está mal/vencido (pedir uno nuevo a Toteat).")
+        return
+
     if not args.skip_validate:
-        print("Validando contra /shiftstatus…")
+        print(f"Validando contra /shiftstatus ({args.base_url})…")
         try:
-            ok, msg = await _validar(args.base_url, token, xir, xil, xiu)
+            ok, info = await _validar(args.base_url, token, xir, xil, xiu)
         except Exception as e:
-            print(f"ERROR validando (¿token/IDs incorrectos o base URL?): {e}", file=sys.stderr)
+            print(f"ERROR validando (¿base URL/red?): {e}", file=sys.stderr)
             sys.exit(1)
+        print(f"  respuesta: {info}")
         if not ok:
-            print(f"ERROR: Toteat rechazó las credenciales: {msg}", file=sys.stderr)
+            print("ERROR: Toteat rechazó las credenciales. Revisá xiu (middleware id), "
+                  "xir/xil y el Environment (base URL). No se guardó nada.", file=sys.stderr)
             sys.exit(1)
         print("  ✓ credenciales válidas.")
 
@@ -93,6 +127,8 @@ def main() -> None:
     p.add_argument("--xiu", default=None, help="Id usuario (Toteat)")
     p.add_argument("--base-url", default=BASE_DEFAULT, help=f"Base URL (default: {BASE_DEFAULT})")
     p.add_argument("--skip-validate", action="store_true", help="No validar contra /shiftstatus")
+    p.add_argument("--probe", action="store_true",
+                   help="Diagnóstico: prueba el token contra todas las URLs de Toteat y no guarda")
     p.add_argument("--db-url", default=None, help="DATABASE_URL (default: env)")
     asyncio.run(run(p.parse_args()))
 
