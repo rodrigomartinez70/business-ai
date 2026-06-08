@@ -244,3 +244,11 @@ INSERT INTO movimientos_bancarios (fecha, glosa, monto, referencia) VALUES
 ('2026-01-06', 'Abono cliente Booking',      165000,  'OP-1001'),
 ('2026-01-15', 'Transferencia recibida',     1120000, 'OP-1002'),
 ('2026-01-18', 'Comisión mantención banco',  -77777,  'OP-1003');
+
+-- Presupuesto 2026 (para el Agente Presupuestario / CFO Virtual).
+INSERT INTO presupuesto (anio, mes, tipo, categoria, monto)
+SELECT 2026, m, 'ingreso', 'ingresos',     8000000 FROM generate_series(1,12) m
+UNION ALL SELECT 2026, m, 'gasto', 'Personal',     2500000 FROM generate_series(1,12) m
+UNION ALL SELECT 2026, m, 'gasto', 'Suministros',   600000 FROM generate_series(1,12) m
+UNION ALL SELECT 2026, m, 'gasto', 'Servicios',     500000 FROM generate_series(1,12) m
+UNION ALL SELECT 2026, m, 'gasto', 'Marketing',     400000 FROM generate_series(1,12) m;

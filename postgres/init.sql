@@ -133,6 +133,17 @@ CREATE TABLE consumos_servicios (
     margen          NUMERIC(10,2) GENERATED ALWAYS AS (cantidad * (precio_unitario - costo_unitario)) STORED
 );
 
+CREATE TABLE presupuesto (
+    id        SERIAL PRIMARY KEY,
+    anio      INTEGER       NOT NULL,
+    mes       INTEGER       NOT NULL CHECK (mes BETWEEN 1 AND 12),
+    tipo      VARCHAR(20)   NOT NULL DEFAULT 'gasto' CHECK (tipo IN ('ingreso', 'gasto')),
+    categoria VARCHAR(100)  NOT NULL,                  -- 'ingresos' o nombre de categoría de gasto
+    monto     NUMERIC(12,2) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (anio, mes, tipo, categoria)
+);
+
 CREATE TABLE audit_log (
     id              SERIAL PRIMARY KEY,
     rol             VARCHAR(50),
@@ -167,7 +178,7 @@ END
 $$;
 
 GRANT USAGE ON SCHEMA public TO negocio_user;
-GRANT SELECT ON habitaciones, canales_venta, huespedes, reservas, pagos, categorias_gasto, gastos, consumos_frigobar, consumos_servicios, documentos_tributarios, movimientos_bancarios TO negocio_user;
+GRANT SELECT ON habitaciones, canales_venta, huespedes, reservas, pagos, categorias_gasto, gastos, consumos_frigobar, consumos_servicios, documentos_tributarios, movimientos_bancarios, presupuesto TO negocio_user;
 GRANT INSERT ON audit_log TO negocio_user;
 GRANT USAGE, SELECT ON SEQUENCE audit_log_id_seq TO negocio_user;
 
@@ -191,7 +202,7 @@ END
 $$;
 
 GRANT USAGE ON SCHEMA public TO negocio_ingest;
-GRANT SELECT, INSERT ON habitaciones, canales_venta, huespedes, reservas, pagos, categorias_gasto, gastos, consumos_frigobar, consumos_servicios, documentos_tributarios, movimientos_bancarios TO negocio_ingest;
+GRANT SELECT, INSERT ON habitaciones, canales_venta, huespedes, reservas, pagos, categorias_gasto, gastos, consumos_frigobar, consumos_servicios, documentos_tributarios, movimientos_bancarios, presupuesto TO negocio_ingest;
 GRANT INSERT ON audit_log TO negocio_ingest;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO negocio_ingest;
 

@@ -136,6 +136,17 @@ CREATE TABLE IF NOT EXISTS consumos_servicios (
 );
 
 -- audit_log es genérico pero vive en el schema del tenant para aislar datos
+CREATE TABLE IF NOT EXISTS presupuesto (
+    id        SERIAL PRIMARY KEY,
+    anio      INTEGER       NOT NULL,
+    mes       INTEGER       NOT NULL CHECK (mes BETWEEN 1 AND 12),
+    tipo      VARCHAR(20)   NOT NULL DEFAULT 'gasto' CHECK (tipo IN ('ingreso', 'gasto')),
+    categoria VARCHAR(100)  NOT NULL,
+    monto     NUMERIC(12,2) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (anio, mes, tipo, categoria)
+);
+
 CREATE TABLE IF NOT EXISTS audit_log (
     id              SERIAL PRIMARY KEY,
     rol             VARCHAR(50),

@@ -16,6 +16,11 @@ from ..finanzas.control_gastos import (
     calcular_control_gastos,
     renderizar_control_gastos_markdown,
 )
+from ..finanzas.cuentas_por_pagar import calcular_cuentas_por_pagar, renderizar_cxp_markdown
+from ..finanzas.cuentas_por_cobrar import calcular_cuentas_por_cobrar, renderizar_cxc_markdown
+from ..finanzas.presupuesto import calcular_presupuesto, renderizar_presupuesto_markdown
+from ..finanzas.tesoreria import calcular_tesoreria, renderizar_tesoreria_markdown
+from ..finanzas.cfo import calcular_cfo, renderizar_cfo_markdown
 from ..verticals.hotel.agents.rentabilidad_canal import (
     calcular_rentabilidad_canal,
     renderizar_rentabilidad_canal_markdown,
@@ -344,6 +349,93 @@ async def agente_conciliacion(
         md = mod.renderizar_conciliacion_markdown(data)
         return PlainTextResponse(content=md, media_type="text/markdown; charset=utf-8")
 
+    return data
+
+
+@router.get("/cuentas-por-pagar")
+async def agente_cuentas_por_pagar(
+    fecha:   Optional[date] = Query(None, description="Fecha de corte (default: hoy)"),
+    plazo:   int            = Query(30, ge=1, le=180, description="Plazo de vencimiento estimado (días)"),
+    formato: str            = Query("json", description="json | markdown"),
+    _rol:    str            = Depends(get_role),
+):
+    """
+    Agente Cuentas por Pagar — facturas de compra pendientes, aging, vencidas y
+    ranking por proveedor. Vencimiento estimado = fecha del documento + `plazo`.
+    """
+    data = await calcular_cuentas_por_pagar(fecha or date.today(), plazo)
+    if formato == "markdown":
+        return PlainTextResponse(content=renderizar_cxp_markdown(data),
+                                 media_type="text/markdown; charset=utf-8")
+    return data
+
+
+@router.get("/cuentas-por-cobrar")
+async def agente_cuentas_por_cobrar(
+    fecha:   Optional[date] = Query(None, description="Fecha de corte (default: hoy)"),
+    formato: str            = Query("json", description="json | markdown"),
+    _rol:    str            = Depends(get_role),
+):
+    """
+    Agente Cuentas por Cobrar — cartera devengada no cobrada, aging y DSO.
+    En negocios de cobro al contado la cartera puede ser cero.
+    """
+    data = await calcular_cuentas_por_cobrar(fecha or date.today())
+    if formato == "markdown":
+        return PlainTextResponse(content=renderizar_cxc_markdown(data),
+                                 media_type="text/markdown; charset=utf-8")
+    return data
+
+
+@router.get("/presupuesto")
+async def agente_presupuesto(
+    fecha:   Optional[date] = Query(None, description="Fecha de corte (default: hoy)"),
+    formato: str            = Query("json", description="json | markdown"),
+    _rol:    str            = Depends(get_role),
+):
+    """
+    Agente Presupuestario — presupuesto vs ejecución real (YTD) por categoría,
+    con desviaciones. Requiere la tabla `presupuesto` cargada.
+    """
+    data = await calcular_presupuesto(fecha or date.today())
+    if formato == "markdown":
+        return PlainTextResponse(content=renderizar_presupuesto_markdown(data),
+                                 media_type="text/markdown; charset=utf-8")
+    return data
+
+
+@router.get("/tesoreria")
+async def agente_tesoreria(
+    fecha:   Optional[date] = Query(None, description="Fecha de corte (default: hoy)"),
+    formato: str            = Query("json", description="json | markdown"),
+    _rol:    str            = Depends(get_role),
+):
+    """
+    Agente Tesorería — posición de caja, forecast de liquidez a 8 semanas y
+    propuesta de pagos (qué CxP caben en la caja proyectada). Reemplaza al cash-flow simple.
+    """
+    data = await calcular_tesoreria(fecha or date.today())
+    if formato == "markdown":
+        return PlainTextResponse(content=renderizar_tesoreria_markdown(data),
+                                 media_type="text/markdown; charset=utf-8")
+    return data
+
+
+@router.get("/cfo")
+async def agente_cfo(
+    fecha:   Optional[date] = Query(None, description="Fecha de corte (default: hoy)"),
+    formato: str            = Query("json", description="json | markdown"),
+    _rol:    str            = Depends(get_role),
+):
+    """
+    CFO Virtual — informe ejecutivo que consolida P&L, Tesorería, CxC/CxP,
+    Presupuesto y Copiloto Tributario, con semáforos y puntos clave.
+    Determinístico (sin LLM): los montos del cliente no salen a un modelo externo.
+    """
+    data = await calcular_cfo(fecha or date.today())
+    if formato == "markdown":
+        return PlainTextResponse(content=renderizar_cfo_markdown(data),
+                                 media_type="text/markdown; charset=utf-8")
     return data
 
 
