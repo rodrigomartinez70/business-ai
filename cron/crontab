@@ -5,8 +5,10 @@
 # [SUSPENDIDO] Dashboard semanal del RESTAURANTE por correo — lunes 08:10.
 # 10 8 * * 1 /cron/dashboard_restaurante.sh >> /reportes/cron.log 2>&1
 
-# Sync diario de Meta Ads (inmobiliaria) → Postgres — todos los días 07:00
-0 7 * * * /cron/sync_meta.sh >> /reportes/cron.log 2>&1
+# [SUSPENDIDO] Sync diario de Meta Ads (restaurante_toteat) → Postgres — todos los días 07:00.
+# Suspendido el 8-jun-2026: Meta bloqueó el acceso del token (OAuthException code 200).
+# Reactivar (con token nuevo cargado vía scripts/set_meta_token.py) descomentando la línea de abajo.
+# 0 7 * * * /cron/sync_meta.sh >> /reportes/cron.log 2>&1
 
 # Sync diario de Toteat (restaurante_toteat) → vertical restaurante — 07:30
 30 7 * * * /cron/sync_toteat.sh >> /reportes/cron.log 2>&1
