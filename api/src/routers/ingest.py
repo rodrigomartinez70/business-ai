@@ -19,7 +19,61 @@ from .. import config
 from ..auth import get_role
 from ..tenant import get_tenant
 
+from ..finanzas.cartola import normalizar_cartola
+
 router = APIRouter(prefix="/api/ingest", tags=["ingest"])
+
+
+@router.post("/cartola")
+async def importar_cartola(
+    archivo: UploadFile = File(..., description="Cartola bancaria (CSV exportado del banco)"),
+    modo:    str        = Query("validar", description="validar (dry-run) | insertar"),
+    _rol:    str        = Depends(get_role),
+):
+    """
+    Normaliza una cartola bancaria (cualquier banco chileno) y la inserta en
+    `movimientos_bancarios` (que consume la conciliación). Auto-detecta columnas,
+    parsea números/fechas chilenos y maneja cargo/abono o monto con signo.
+
+    - **validar**: dry-run; devuelve columnas detectadas + preview.
+    - **insertar**: inserta (con dedup contra movimientos ya existentes del período).
+    """
+    contenido = await archivo.read()
+    try:
+        res = normalizar_cartola(contenido)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    movs = res["movimientos"]
+    if not movs:
+        raise HTTPException(status_code=400, detail="No se detectaron movimientos en la cartola.")
+
+    if modo == "validar":
+        return {"modo": "validar", **res["meta"], "preview": movs[:5]}
+
+    if config.ingest_pool is None:
+        raise HTTPException(status_code=503, detail="Ingest no configurado (INGEST_DATABASE_URL).")
+
+    fmin = min(m["fecha"] for m in movs)
+    fmax = max(m["fecha"] for m in movs)
+    insertados = duplicados = 0
+    async with config.ingest_pool.acquire() as conn:
+        existentes = await conn.fetch(
+            "SELECT fecha, monto, glosa, referencia FROM movimientos_bancarios "
+            "WHERE fecha BETWEEN $1 AND $2", fmin, fmax)
+        vistos = {(r["fecha"], float(r["monto"]), r["glosa"], r["referencia"]) for r in existentes}
+        async with conn.transaction():
+            for m in movs:
+                clave = (m["fecha"], float(m["monto"]), m["glosa"], m["referencia"])
+                if clave in vistos:
+                    duplicados += 1
+                    continue
+                await conn.execute(
+                    "INSERT INTO movimientos_bancarios (fecha, glosa, monto, referencia) "
+                    "VALUES ($1,$2,$3,$4)", m["fecha"], m["glosa"], m["monto"], m["referencia"])
+                vistos.add(clave)
+                insertados += 1
+    return {"modo": "insertar", "insertados": insertados, "duplicados_omitidos": duplicados,
+            **res["meta"]}
 
 
 async def _primary_key_columns(tabla: str) -> list[str]:
