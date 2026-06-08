@@ -48,10 +48,14 @@ def _destinatarios() -> list[str]:
     return [d.strip() for d in lista if d and str(d).strip()]
 
 
-def enviar_dashboard_email(html: str, cfg: dict, asunto: str | None = None) -> dict:
+def enviar_dashboard_email(html: str, cfg: dict, asunto: str | None = None,
+                           destinatarios: list[str] | None = None) -> dict:
     """
     Envía el dashboard HTML por correo. Devuelve un dict con el resultado.
     Lanza RuntimeError si la configuración SMTP es insuficiente.
+
+    `destinatarios` permite forzar los receptores (p. ej. para una previsualización
+    dirigida); si no se pasa, se usan los del tenant / REPORT_EMAIL_TO.
     """
     if not config.email_disponible():
         raise RuntimeError(
@@ -60,7 +64,7 @@ def enviar_dashboard_email(html: str, cfg: dict, asunto: str | None = None) -> d
         )
 
     biz   = cfg.get("business", {}).get("name", "Negocio")
-    to    = _destinatarios()
+    to    = destinatarios or _destinatarios()
     asunto = asunto or f"Dashboard Semanal — {biz} — {date.today():%d/%m/%Y}"
 
     # El filtro de salida descarta correos con emojis: limpiarlos del cuerpo.

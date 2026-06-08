@@ -21,6 +21,7 @@ from ..finanzas.cuentas_por_cobrar import calcular_cuentas_por_cobrar, renderiza
 from ..finanzas.presupuesto import calcular_presupuesto, renderizar_presupuesto_markdown
 from ..finanzas.tesoreria import calcular_tesoreria, renderizar_tesoreria_markdown
 from ..finanzas.cfo import calcular_cfo, renderizar_cfo_markdown
+from ..finanzas.panel import calcular_panel, renderizar_panel_html
 from ..verticals.hotel.agents.rentabilidad_canal import (
     calcular_rentabilidad_canal,
     renderizar_rentabilidad_canal_markdown,
@@ -437,6 +438,39 @@ async def agente_cfo(
         return PlainTextResponse(content=renderizar_cfo_markdown(data),
                                  media_type="text/markdown; charset=utf-8")
     return data
+
+
+@router.get("/panel-finanzas")
+async def agente_panel_finanzas(
+    fecha:   Optional[date] = Query(None, description="Fecha de corte (default: hoy)"),
+    formato: str            = Query("html", description="html | email | json"),
+    to:      Optional[str]  = Query(None, description="Destinatario(s) coma-separados (solo email; override del config)"),
+    _rol:    str            = Depends(get_role),
+):
+    """
+    Panel Financiero — consolida CFO Virtual, Tesorería, Cuentas por Cobrar,
+    Cuentas por Pagar y Presupuesto en un único informe.
+
+    - **html**: página renderizada (previsualización).
+    - **email**: genera y envía el panel por correo. `to` permite dirigir el envío.
+    - **json**: estructura completa de los cinco agentes.
+    """
+    corte = fecha or date.today()
+    panel = await calcular_panel(corte)
+    if formato == "json":
+        return panel
+
+    cfg = config.get_config()
+    biz = cfg.get("business", {}).get("name", "Negocio")
+    html = renderizar_panel_html(panel, cfg, biz)
+
+    if formato == "email":
+        destinatarios = [d.strip() for d in to.split(",")] if to else None
+        return enviar_dashboard_email(
+            html, cfg, asunto=f"Panel Financiero — {biz} — {corte:%d/%m/%Y}",
+            destinatarios=destinatarios)
+
+    return HTMLResponse(content=html)
 
 
 # ─────────────────────────────────────────────────────────────
