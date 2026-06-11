@@ -6,23 +6,33 @@
   body{background:#f3f4f6;margin:0;color:#111827;}
   .wrap{max-width:920px;margin:0 auto;padding:24px 16px;}
   header h1{margin:0;font-size:24px;} header p{margin:4px 0 0;color:#6b7280;font-size:14px;}
-  /* Menú lateral izquierdo colapsable (CSS puro, checkbox-hack) — sin fondo de color */
+  /* Menú flotante (FAB + pills) — sin panel ni fondo que tape el contenido */
   .menu-toggle{display:none;}
-  .menu-btn{position:fixed;top:14px;left:14px;z-index:40;cursor:pointer;font-size:20px;
-        background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:3px 11px;color:#374151;line-height:1.4;}
-  .menu-btn:hover{background:#f3f4f6;}
-  .menu-overlay{position:fixed;inset:0;background:rgba(0,0,0,.12);z-index:35;display:none;}
+  .menu-btn{position:fixed;top:18px;left:18px;z-index:40;cursor:pointer;width:44px;height:44px;
+        border-radius:50%;background:#fff;border:1px solid #eef0f3;color:#374151;font-size:18px;
+        display:flex;align-items:center;justify-content:center;
+        box-shadow:0 3px 12px rgba(17,24,39,.10);transition:transform .2s, box-shadow .2s;}
+  .menu-btn:hover{box-shadow:0 6px 18px rgba(17,24,39,.16);}
+  .menu-toggle:checked ~ .menu-btn{transform:rotate(90deg);color:#ea580c;}
+  /* Backdrop invisible: cierra al clickear afuera, sin oscurecer nada */
+  .menu-overlay{position:fixed;inset:0;background:transparent;z-index:38;display:none;}
   .menu-toggle:checked ~ .menu-overlay{display:block;}
-  .side-menu{position:fixed;top:0;left:-280px;width:240px;height:100%;background:#fff;
-        z-index:38;transition:left .25s ease;padding:56px 14px;box-sizing:border-box;
-        border-right:1px solid #e5e7eb;box-shadow:3px 0 14px rgba(0,0,0,.06);}
-  .menu-toggle:checked ~ .side-menu{left:0;}
-  .side-menu-title{color:#6b7280;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin:0 8px 12px;}
-  .side-menu a{display:block;color:#374151;padding:10px 10px;text-decoration:none;border-radius:8px;
-        font-size:14px;font-weight:600;margin:2px 0;}
-  .side-menu a:hover{background:#f3f4f6;}
-  .side-menu a.on{background:#eff6ff;color:#2563eb;}
-  .wrap header{padding-left:44px;}   /* deja lugar al botón ☰ arriba-izquierda */
+  .menu-items{position:fixed;top:74px;left:18px;z-index:39;display:flex;flex-direction:column;gap:9px;
+        opacity:0;transform:translateY(-8px) scale(.98);pointer-events:none;
+        transition:opacity .18s ease, transform .18s ease;}
+  .menu-toggle:checked ~ .menu-items{opacity:1;transform:translateY(0) scale(1);pointer-events:auto;}
+  .menu-items a{background:#fff;border:1px solid #eef0f3;border-radius:12px;padding:10px 18px;
+        text-decoration:none;color:#374151;font-size:14px;font-weight:600;white-space:nowrap;
+        box-shadow:0 3px 12px rgba(17,24,39,.08);transition:transform .15s, box-shadow .15s;}
+  .menu-items a:hover{transform:translateX(4px);box-shadow:0 5px 16px rgba(17,24,39,.14);}
+  .menu-items a.on{background:#f97316;color:#fff;border-color:#f97316;
+        box-shadow:0 5px 16px rgba(249,115,22,.40);}
+  .wrap header{padding-left:54px;}   /* deja lugar al botón flotante */
+  @media (max-width:560px){
+    .wrap{padding:18px 12px;} .wrap header{padding-left:48px;}
+    table.dt th,table.dt td{padding:6px 6px;font-size:12px;}
+    form .grid{grid-template-columns:1fr;}
+  }
   .card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px;margin:18px 0;}
   .card h2{margin:0 0 14px;font-size:17px;}
   form .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
