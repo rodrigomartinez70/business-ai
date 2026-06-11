@@ -15,7 +15,7 @@ from .. import config
 _security = HTTPBasic(auto_error=False)
 
 
-def require_admin(cred: HTTPBasicCredentials = Depends(_security)) -> str:
+async def require_admin(cred: HTTPBasicCredentials = Depends(_security)) -> str:
     if not config.admin_disponible():
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -25,11 +25,16 @@ def require_admin(cred: HTTPBasicCredentials = Depends(_security)) -> str:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Autenticación requerida.",
             headers={"WWW-Authenticate": "Basic"})
-    ok_user = secrets.compare_digest(cred.username, config.ADMIN_USER)
-    ok_pass = secrets.compare_digest(cred.password, config.ADMIN_PASSWORD)
-    if not (ok_user and ok_pass):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Credenciales inválidas.",
-            headers={"WWW-Authenticate": "Basic"})
-    return cred.username
+    # Admin bootstrap del entorno (siempre disponible).
+    if (config.ADMIN_PASSWORD
+            and secrets.compare_digest(cred.username, config.ADMIN_USER)
+            and secrets.compare_digest(cred.password, config.ADMIN_PASSWORD)):
+        return cred.username
+    # Usuarios gestionados en la DB.
+    from .users import verificar
+    if await verificar(cred.username, cred.password):
+        return cred.username
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Credenciales inválidas.",
+        headers={"WWW-Authenticate": "Basic"})

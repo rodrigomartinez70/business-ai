@@ -1,0 +1,13 @@
+<tr id="usr-pass-{{ u.id }}" style="background:#f9fafb;">
+  <td><strong>{{ u.username }}</strong></td>
+  <td colspan="2">
+    <input name="password" type="password" minlength="8" autocomplete="new-password"
+           placeholder="Nueva contraseña (mín. 8)" style="width:100%;padding:5px;">
+  </td>
+  <td><div class="acciones">
+    <button class="mini ok" hx-post="/admin/usuarios/{{ u.id }}/password" hx-include="closest tr"
+            hx-target="#usr-tabla" hx-swap="outerHTML">Guardar</button>
+    <button class="mini" style="background:#6b7280;" hx-get="/admin/usuarios/tabla"
+            hx-target="#usr-tabla" hx-swap="outerHTML">Cancelar</button>
+  </div></td>
+</tr>

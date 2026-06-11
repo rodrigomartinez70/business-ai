@@ -74,6 +74,26 @@ async def test_guardar_integracion_proveedor_invalido():
         await integ.guardar("x", "proveedor_inexistente", {})
 
 
+# ── Usuarios del back-office ─────────────────────────────────────────────
+
+def test_password_hash_roundtrip():
+    from src.admin import users
+    h = users.hash_password("superseguro123")
+    assert h.startswith("pbkdf2_sha256$")
+    assert users.verify_password("superseguro123", h) is True
+    assert users.verify_password("incorrecta", h) is False
+    assert users.verify_password("x", "hash-corrupto") is False
+
+
+@pytest.mark.asyncio
+async def test_crear_usuario_valida():
+    from src.admin import users
+    with pytest.raises(users.AdminError):
+        await users.crear("ab", "passwordlargo")        # usuario muy corto
+    with pytest.raises(users.AdminError):
+        await users.crear("usuario.valido", "corta")    # password < 8
+
+
 # ── Panel deshabilitado sin ADMIN_PASSWORD ──────────────────────────────
 
 @pytest.mark.asyncio

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<title>MBI Admin — Usuarios</title>
+{% include "_head.html" %}
+</head>
+<body>
+{% include "_menu.html" %}
+<div class="wrap">
+  <header><h1>MBI Admin</h1><p>Usuarios del back-office</p></header>
+
+  <section class="card">
+    <h2>Nuevo usuario</h2>
+    <form hx-post="/admin/usuarios" hx-target="#resultado" hx-swap="innerHTML">
+      <div class="grid">
+        <label>Usuario <input name="username" placeholder="nombre.apellido" required></label>
+        <label>Contraseña <input name="password" type="password" minlength="8"
+               autocomplete="new-password" placeholder="mín. 8 caracteres" required></label>
+      </div>
+      <button type="submit">Crear usuario</button>
+    </form>
+    <div id="resultado"></div>
+  </section>
+
+  <section class="card">
+    <h2>Usuarios</h2>
+    <p style="color:#6b7280;font-size:13px;margin:0 0 8px;">
+      El admin del entorno (<code>{{ "ADMIN_USER" }}</code>) siempre puede entrar; estos se suman.</p>
+    {% include "_usuarios_tabla.html" %}
+  </section>
+</div>
+</body>
+</html>

@@ -17,6 +17,7 @@ from fastapi.templating import Jinja2Templates
 from ..admin import integraciones as integ
 from ..admin import schedules as sched
 from ..admin import tenants as svc
+from ..admin import users as usr
 from ..admin.auth import require_admin
 
 router = APIRouter(tags=["admin"])
@@ -211,6 +212,69 @@ async def actualizar_schedule(
     except sched.AdminError:
         pass
     return await _tabla_sched(request)
+
+
+# ─────────────────────────────────────────────────────────────
+# Usuarios del back-office
+# ─────────────────────────────────────────────────────────────
+
+async def _tabla_usuarios(request: Request):
+    return _TEMPLATES.TemplateResponse(
+        "_usuarios_tabla.html", {"request": request, "usuarios": await usr.listar()})
+
+
+@router.get("/admin/usuarios", response_class=HTMLResponse)
+async def panel_usuarios(request: Request, _admin: str = Depends(require_admin)):
+    return _TEMPLATES.TemplateResponse(
+        "usuarios.html", {"request": request, "usuarios": await usr.listar()})
+
+
+@router.post("/admin/usuarios", response_class=HTMLResponse)
+async def alta_usuario(request: Request, username: str = Form(...), password: str = Form(...),
+                       _admin: str = Depends(require_admin)):
+    error = resultado = None
+    try:
+        await usr.crear(username, password)
+        resultado = f"Usuario «{username}» creado."
+    except usr.AdminError as e:
+        error = str(e)
+    return _TEMPLATES.TemplateResponse(
+        "_usuarios_resultado.html",
+        {"request": request, "usuarios": await usr.listar(), "resultado": resultado, "error": error})
+
+
+@router.get("/admin/usuarios/tabla", response_class=HTMLResponse)
+async def tabla_usuarios(request: Request, _admin: str = Depends(require_admin)):
+    return await _tabla_usuarios(request)
+
+
+@router.get("/admin/usuarios/{uid}/password", response_class=HTMLResponse)
+async def form_password(request: Request, uid: int, _admin: str = Depends(require_admin)):
+    u = next((x for x in await usr.listar() if x["id"] == uid), None)
+    return _TEMPLATES.TemplateResponse("_usuario_fila_pass.html", {"request": request, "u": u})
+
+
+@router.post("/admin/usuarios/{uid}/password", response_class=HTMLResponse)
+async def cambiar_password(request: Request, uid: int, password: str = Form(...),
+                          _admin: str = Depends(require_admin)):
+    try:
+        await usr.cambiar_password(uid, password)
+    except usr.AdminError:
+        pass
+    return await _tabla_usuarios(request)
+
+
+@router.post("/admin/usuarios/{uid}/toggle", response_class=HTMLResponse)
+async def toggle_usuario(request: Request, uid: int, activo: str = Form(...),
+                         _admin: str = Depends(require_admin)):
+    await usr.set_activo(uid, activo == "true")
+    return await _tabla_usuarios(request)
+
+
+@router.post("/admin/usuarios/{uid}/delete", response_class=HTMLResponse)
+async def borrar_usuario(request: Request, uid: int, _admin: str = Depends(require_admin)):
+    await usr.eliminar(uid)
+    return await _tabla_usuarios(request)
 
 
 @router.get("/api/admin/schedules")
