@@ -20,7 +20,9 @@
       </td>
       <td>
         <a class="icon-btn" href="/admin/tenants/{{ t.id }}/modulos"
-           title="Módulos del informe">&#9881;</a>
+           title="Módulos activos del informe"
+           style="gap:6px;{% if t.modulos_activos < t.modulos_total %}color:#b45309;{% endif %}">
+          <strong>{{ t.modulos_activos }}/{{ t.modulos_total }}</strong> &#9881;</a>
       </td>
     </tr>
     {% else %}

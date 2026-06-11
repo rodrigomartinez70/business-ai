@@ -74,14 +74,27 @@ async def _recargar_registry() -> None:
 # ─────────────────────────────────────────────────────────────
 
 async def listar() -> list[dict]:
+    from ..finanzas.informe import MODULOS
     rows = await config.raw_pool.fetch(
-        """SELECT t.id, t.nombre, t.vertical, t.activo, t.created_at,
+        """SELECT t.id, t.nombre, t.vertical, t.activo, t.created_at, t.config,
                   (t.config IS NOT NULL) AS config_en_db,
                   (SELECT COUNT(*) FROM public.api_keys k
                     WHERE k.tenant_id = t.id AND k.activa) AS keys_activas
              FROM public.tenants t
             ORDER BY t.created_at DESC, t.id""")
-    return [dict(r) for r in rows]
+    total = len(MODULOS)
+    out = []
+    for r in rows:
+        d = dict(r)
+        cfg = d.pop("config")
+        if cfg is not None and not isinstance(cfg, dict):
+            cfg = json.loads(cfg)
+        mods = ((cfg or {}).get("report") or {}).get("modulos") or {}
+        # Sin config de módulos = todos activos (clave ausente = on).
+        d["modulos_activos"] = sum(1 for c, _a, _t in MODULOS if mods.get(c, True))
+        d["modulos_total"] = total
+        out.append(d)
+    return out
 
 
 # ─────────────────────────────────────────────────────────────
