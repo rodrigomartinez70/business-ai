@@ -36,9 +36,19 @@ async def calcular_panel(hasta: date) -> dict:
 
 def _m(v) -> str:
     try:
-        return f"${v:,.0f}"
+        neg = float(v) < 0
     except (TypeError, ValueError):
         return "—"
+    s = f"-${abs(v):,.0f}" if neg else f"${v:,.0f}"
+    return f'<span style="color:#dc2626;">{s}</span>' if neg else s
+
+
+def _pct_color(v) -> str:
+    """Porcentaje con signo; los negativos en rojo."""
+    if v is None:
+        return "s/d"
+    s = f"{v:+.0f}%"
+    return f'<span style="color:#dc2626;">{s}</span>' if v < 0 else s
 
 
 def _badge(estado: str) -> str:
@@ -131,7 +141,9 @@ def _sec_cxc(d: dict) -> str:
     rows = ("<table>"
             + _kv("Total por cobrar", _m(d["total_por_cobrar"]))
             + _kv("DSO", f'{d["dso"]:.0f} días' if d.get("dso") is not None else "s/d")
-            + _kv("0&ndash;30 / 31&ndash;60 / +60", f'{_m(a["d0_30"])} / {_m(a["d31_60"])} / {_m(a["d60_mas"])}')
+            + _kv("Por vencer (0&ndash;30 días)", _m(a["d0_30"]))
+            + _kv("31&ndash;60 días", _m(a["d31_60"]))
+            + _kv("+60 días", _m(a["d60_mas"]))
             + "</table>")
     det = [[x["fecha"], x["cliente"], _m(x["monto"]), f'{x["dias"]}d'] for x in d.get("detalle", [])]
     cuerpo = rows + _tabla(["Fecha", "Cliente", "Monto", "Antigüedad"], det)
@@ -143,8 +155,10 @@ def _sec_cxp(d: dict) -> str:
     rows = ("<table>"
             + _kv("Total por pagar", _m(d["total_por_pagar"]))
             + _kv("Vencido", _m(d["vencido"]))
-            + _kv("Por vencer / 1&ndash;30 / 31&ndash;60 / +60",
-                  f'{_m(a["por_vencer"])} / {_m(a["d1_30"])} / {_m(a["d31_60"])} / {_m(a["d60_mas"])}')
+            + _kv("Por vencer", _m(a["por_vencer"]))
+            + _kv("Vencido 1&ndash;30 días", _m(a["d1_30"]))
+            + _kv("Vencido 31&ndash;60 días", _m(a["d31_60"]))
+            + _kv("Vencido +60 días", _m(a["d60_mas"]))
             + "</table>")
     venc = [[x["vence"], x["proveedor"], _m(x["monto"]), f'{x["dias"]}d'] for x in d.get("vencidas", [])]
     prox = [[x["vence"], x["proveedor"], _m(x["monto"])] for x in d.get("proximos_vencimientos", [])]
@@ -163,17 +177,26 @@ def _sec_presupuesto(d: dict) -> str:
                      f'cargado para {d.get("anio")}.</p>')
     ing, gas = d["ingresos"], d["gastos"]
 
-    def pct(v):
-        return f'{v:+.0f}%' if v is not None else "s/d"
+    def _kpi(label, real, presup, var_pct):
+        return (
+            '<td width="50%" style="padding:6px;">'
+            '<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:12px 14px;">'
+            f'<div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.4px;">{label}</div>'
+            f'<div style="font-size:18px;font-weight:700;color:#111827;margin-top:3px;">{_m(real)} '
+            f'<span style="font-size:13px;font-weight:600;">({_pct_color(var_pct)})</span></div>'
+            f'<div style="font-size:11px;color:#6b7280;margin-top:2px;">presup. {_m(presup)}</div>'
+            '</div></td>')
 
-    rows = ("<table>"
-            + _kv("Ingresos (real vs presup.)", f'{_m(ing["real"])} / {_m(ing["presupuesto"])} ({pct(ing["var_pct"])})')
-            + _kv("Gastos (real vs presup.)", f'{_m(gas["real"])} / {_m(gas["presupuesto"])} ({pct(gas["var_pct"])})')
-            + "</table>")
-    desv = [[x["categoria"], _m(x["real"]), _m(x["presupuesto"]), pct(x["var_pct"]),
+    kpis = (
+        '<table width="100%" style="border-collapse:collapse;margin:0 0 4px;"><tr>'
+        + _kpi("Ingresos", ing["real"], ing["presupuesto"], ing["var_pct"])
+        + _kpi("Gastos",   gas["real"], gas["presupuesto"], gas["var_pct"])
+        + '</tr></table>')
+
+    desv = [[x["categoria"], _m(x["real"]), _m(x["presupuesto"]), _pct_color(x["var_pct"]),
              ("Favorable" if x.get("favorable") else "Atención")]
             for x in d.get("desviaciones", [])]
-    cuerpo = (rows + '<h3 style="font-size:14px;color:#374151;margin:14px 0 0;">Desviaciones</h3>'
+    cuerpo = (kpis + '<h3 style="font-size:14px;color:#374151;margin:14px 0 0;">Desviaciones</h3>'
               + _tabla(["Categoría", "Real", "Presup.", "Var.", "Estado"], desv))
     return _card("Control Presupuestario (YTD)", cuerpo)
 

@@ -128,6 +128,7 @@ async def _calcular_marketing(conn, hasta: date, dias: int) -> dict | None:
     for c in camp:
         g = float(c["gasto"]); l = float(c["leads"])
         campanas.append({"nombre": c["nombre"], "estado": c["estado"], "objetivo": c["objetivo"],
+                         "presupuesto_diario": float(c["presupuesto_diario"] or 0),
                          "gasto": g, "leads": l, "cpl": _div(g, l),
                          "clics": int(c["clics"]), "impresiones": int(c["impresiones"]),
                          "mensajes": int(c["mensajes"]), "interacciones": int(c["interacciones"]),
@@ -163,14 +164,6 @@ async def _calcular_marketing(conn, hasta: date, dias: int) -> dict | None:
     }
 
 
-def _insights_block(insights) -> str:
-    if not insights:
-        return ""
-    lis = "".join(f"<li>{i}</li>" for i in insights)
-    return (f'<div class="ins"><div class="t">💡 Insights IA</div>'
-            f'<ul style="margin:0;padding-left:16px;">{lis}</ul></div>')
-
-
 def renderizar_marketing_html(data: dict, cfg: dict, insights=None) -> str:
     r = data["resumen"]; p = data["periodo"]
 
@@ -186,8 +179,10 @@ def renderizar_marketing_html(data: dict, cfg: dict, insights=None) -> str:
         ("Alcance",                f"{r['alcance']:,.0f}"),
     ]
 
+    # Solo los proyectos/campañas que tienen presupuesto asignado.
+    con_presupuesto = [c for c in data["campanas"] if (c.get("presupuesto_diario") or 0) > 0]
     filas = ""
-    for c in data["campanas"]:
+    for c in con_presupuesto:
         if c["nombre"] == data.get("mejor_campana"):
             ico = "✅ "
         elif c["estado"] == "PAUSED":
@@ -195,15 +190,16 @@ def renderizar_marketing_html(data: dict, cfg: dict, insights=None) -> str:
         else:
             ico = ""
         cpl = _fm(c["cpl"], cfg) if c["leads"] else "—"
-        filas += (f'<tr><td>{ico}{c["nombre"]}</td><td>{_fm(c["gasto"], cfg)}</td>'
+        filas += (f'<tr><td>{ico}{c["nombre"]}</td><td>{_fm(c["presupuesto_diario"], cfg)}</td>'
+                  f'<td>{_fm(c["gasto"], cfg)}</td>'
                   f'<td style="text-align:right;">{c["leads"]:,.0f}</td><td>{cpl}</td></tr>')
-    tabla = (f'<table class="dt"><tr><th>Campaña</th><th>Gasto</th><th>Leads</th>'
-             f'<th>CPL</th></tr>{filas}</table>')
+    tabla = (f'<table class="dt"><tr><th>Campaña</th><th>Presup./día</th><th>Gasto</th>'
+             f'<th>Leads</th><th>CPL</th></tr>{filas}</table>') if filas else ""
 
     avisos = "".join(_aviso(a["nivel"], a["titulo"], a["desc"]) for a in data["alertas"])
 
     return _card(f"📣 Marketing — Meta Ads (últimos {p['dias']} días)",
-                 _kpis(rows) + tabla + avisos + _insights_block(insights))
+                 _kpis(rows) + tabla + avisos)
 
 
 def renderizar_marketing_pagina(data: dict, cfg: dict, titulo: str = "Marketing",

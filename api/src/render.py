@@ -40,7 +40,12 @@ table.dt th{color:#6b7280;font-weight:600;}
 
 
 def _fm(v, cfg):
-    return fmt_moneda(v, cfg)
+    s = fmt_moneda(v, cfg)
+    try:
+        neg = float(v) < 0
+    except (TypeError, ValueError):
+        neg = False
+    return f'<span style="color:#dc2626;">{s}</span>' if neg else s
 
 
 def _kpis(rows: list[tuple[str, str]]) -> str:
