@@ -6,9 +6,22 @@
   body{background:#f3f4f6;margin:0;color:#111827;}
   .wrap{max-width:920px;margin:0 auto;padding:24px 16px;}
   header h1{margin:0;font-size:24px;} header p{margin:4px 0 0;color:#6b7280;font-size:14px;}
-  nav{margin:10px 0 0;display:flex;gap:14px;}
-  nav a{color:#2563eb;text-decoration:none;font-size:14px;font-weight:600;}
-  nav a.on{color:#111827;border-bottom:2px solid #1f2937;padding-bottom:2px;}
+  /* Menú lateral derecho colapsable (CSS puro, checkbox-hack) */
+  .menu-toggle{display:none;}
+  .menu-btn{position:fixed;top:14px;right:14px;z-index:40;cursor:pointer;font-size:20px;
+        background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:3px 11px;color:#374151;line-height:1.4;}
+  .menu-btn:hover{background:#f3f4f6;}
+  .menu-overlay{position:fixed;inset:0;background:rgba(0,0,0,.25);z-index:35;display:none;}
+  .menu-toggle:checked ~ .menu-overlay{display:block;}
+  .side-menu{position:fixed;top:0;right:-280px;width:250px;height:100%;background:#1f2937;
+        z-index:38;transition:right .25s ease;padding:56px 16px;box-sizing:border-box;
+        box-shadow:-3px 0 14px rgba(0,0,0,.2);}
+  .menu-toggle:checked ~ .side-menu{right:0;}
+  .side-menu-title{color:#9ca3af;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin:0 8px 12px;}
+  .side-menu a{display:block;color:#e5e7eb;padding:10px 10px;text-decoration:none;border-radius:8px;
+        font-size:14px;font-weight:600;margin:2px 0;}
+  .side-menu a:hover{background:#374151;}
+  .side-menu a.on{background:#2563eb;color:#fff;}
   .card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px;margin:18px 0;}
   .card h2{margin:0 0 14px;font-size:17px;}
   form .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}

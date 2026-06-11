@@ -1,0 +1,11 @@
+{% set path = request.url.path %}
+<input type="checkbox" id="menu-toggle" class="menu-toggle">
+<label for="menu-toggle" class="menu-btn" title="Menú">&#9776;</label>
+<label for="menu-toggle" class="menu-overlay"></label>
+<nav class="side-menu">
+  <div class="side-menu-title">MBI Admin</div>
+  <a href="/admin"
+     class="{{ 'on' if path == '/admin' or path.startswith('/admin/tenants') else '' }}">Empresas</a>
+  <a href="/admin/schedules"
+     class="{{ 'on' if path.startswith('/admin/schedules') else '' }}">Programación de correos</a>
+</nav>
