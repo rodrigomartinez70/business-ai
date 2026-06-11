@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
+from ..admin import config_editor as cfged
 from ..admin import integraciones as integ
 from ..admin import schedules as sched
 from ..admin import tenants as svc
@@ -91,6 +92,31 @@ async def toggle_modulo(request: Request, tenant_id: str, clave: str,
         pass
     return _TEMPLATES.TemplateResponse(
         "_modulos_lista.html", {"request": request, **(await svc.modulos_de(tenant_id))})
+
+
+# ─────────────────────────────────────────────────────────────
+# Editor de config (KPIs / particularidades) por tenant
+# ─────────────────────────────────────────────────────────────
+
+@router.get("/admin/tenants/{tenant_id}/config", response_class=HTMLResponse)
+async def panel_config(request: Request, tenant_id: str, _admin: str = Depends(require_admin)):
+    vertical = await cfged.vertical_de(tenant_id)
+    return _TEMPLATES.TemplateResponse(
+        "config_editor.html",
+        {"request": request, "tenant_id": tenant_id,
+         "config_yaml": await cfged.cargar_yaml(tenant_id),
+         "metricas": cfged.catalogo_metricas(vertical)})
+
+
+@router.post("/admin/tenants/{tenant_id}/config", response_class=HTMLResponse)
+async def guardar_config(request: Request, tenant_id: str, contenido: str = Form(...),
+                         _admin: str = Depends(require_admin)):
+    try:
+        errores = await cfged.guardar(tenant_id, contenido)
+    except cfged.AdminError as e:
+        errores = [str(e)]
+    return _TEMPLATES.TemplateResponse(
+        "_config_resultado.html", {"request": request, "errores": errores})
 
 
 # ─────────────────────────────────────────────────────────────

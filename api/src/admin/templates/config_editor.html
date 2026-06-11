@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<title>MBI Admin — Config · {{ tenant_id }}</title>
+{% include "_head.html" %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/yaml/yaml.min.js"></script>
+<style>
+  .CodeMirror{border:1px solid #e5e7eb;border-radius:10px;height:auto;min-height:440px;font-size:13px;}
+  .CodeMirror-focused{border-color:#f97316;box-shadow:0 0 0 3px rgba(249,115,22,.15);}
+  .metric-chip{display:inline-block;background:#f8fafc;border:1px solid #eef0f3;border-radius:8px;
+        padding:3px 9px;margin:3px 3px 0 0;font-size:12px;color:#374151;}
+  .metric-chip b{color:#ea580c;}
+</style>
+</head>
+<body>
+{% include "_menu.html" %}
+<div class="wrap">
+  <header><h1>MBI Admin</h1><p>Config particular — {{ tenant_id }}</p></header>
+
+  <section class="card">
+    <h2>Métricas disponibles</h2>
+    <p style="color:#6b7280;font-size:13px;margin:0 0 8px;">
+      Usá estos nombres en las <strong>fórmulas</strong> de tus KPIs (ej.
+      <code>costo_ventas / ventas * 100</code>).</p>
+    {% for m in metricas %}<span class="metric-chip"><b>{{ m.nombre }}</b> · {{ m.label }}</span>{% endfor %}
+  </section>
+
+  <section class="card">
+    <h2>Editor (YAML)</h2>
+    <form hx-post="/admin/tenants/{{ tenant_id }}/config" hx-target="#resultado" hx-swap="innerHTML">
+      <textarea id="editor" name="contenido">{{ config_yaml }}</textarea>
+      <button type="submit" style="margin-top:12px;">Validar y guardar</button>
+    </form>
+    <div id="resultado"></div>
+  </section>
+</div>
+<script>
+  var cm = CodeMirror.fromTextArea(document.getElementById('editor'),
+    {mode:'yaml', lineNumbers:true, indentUnit:2, tabSize:2, lineWrapping:true});
+  cm.on('change', function(){ cm.save(); });   // mantiene el textarea sincronizado para HTMX
+</script>
+</body>
+</html>

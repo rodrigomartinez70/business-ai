@@ -1,0 +1,8 @@
+{% if errores %}
+<div class="banner err">
+  <strong>No se guardó — corregí:</strong>
+  <ul style="margin:6px 0 0;padding-left:18px;">{% for e in errores %}<li>{{ e }}</li>{% endfor %}</ul>
+</div>
+{% else %}
+<div class="banner ok">Config validado y guardado. Los KPIs ya están activos.</div>
+{% endif %}

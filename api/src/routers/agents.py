@@ -329,6 +329,25 @@ async def agente_tributario(
     return data
 
 
+@router.get("/kpis")
+async def agente_kpis(
+    fecha:   Optional[date] = Query(None, description="Fecha de corte (default: hoy)"),
+    dias:    int            = Query(30, ge=1, le=365, description="Ventana de cálculo"),
+    _rol:    str            = Depends(get_role),
+):
+    """
+    KPIs particulares del tenant (por fórmula sobre el catálogo de métricas).
+    Lee `config.kpis` (los que tienen `formula`/`metrica`) y los evalúa.
+    """
+    from ..metricas import kpis as mk
+    from ..tenant import get_tenant_or_none
+    ctx = get_tenant_or_none()
+    vertical = ctx.vertical if ctx else None
+    cfg = config.get_config()
+    data = await mk.evaluar(vertical, cfg.get("kpis", []), fecha or date.today(), dias)
+    return {"dias": dias, "kpis": data}
+
+
 @router.get("/conciliacion")
 async def agente_conciliacion(
     fecha:   Optional[date] = Query(None, description="Fecha de corte (default: hoy)"),
