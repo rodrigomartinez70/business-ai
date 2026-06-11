@@ -4,10 +4,10 @@
 # 0 8 * * 1 /cron/dashboard_semanal.sh >> /reportes/cron.log 2>&1
 
 # Informe Financiero del RESTAURANTE (restaurante_demo) por correo — lunes 09:00 hora Chile.
-# El contenedor corre en UTC: 09:00 CLT (UTC-4, invierno) = 13:00 UTC.
-# OJO: en verano chileno (UTC-3, ~sept-abr) habría que pasarlo a 12:00 UTC.
-# Destinatarios: los 4 de report.email_to del config del tenant.
-0 13 * * 1 /cron/dashboard_restaurante.sh >> /reportes/cron.log 2>&1
+# El contenedor cron corre en TZ America/Santiago, así que el horario es local
+# y se ajusta solo al horario de verano (DST). Destinatarios: los 4 de
+# report.email_to del config del tenant.
+0 9 * * 1 /cron/dashboard_restaurante.sh >> /reportes/cron.log 2>&1
 
 # [SUSPENDIDO] Sync diario de Meta Ads (restaurante_toteat) → Postgres — todos los días 07:00.
 # Suspendido el 8-jun-2026: Meta bloqueó el acceso del token (OAuthException code 200).

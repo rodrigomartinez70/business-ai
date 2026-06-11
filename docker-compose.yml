@@ -123,12 +123,16 @@ services:
     restart: unless-stopped
     entrypoint: >
       sh -c "
-        apk add --no-cache curl &&
+        apk add --no-cache curl tzdata &&
+        cp /usr/share/zoneinfo/America/Santiago /etc/localtime &&
+        echo 'America/Santiago' > /etc/timezone &&
         mkdir -p /reportes &&
         crontab /cron/crontab &&
         crond -f -l 2
       "
     environment:
+      # Hora local de Chile (DST-proof): los horarios del crontab son hora Chile.
+      - TZ=America/Santiago
       # El cron solo dispara endpoints de la API; el envío (SMTP) lo hace la API.
       - API_KEY_GERENTE=${API_KEY_GERENTE}
       - API_KEY_RESTAURANTE=${API_KEY_RESTAURANTE:-}
