@@ -1,0 +1,33 @@
+<table id="sched-tabla" class="dt"{% if oob %} hx-swap-oob="true"{% endif %}>
+  <thead>
+    <tr><th>Empresa</th><th>Reporte</th><th>Cuándo (Chile)</th><th>Destinatarios</th>
+        <th>Últ. envío</th><th>Estado</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% for s in schedules %}
+    <tr class="{{ 'off' if not s.activo else '' }}">
+      <td>{{ s.tenant_nombre }}<br><code>{{ s.tenant_id }}</code></td>
+      <td>{{ s.reporte }}</td>
+      <td>{{ dias[s.dia_semana] }} {{ '%02d:%02d'|format(s.hora, s.minuto) }}</td>
+      <td>{{ s.destinatarios or '(config del tenant)' }}</td>
+      <td>{{ s.last_run or '—' }}</td>
+      <td>{% if s.activo %}<span class="badge on">activa</span>
+          {% else %}<span class="badge off">inactiva</span>{% endif %}</td>
+      <td><div class="acciones">
+        <form hx-post="/admin/schedules/{{ s.id }}/toggle" hx-target="#sched-tabla"
+              hx-swap="outerHTML" style="margin:0;">
+          <input type="hidden" name="activo" value="{{ 'false' if s.activo else 'true' }}">
+          <button class="mini {{ 'danger' if s.activo else 'ok' }}">
+            {{ 'Pausar' if s.activo else 'Activar' }}</button>
+        </form>
+        <form hx-post="/admin/schedules/{{ s.id }}/delete" hx-target="#sched-tabla"
+              hx-swap="outerHTML" hx-confirm="¿Eliminar esta programación?" style="margin:0;">
+          <button class="mini" style="background:#6b7280;">Eliminar</button>
+        </form>
+      </div></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="7" style="color:#9ca3af;">Sin programaciones todavía.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>

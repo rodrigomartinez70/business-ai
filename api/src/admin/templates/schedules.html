@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<title>MBI Admin — Programación de correos</title>
+{% include "_head.html" %}
+</head>
+<body>
+<div class="wrap">
+  <header><h1>MBI Admin</h1><p>Programación de reportes por correo</p>
+  <nav><a href="/admin">Empresas</a><a class="on" href="/admin/schedules">Programación de correos</a></nav>
+  </header>
+
+  <section class="card">
+    <h2>Nueva programación</h2>
+    <form hx-post="/admin/schedules" hx-target="#resultado" hx-swap="innerHTML">
+      <div class="grid">
+        <label>Empresa
+          <select name="tenant_id" required>
+            {% for t in tenants %}<option value="{{ t.id }}">{{ t.nombre }} ({{ t.id }})</option>{% endfor %}
+          </select>
+        </label>
+        <label>Reporte
+          <select name="reporte">
+            {% for k, v in reportes.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>Día
+          <select name="dia_semana">
+            {% for n, d in dias.items() %}<option value="{{ n }}"{% if n == 1 %} selected{% endif %}>{{ d }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>Hora (Chile)
+          <span style="display:flex;gap:6px;">
+            <input type="number" name="hora" min="0" max="23" value="9" style="width:70px;"> :
+            <input type="number" name="minuto" min="0" max="59" value="0" style="width:70px;">
+          </span>
+        </label>
+        <label class="full">Destinatarios (coma-separados; vacío = usa los del config de la empresa)
+          <input name="destinatarios" placeholder="dueno@empresa.cl, contador@empresa.cl"></label>
+      </div>
+      <button type="submit">Programar</button>
+    </form>
+    <div id="resultado"></div>
+  </section>
+
+  <section class="card">
+    <h2>Programaciones</h2>
+    {% include "_sched_tabla.html" %}
+  </section>
+</div>
+</body>
+</html>

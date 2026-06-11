@@ -3,11 +3,13 @@
 # Reactivar descomentando la línea de abajo.
 # 0 8 * * 1 /cron/dashboard_semanal.sh >> /reportes/cron.log 2>&1
 
-# Informe Financiero del RESTAURANTE (restaurante_demo) por correo — lunes 09:00 hora Chile.
-# El contenedor cron corre en TZ America/Santiago, así que el horario es local
-# y se ajusta solo al horario de verano (DST). Destinatarios: los 4 de
-# report.email_to del config del tenant.
-0 9 * * 1 /cron/dashboard_restaurante.sh >> /reportes/cron.log 2>&1
+# [REEMPLAZADO por el scheduler] Informe Financiero del RESTAURANTE por correo.
+# Ahora se gestiona desde MBI Admin (public.report_schedules) — ver el tick de abajo.
+# 0 9 * * 1 /cron/dashboard_restaurante.sh >> /reportes/cron.log 2>&1
+
+# Scheduler de reportes (DB-driven) — lee public.report_schedules y envía lo vencido.
+# Cada 15 min; la API (hora Chile) decide qué disparar y dedupe por last_run.
+*/15 * * * * /cron/run_schedules.sh >> /reportes/cron.log 2>&1
 
 # [SUSPENDIDO] Sync diario de Meta Ads (restaurante_toteat) → Postgres — todos los días 07:00.
 # Suspendido el 8-jun-2026: Meta bloqueó el acceso del token (OAuthException code 200).

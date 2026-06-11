@@ -1,0 +1,35 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<script src="https://unpkg.com/htmx.org@1.9.12"></script>
+<style>
+  :root{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;}
+  body{background:#f3f4f6;margin:0;color:#111827;}
+  .wrap{max-width:920px;margin:0 auto;padding:24px 16px;}
+  header h1{margin:0;font-size:24px;} header p{margin:4px 0 0;color:#6b7280;font-size:14px;}
+  nav{margin:10px 0 0;display:flex;gap:14px;}
+  nav a{color:#2563eb;text-decoration:none;font-size:14px;font-weight:600;}
+  nav a.on{color:#111827;border-bottom:2px solid #1f2937;padding-bottom:2px;}
+  .card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px;margin:18px 0;}
+  .card h2{margin:0 0 14px;font-size:17px;}
+  form .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  label{display:flex;flex-direction:column;font-size:12px;color:#6b7280;gap:4px;}
+  label.full{grid-column:1 / -1;}
+  input,select{padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;color:#111827;}
+  button{margin-top:14px;padding:9px 16px;border:0;border-radius:8px;background:#1f2937;color:#fff;
+         font-size:13px;font-weight:600;cursor:pointer;}
+  button.ok{background:#16a34a;} button.danger{background:#dc2626;} button:hover{opacity:.92;}
+  button.mini{margin:0;padding:5px 10px;font-size:12px;}
+  table.dt{width:100%;border-collapse:collapse;}
+  table.dt th,table.dt td{padding:8px 10px;border-bottom:1px solid #f0f0f0;font-size:13px;text-align:left;}
+  table.dt th{color:#6b7280;font-weight:600;font-size:12px;}
+  tr.off{opacity:.55;}
+  code{background:#f3f4f6;padding:1px 6px;border-radius:5px;font-size:12px;}
+  .badge{padding:2px 9px;border-radius:11px;font-size:11px;font-weight:700;color:#fff;}
+  .badge.on{background:#16a34a;} .badge.off{background:#9ca3af;}
+  .banner{border-radius:10px;padding:12px 14px;margin:14px 0 0;font-size:14px;}
+  .banner.ok{background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;}
+  .banner.err{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;}
+  .banner .key{margin-top:8px;background:#064e3b;color:#fff;padding:8px 10px;border-radius:8px;}
+  .banner .key code{background:transparent;color:#a7f3d0;font-size:13px;}
+  .acciones{display:flex;gap:6px;}
+</style>

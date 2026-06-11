@@ -136,6 +136,9 @@ services:
     environment:
       # Hora local de Chile (DST-proof): los horarios del crontab son hora Chile.
       - TZ=America/Santiago
+      # Credenciales del back-office — el cron lector golpea el tick del scheduler.
+      - ADMIN_USER=${ADMIN_USER:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
       # El cron solo dispara endpoints de la API; el envío (SMTP) lo hace la API.
       - API_KEY_GERENTE=${API_KEY_GERENTE}
       - API_KEY_RESTAURANTE=${API_KEY_RESTAURANTE:-}
