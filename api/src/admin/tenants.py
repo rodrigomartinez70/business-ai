@@ -33,6 +33,13 @@ class AdminError(Exception):
     """Error de validación/operación de administración (se traduce a 400)."""
 
 
+# Color por cantidad de módulos activos (10 verde → 0 rojo), un color por valor.
+_COLOR_MODULOS = {
+    10: "#15803d", 9: "#16a34a", 8: "#22c55e", 7: "#65a30d", 6: "#84cc16",
+    5:  "#ca8a04", 4: "#d97706", 3: "#ea580c", 2: "#dc2626", 1: "#b91c1c", 0: "#7f1d1d",
+}
+
+
 def hash_key(api_key: str) -> str:
     return hashlib.sha256(api_key.encode()).hexdigest()
 
@@ -91,8 +98,10 @@ async def listar() -> list[dict]:
             cfg = json.loads(cfg)
         mods = ((cfg or {}).get("report") or {}).get("modulos") or {}
         # Sin config de módulos = todos activos (clave ausente = on).
-        d["modulos_activos"] = sum(1 for c, _a, _t in MODULOS if mods.get(c, True))
+        activos = sum(1 for c, _a, _t in MODULOS if mods.get(c, True))
+        d["modulos_activos"] = activos
         d["modulos_total"] = total
+        d["modulos_color"] = _COLOR_MODULOS.get(activos, "#6b7280")
         out.append(d)
     return out
 
