@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import config, tenant_registry
 from .db import TenantAwarePool
-from .routers import agents, chat, ingest, integraciones, reports
+from .routers import admin, agents, chat, ingest, integraciones, reports
 from .schema import build_schema_cache
 
 logging.basicConfig(level=logging.INFO)
@@ -80,6 +80,7 @@ async def lifespan(app: FastAPI):
 
     # Wrapear el pool: a partir de aquí todos los acquire() inyectan search_path
     config.db_pool = TenantAwarePool(raw_pool)
+    config.raw_pool = raw_pool        # sin scope de tenant — ops de plataforma (back-office admin)
 
     _warn_placeholders(config.CONFIG)
 
@@ -138,3 +139,4 @@ app.include_router(reports.router)
 app.include_router(agents.router)
 app.include_router(ingest.router)
 app.include_router(integraciones.router)
+app.include_router(admin.router)

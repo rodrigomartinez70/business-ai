@@ -14,6 +14,7 @@ keys de env vars (compatible con deployments single-tenant existentes).
 """
 
 import hashlib
+import json
 import logging
 import yaml
 import asyncpg
@@ -70,9 +71,16 @@ async def load_all_tenants(
     _TENANT_INDEX = {}
 
     try:
-        rows = await pool.fetch(
-            "SELECT id, nombre, vertical, config_path FROM public.tenants WHERE activo = TRUE"
-        )
+        try:
+            rows = await pool.fetch(
+                "SELECT id, nombre, vertical, config_path, config "
+                "FROM public.tenants WHERE activo = TRUE"
+            )
+        except asyncpg.UndefinedColumnError:
+            # Pre-migración 007: todavía no existe la columna config (JSONB).
+            rows = await pool.fetch(
+                "SELECT id, nombre, vertical, config_path FROM public.tenants WHERE activo = TRUE"
+            )
     except asyncpg.UndefinedTableError:
         logger.warning(
             "public.tenants no existe — modo legado. "
@@ -94,9 +102,17 @@ async def load_all_tenants(
         config_path = row["config_path"]
         vertical    = row["vertical"]
 
+        # Preferir config JSONB de la DB (editable por el back-office); si no hay,
+        # caer al archivo YAML (config_path).
+        cfg = None
+        cfg_json = row.get("config")
+        if cfg_json is not None:
+            cfg = cfg_json if isinstance(cfg_json, dict) else json.loads(cfg_json)
+
         try:
-            with open(config_path) as f:
-                cfg = yaml.safe_load(f)
+            if cfg is None:
+                with open(config_path) as f:
+                    cfg = yaml.safe_load(f)
         except Exception as e:
             logger.error(f"No se pudo cargar config del tenant '{tenant_id}' ({config_path}): {e}")
             continue

@@ -39,6 +39,15 @@ SMTP_USE_TLS    = os.getenv("SMTP_USE_TLS", "true").strip().lower() in ("1", "tr
 SMTP_FROM       = os.getenv("SMTP_FROM", "") or SMTP_USER
 REPORT_EMAIL_TO = os.getenv("REPORT_EMAIL_TO", "")   # coma-separado para varios destinatarios
 
+# ─── Back-office MBI Admin (plataforma, cross-tenant) ───────
+ADMIN_USER     = os.getenv("ADMIN_USER", "admin")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")     # vacío = panel /admin deshabilitado
+
+
+def admin_disponible() -> bool:
+    """True si el back-office de administración está habilitado (ADMIN_PASSWORD seteado)."""
+    return bool(ADMIN_PASSWORD)
+
 
 def email_disponible() -> bool:
     """True si hay configuración SMTP mínima para enviar correos."""
@@ -48,6 +57,7 @@ def email_disponible() -> bool:
 
 db_pool:      Optional[object] = None   # TenantAwarePool en runtime, asyncpg.Pool en tests/legado
 ingest_pool:  Optional[object] = None   # ídem, con permisos INSERT para el endpoint /ingest
+raw_pool:     Optional[object] = None   # asyncpg.Pool sin scope de tenant — ops de plataforma (admin)
 CONFIG:       dict          = {}
 API_KEYS:     dict[str, str] = {}
 SCHEMA_CACHE: dict[str, str] = {}

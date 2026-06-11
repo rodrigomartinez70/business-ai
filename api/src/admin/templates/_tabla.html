@@ -1,0 +1,29 @@
+<table id="tabla" class="dt"{% if oob %} hx-swap-oob="true"{% endif %}>
+  <thead>
+    <tr><th>ID</th><th>Nombre</th><th>Vertical</th><th>Keys</th><th>Estado</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% for t in tenants %}
+    <tr class="{{ 'off' if not t.activo else '' }}">
+      <td><code>{{ t.id }}</code></td>
+      <td>{{ t.nombre }}</td>
+      <td>{{ t.vertical }}</td>
+      <td>{{ t.keys_activas }}</td>
+      <td>
+        {% if t.activo %}<span class="badge on">activa</span>
+        {% else %}<span class="badge off">inactiva</span>{% endif %}
+      </td>
+      <td>
+        <form hx-post="/admin/tenants/{{ t.id }}/toggle" hx-target="#tabla"
+              hx-swap="outerHTML" style="margin:0;">
+          <input type="hidden" name="activo" value="{{ 'false' if t.activo else 'true' }}">
+          <button class="{{ 'danger' if t.activo else 'ok' }}">
+            {{ 'Desactivar' if t.activo else 'Activar' }}</button>
+        </form>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" style="color:#9ca3af;">Sin empresas todavía.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>

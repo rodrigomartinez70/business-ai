@@ -62,6 +62,9 @@ services:
       - API_KEY_GERENTE=${API_KEY_GERENTE}
       - API_KEY_ADMINISTRACION=${API_KEY_ADMINISTRACION}
       - API_KEY_RECEPCION=${API_KEY_RECEPCION}
+      # Back-office MBI Admin (HTTP Basic). Vacío = panel /admin deshabilitado.
+      - ADMIN_USER=${ADMIN_USER:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
       # Dashboard semanal por correo
       - REPORT_CHANNEL=${REPORT_CHANNEL:-email}
       - SMTP_HOST=${SMTP_HOST:-}
