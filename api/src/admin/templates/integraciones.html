@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<title>MBI Admin — Integraciones · {{ tenant_id }}</title>
+{% include "_head.html" %}
+</head>
+<body>
+<div class="wrap">
+  <header><h1>MBI Admin</h1><p>Integraciones — {{ tenant_id }}</p>
+  <nav><a href="/admin">Empresas</a><a href="/admin/schedules">Programación de correos</a></nav>
+  </header>
+
+  <div style="margin:18px 0 0;">
+    <h2 style="font-size:17px;margin:0 0 4px;">Sistemas integrables de <code>{{ tenant_id }}</code></h2>
+    <p style="color:#6b7280;font-size:13px;margin:0;">
+      Cargá las credenciales/parámetros de cada sistema. <strong>En blanco</strong> = el
+      módulo opera con su <em>mock / datos de muestra</em>.</p>
+  </div>
+
+  {% include "_integraciones_cards.html" %}
+
+  <p style="margin:14px 0;"><a href="/admin" class="icon-btn" style="background:#eef2f7;">&larr; Volver a empresas</a></p>
+</div>
+</body>
+</html>

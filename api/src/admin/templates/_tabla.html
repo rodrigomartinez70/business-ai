@@ -1,6 +1,6 @@
 <table id="tabla" class="dt"{% if oob %} hx-swap-oob="true"{% endif %}>
   <thead>
-    <tr><th>ID</th><th>Nombre</th><th>Vertical</th><th>Keys</th><th>Estado</th><th>Módulos</th></tr>
+    <tr><th>ID</th><th>Nombre</th><th>Vertical</th><th>Keys</th><th>Estado</th><th>Módulos</th><th>Integr.</th></tr>
   </thead>
   <tbody>
     {% for t in tenants %}
@@ -24,9 +24,13 @@
           <span class="modnum" style="background:{{ t.modulos_color }};">{{ t.modulos_activos }}</span>
           &#9881;</a>
       </td>
+      <td>
+        <a class="icon-btn" href="/admin/tenants/{{ t.id }}/integraciones"
+           title="Integraciones del tenant">&#128268;</a>
+      </td>
     </tr>
     {% else %}
-    <tr><td colspan="6" style="color:#9ca3af;">Sin empresas todavía.</td></tr>
+    <tr><td colspan="7" style="color:#9ca3af;">Sin empresas todavía.</td></tr>
     {% endfor %}
   </tbody>
 </table>

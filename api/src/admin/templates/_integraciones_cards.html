@@ -1,0 +1,36 @@
+<div id="integ-cards">
+  {% if mensaje %}<div class="banner {{ 'err' if '⚠' in mensaje else 'ok' }}">{{ mensaje }}</div>{% endif %}
+  {% for ig in integraciones %}
+  <div class="card" style="margin:14px 0;">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <h3 style="margin:0;font-size:15px;">{{ ig.label }}</h3>
+      {% if ig.configurado %}<span class="badge on">configurada</span>
+      {% else %}<span class="badge off">mock / datos default</span>{% endif %}
+    </div>
+    <form hx-post="/admin/tenants/{{ tenant_id }}/integraciones/{{ ig.proveedor }}"
+          hx-target="#integ-cards" hx-swap="outerHTML">
+      <div class="grid" style="margin-top:10px;">
+        {% for c in ig.campos %}
+        <label>{{ c.label }}{% if c.secreto %} &#128274;{% endif %}
+          {% if c.secreto %}
+          <input name="{{ c.col }}" type="password" autocomplete="new-password"
+                 placeholder="{{ '•••• guardado — dejá en blanco para mantener' if ig.tiene_token else '' }}">
+          {% else %}
+          <input name="{{ c.col }}" value="{{ c.valor }}">
+          {% endif %}
+        </label>
+        {% endfor %}
+      </div>
+      <div class="acciones" style="margin-top:12px;">
+        <button type="submit">Guardar</button>
+        {% if ig.tiene_token or ig.configurado %}
+        <button class="icon-btn del" type="button"
+                hx-post="/admin/tenants/{{ tenant_id }}/integraciones/{{ ig.proveedor }}/desconectar"
+                hx-target="#integ-cards" hx-swap="outerHTML"
+                hx-confirm="¿Desconectar {{ ig.label }}? Volverá a operar con mock.">Desconectar</button>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+  {% endfor %}
+</div>

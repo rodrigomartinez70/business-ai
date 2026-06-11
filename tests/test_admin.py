@@ -54,6 +54,26 @@ async def test_set_modulo_desconocido():
         await svc.set_modulo("x", "modulo_inexistente", False)
 
 
+# ── Integraciones por tenant ────────────────────────────────────────────
+
+def test_proveedores_integraciones():
+    from src.admin import integraciones as integ
+    assert {"meta", "toteat", "odoo", "defontana"} <= set(integ.PROVEEDORES)
+    # cada proveedor tiene un campo access_token secreto + cuenta_id
+    for prov, meta in integ.PROVEEDORES.items():
+        cols = {c for c, _l, _s in meta["campos"]}
+        assert "access_token" in cols and "cuenta_id" in cols, prov
+        secretos = {c for c, _l, s in meta["campos"] if s}
+        assert secretos == {"access_token"}, prov
+
+
+@pytest.mark.asyncio
+async def test_guardar_integracion_proveedor_invalido():
+    from src.admin import integraciones as integ
+    with pytest.raises(integ.AdminError):
+        await integ.guardar("x", "proveedor_inexistente", {})
+
+
 # ── Panel deshabilitado sin ADMIN_PASSWORD ──────────────────────────────
 
 @pytest.mark.asyncio

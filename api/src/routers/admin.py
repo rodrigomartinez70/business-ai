@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
+from ..admin import integraciones as integ
 from ..admin import schedules as sched
 from ..admin import tenants as svc
 from ..admin.auth import require_admin
@@ -89,6 +90,43 @@ async def toggle_modulo(request: Request, tenant_id: str, clave: str,
         pass
     return _TEMPLATES.TemplateResponse(
         "_modulos_lista.html", {"request": request, **(await svc.modulos_de(tenant_id))})
+
+
+# ─────────────────────────────────────────────────────────────
+# Integraciones por tenant
+# ─────────────────────────────────────────────────────────────
+
+@router.get("/admin/tenants/{tenant_id}/integraciones", response_class=HTMLResponse)
+async def panel_integraciones(request: Request, tenant_id: str,
+                              _admin: str = Depends(require_admin)):
+    return _TEMPLATES.TemplateResponse(
+        "integraciones.html", {"request": request, **(await integ.estado(tenant_id))})
+
+
+@router.post("/admin/tenants/{tenant_id}/integraciones/{proveedor}", response_class=HTMLResponse)
+async def guardar_integracion(request: Request, tenant_id: str, proveedor: str,
+                              _admin: str = Depends(require_admin)):
+    form = await request.form()
+    msg = None
+    try:
+        await integ.guardar(tenant_id, proveedor, dict(form))
+        msg = f"Integración {proveedor} guardada."
+    except integ.AdminError as e:
+        msg = f"⚠ {e}"
+    return _TEMPLATES.TemplateResponse(
+        "_integraciones_cards.html",
+        {"request": request, "mensaje": msg, **(await integ.estado(tenant_id))})
+
+
+@router.post("/admin/tenants/{tenant_id}/integraciones/{proveedor}/desconectar",
+             response_class=HTMLResponse)
+async def desconectar_integracion(request: Request, tenant_id: str, proveedor: str,
+                                  _admin: str = Depends(require_admin)):
+    await integ.desconectar(tenant_id, proveedor)
+    return _TEMPLATES.TemplateResponse(
+        "_integraciones_cards.html",
+        {"request": request, "mensaje": f"Integración {proveedor} desconectada (vuelve a mock).",
+         **(await integ.estado(tenant_id))})
 
 
 # ─────────────────────────────────────────────────────────────
