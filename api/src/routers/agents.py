@@ -479,6 +479,7 @@ async def agente_informe_financiero(
     fecha:   Optional[date] = Query(None, description="Fecha de corte (default: hoy)"),
     formato: str            = Query("html", description="html | email | json"),
     to:      Optional[str]  = Query(None, description="Destinatario(s) coma-separados (solo email; override del config)"),
+    asunto:  Optional[str]  = Query(None, description="Asunto del correo (override; solo email)"),
     _rol:    str            = Depends(get_role),
 ):
     """
@@ -503,7 +504,7 @@ async def agente_informe_financiero(
     if formato == "email":
         destinatarios = [d.strip() for d in to.split(",")] if to else None
         return enviar_dashboard_email(
-            html, cfg, asunto=f"Informe Financiero — {biz} — {corte:%d/%m/%Y}",
+            html, cfg, asunto=asunto or f"Informe Financiero — {biz} — {corte:%d/%m/%Y}",
             destinatarios=destinatarios)
 
     return HTMLResponse(content=html)
