@@ -11,22 +11,23 @@
       <td>{{ dias[s.dia_semana] }} {{ '%02d:%02d'|format(s.hora, s.minuto) }}</td>
       <td>{{ s.destinatarios or '(config del tenant)' }}</td>
       <td>{{ s.last_run or '—' }}</td>
-      <td>{% if s.activo %}<span class="badge on">activa</span>
-          {% else %}<span class="badge off">inactiva</span>{% endif %}</td>
+      <td>
+        <label class="switch" title="{{ 'Activa' if s.activo else 'Inactiva' }}">
+          <input type="checkbox" {% if s.activo %}checked{% endif %}
+                 hx-post="/admin/schedules/{{ s.id }}/toggle"
+                 hx-vals='{"activo": "{{ "false" if s.activo else "true" }}"}'
+                 hx-target="#sched-tabla" hx-swap="outerHTML">
+          <span class="slider"></span>
+        </label>
+      </td>
       <td><div class="acciones">
-        <button class="mini" style="background:#2563eb;"
+        <button class="icon-btn" title="Editar"
                 hx-get="/admin/schedules/{{ s.id }}/edit"
-                hx-target="closest tr" hx-swap="outerHTML">Editar</button>
-        <form hx-post="/admin/schedules/{{ s.id }}/toggle" hx-target="#sched-tabla"
-              hx-swap="outerHTML" style="margin:0;">
-          <input type="hidden" name="activo" value="{{ 'false' if s.activo else 'true' }}">
-          <button class="mini {{ 'danger' if s.activo else 'ok' }}">
-            {{ 'Pausar' if s.activo else 'Activar' }}</button>
-        </form>
-        <form hx-post="/admin/schedules/{{ s.id }}/delete" hx-target="#sched-tabla"
-              hx-swap="outerHTML" hx-confirm="¿Eliminar esta programación?" style="margin:0;">
-          <button class="mini" style="background:#6b7280;">Eliminar</button>
-        </form>
+                hx-target="closest tr" hx-swap="outerHTML">&#9998;</button>
+        <button class="icon-btn del" title="Eliminar"
+                hx-post="/admin/schedules/{{ s.id }}/delete"
+                hx-target="#sched-tabla" hx-swap="outerHTML"
+                hx-confirm="¿Eliminar esta programación?">&#128465;</button>
       </div></td>
     </tr>
     {% else %}

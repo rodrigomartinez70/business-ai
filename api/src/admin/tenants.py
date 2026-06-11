@@ -161,6 +161,51 @@ async def _otorgar_permisos(conn, tenant_id: str) -> None:
 # Activar / desactivar (reversible — no borra datos)
 # ─────────────────────────────────────────────────────────────
 
+async def _cargar_config_efectivo(tenant_id: str) -> dict:
+    """Config vigente del tenant: JSONB de la DB si existe, si no el YAML del config_path."""
+    row = await config.raw_pool.fetchrow(
+        "SELECT config, config_path FROM public.tenants WHERE id = $1", tenant_id)
+    if not row:
+        raise AdminError(f"No existe la empresa '{tenant_id}'.")
+    if row["config"] is not None:
+        cfg = row["config"]
+        return cfg if isinstance(cfg, dict) else json.loads(cfg)
+    try:
+        with open(row["config_path"]) as f:
+            return yaml.safe_load(f) or {}
+    except Exception as e:                            # noqa: BLE001
+        raise AdminError(f"No se pudo leer el config del tenant: {e}")
+
+
+async def modulos_de(tenant_id: str) -> dict:
+    """Estado de los módulos del informe para un tenant (para la UI de toggles)."""
+    from ..finanzas.informe import MODULOS, modulo_activo
+    cfg = await _cargar_config_efectivo(tenant_id)
+    return {
+        "tenant_id": tenant_id,
+        "nombre": cfg.get("business", {}).get("name", tenant_id),
+        "modulos": [{"clave": c, "titulo": t, "activo": modulo_activo(cfg, c)}
+                    for c, _anchor, t in MODULOS],
+    }
+
+
+async def set_modulo(tenant_id: str, clave: str, activo: bool) -> None:
+    """Activa/desactiva un módulo del informe. Escribe el config completo a JSONB
+    (promueve el tenant a config-en-DB, preservando todo) y recarga el registry."""
+    from ..finanzas.informe import MODULOS
+    if clave not in {c for c, _a, _t in MODULOS}:
+        raise AdminError(f"Módulo desconocido: {clave}.")
+    cfg = await _cargar_config_efectivo(tenant_id)
+    cfg.setdefault("report", {})
+    cfg["report"].setdefault("modulos", {})
+    cfg["report"]["modulos"][clave] = activo
+    await config.raw_pool.execute(
+        "UPDATE public.tenants SET config = $2::jsonb WHERE id = $1",
+        tenant_id, json.dumps(cfg))
+    await _recargar_registry()
+    logger.info(f"[admin] {tenant_id} módulo {clave} → {'on' if activo else 'off'}")
+
+
 async def set_activo(tenant_id: str, activo: bool) -> dict:
     row = await config.raw_pool.fetchrow(
         "SELECT id FROM public.tenants WHERE id = $1", tenant_id)

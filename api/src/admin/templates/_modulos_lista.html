@@ -1,0 +1,14 @@
+<div id="modulos-lista">
+  {% for m in modulos %}
+  <div class="modrow">
+    <span style="font-size:14px;color:#374151;">{{ m.titulo }}</span>
+    <label class="switch" title="{{ 'Activo' if m.activo else 'Inactivo' }}">
+      <input type="checkbox" {% if m.activo %}checked{% endif %}
+             hx-post="/admin/tenants/{{ tenant_id }}/modulos/{{ m.clave }}"
+             hx-vals='{"activo": "{{ "false" if m.activo else "true" }}"}'
+             hx-target="#modulos-lista" hx-swap="outerHTML">
+      <span class="slider"></span>
+    </label>
+  </div>
+  {% endfor %}
+</div>

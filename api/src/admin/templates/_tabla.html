@@ -1,6 +1,6 @@
 <table id="tabla" class="dt"{% if oob %} hx-swap-oob="true"{% endif %}>
   <thead>
-    <tr><th>ID</th><th>Nombre</th><th>Vertical</th><th>Keys</th><th>Estado</th><th></th></tr>
+    <tr><th>ID</th><th>Nombre</th><th>Vertical</th><th>Keys</th><th>Estado</th><th>Módulos</th></tr>
   </thead>
   <tbody>
     {% for t in tenants %}
@@ -10,16 +10,17 @@
       <td>{{ t.vertical }}</td>
       <td>{{ t.keys_activas }}</td>
       <td>
-        {% if t.activo %}<span class="badge on">activa</span>
-        {% else %}<span class="badge off">inactiva</span>{% endif %}
+        <label class="switch" title="{{ 'Activa' if t.activo else 'Inactiva' }}">
+          <input type="checkbox" {% if t.activo %}checked{% endif %}
+                 hx-post="/admin/tenants/{{ t.id }}/toggle"
+                 hx-vals='{"activo": "{{ "false" if t.activo else "true" }}"}'
+                 hx-target="#tabla" hx-swap="outerHTML">
+          <span class="slider"></span>
+        </label>
       </td>
       <td>
-        <form hx-post="/admin/tenants/{{ t.id }}/toggle" hx-target="#tabla"
-              hx-swap="outerHTML" style="margin:0;">
-          <input type="hidden" name="activo" value="{{ 'false' if t.activo else 'true' }}">
-          <button class="{{ 'danger' if t.activo else 'ok' }}">
-            {{ 'Desactivar' if t.activo else 'Activar' }}</button>
-        </form>
+        <a class="icon-btn" href="/admin/tenants/{{ t.id }}/modulos"
+           title="Módulos del informe">&#9881;</a>
       </td>
     </tr>
     {% else %}

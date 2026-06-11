@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<title>MBI Admin — Módulos · {{ nombre }}</title>
+{% include "_head.html" %}
+</head>
+<body>
+<div class="wrap">
+  <header><h1>MBI Admin</h1><p>Módulos del informe — {{ nombre }}</p>
+  <nav><a href="/admin">Empresas</a><a href="/admin/schedules">Programación de correos</a></nav>
+  </header>
+
+  <section class="card">
+    <h2>Secciones del Informe Financiero</h2>
+    <p style="color:#6b7280;font-size:13px;margin:0 0 10px;">
+      Apagá las secciones que no querés que aparezcan en el correo de
+      <code>{{ tenant_id }}</code>. El resumen ejecutivo (KPIs) siempre se incluye.</p>
+    {% include "_modulos_lista.html" %}
+    <p style="margin:14px 0 0;"><a href="/admin" class="icon-btn" style="background:#eef2f7;">&larr; Volver a empresas</a></p>
+  </section>
+</div>
+</body>
+</html>

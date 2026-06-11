@@ -74,6 +74,23 @@ async def api_listar(_admin: str = Depends(require_admin)):
         [{**t, "created_at": str(t.get("created_at"))} for t in await svc.listar()])
 
 
+@router.get("/admin/tenants/{tenant_id}/modulos", response_class=HTMLResponse)
+async def panel_modulos(request: Request, tenant_id: str, _admin: str = Depends(require_admin)):
+    return _TEMPLATES.TemplateResponse(
+        "modulos.html", {"request": request, **(await svc.modulos_de(tenant_id))})
+
+
+@router.post("/admin/tenants/{tenant_id}/modulos/{clave}", response_class=HTMLResponse)
+async def toggle_modulo(request: Request, tenant_id: str, clave: str,
+                        activo: str = Form(...), _admin: str = Depends(require_admin)):
+    try:
+        await svc.set_modulo(tenant_id, clave, activo == "true")
+    except svc.AdminError:
+        pass
+    return _TEMPLATES.TemplateResponse(
+        "_modulos_lista.html", {"request": request, **(await svc.modulos_de(tenant_id))})
+
+
 # ─────────────────────────────────────────────────────────────
 # Programación de correos
 # ─────────────────────────────────────────────────────────────

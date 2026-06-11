@@ -38,6 +38,22 @@ def test_construir_config_vertical_invalido():
         svc._construir_config("X", "inexistente", [])
 
 
+# ── Módulos del informe ─────────────────────────────────────────────────
+
+def test_modulo_activo_default_on():
+    from src.finanzas.informe import modulo_activo, MODULOS
+    assert len(MODULOS) == 10
+    assert modulo_activo({}, "marketing") is True                       # ausente = on
+    assert modulo_activo({"report": {"modulos": {"marketing": False}}}, "marketing") is False
+    assert modulo_activo({"report": {"modulos": {"marketing": False}}}, "gastos") is True
+
+
+@pytest.mark.asyncio
+async def test_set_modulo_desconocido():
+    with pytest.raises(svc.AdminError):
+        await svc.set_modulo("x", "modulo_inexistente", False)
+
+
 # ── Panel deshabilitado sin ADMIN_PASSWORD ──────────────────────────────
 
 @pytest.mark.asyncio

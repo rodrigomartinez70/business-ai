@@ -26,6 +26,26 @@ from src.finanzas.panel import (
 
 logger = logging.getLogger(__name__)
 
+# Módulos del informe (clave estable, ancla, título). El config del tenant
+# (report.modulos) puede desactivar cualquiera; clave ausente = activo.
+MODULOS = [
+    ("rentabilidad", "sec-rentabilidad", "Rentabilidad (P&L)"),
+    ("liquidez",     "sec-liquidez",     "Liquidez & Tesorería"),
+    ("cobros_pagos", "sec-cobros-pagos", "Cobros & Pagos"),
+    ("presupuesto",  "sec-presupuesto",  "Presupuesto"),
+    ("comercial",    "sec-comercial",    "Ventas / Comercial"),
+    ("gastos",       "sec-gastos",       "Gastos"),
+    ("tributario",   "sec-tributario",   "Tributario"),
+    ("marketing",    "sec-marketing",    "Marketing"),
+    ("cierre",       "sec-cierre",       "Cierre del período"),
+    ("ipc",          "sec-ipc",          "Contexto económico (IPC)"),
+]
+
+
+def modulo_activo(cfg: dict, clave: str) -> bool:
+    mods = (cfg.get("report") or {}).get("modulos") or {}
+    return mods.get(clave, True)
+
 
 async def calcular_informe(corte: date | None = None) -> dict:
     corte = corte or date.today()
@@ -135,18 +155,21 @@ def renderizar_informe_html(data: dict, cfg: dict, biz: str) -> str:
     presupuesto  = _sec_presupuesto(panel["presupuesto"])
     tributario   = secs.get("tributario", "") + secs.get("estado_dte", "")
 
-    bloques = [
-        ("sec-rentabilidad", "Rentabilidad (P&L)",        secs.get("pnl", "")),
-        ("sec-liquidez",     "Liquidez & Tesorería",      liquidez),
-        ("sec-cobros-pagos", "Cobros & Pagos",            cobros_pagos),
-        ("sec-presupuesto",  "Presupuesto",               presupuesto),
-        ("sec-comercial",    "Ventas / Comercial",        secs.get("comercial", "")),
-        ("sec-gastos",       "Gastos",                    secs.get("gastos", "")),
-        ("sec-tributario",   "Tributario",                tributario),
-        ("sec-marketing",    "Marketing",                 secs.get("marketing", "")),
-        ("sec-cierre",       "Cierre del período",        secs.get("cierre", "")),
-        ("sec-ipc",          "Contexto económico (IPC)",  secs.get("ipc", "")),
-    ]
+    contenido = {
+        "rentabilidad": secs.get("pnl", ""),
+        "liquidez":     liquidez,
+        "cobros_pagos": cobros_pagos,
+        "presupuesto":  presupuesto,
+        "comercial":    secs.get("comercial", ""),
+        "gastos":       secs.get("gastos", ""),
+        "tributario":   tributario,
+        "marketing":    secs.get("marketing", ""),
+        "cierre":       secs.get("cierre", ""),
+        "ipc":          secs.get("ipc", ""),
+    }
+    # Solo los módulos activos en el config del tenant (report.modulos).
+    bloques = [(aid, tit, contenido[clave]) for clave, aid, tit in MODULOS
+               if modulo_activo(cfg, clave)]
     # Solo numeramos/indexamos los bloques con contenido
     presentes = [(aid, tit) for aid, tit, html in bloques if html and html.strip()]
     indice = _indice(presentes)
