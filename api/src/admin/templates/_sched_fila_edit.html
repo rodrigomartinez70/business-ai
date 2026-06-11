@@ -1,0 +1,21 @@
+<tr id="sched-edit-{{ s.id }}" style="background:#f9fafb;">
+  <td>{{ s.tenant_nombre }}<br><code>{{ s.tenant_id }}</code></td>
+  <td>{{ s.reporte }}</td>
+  <td>
+    <select name="dia_semana" style="padding:4px;">
+      {% for n, d in dias.items() %}<option value="{{ n }}"{% if n == s.dia_semana %} selected{% endif %}>{{ d }}</option>{% endfor %}
+    </select>
+    <input type="number" name="hora" min="0" max="23" value="{{ s.hora }}" style="width:52px;padding:4px;">:
+    <input type="number" name="minuto" min="0" max="59" value="{{ s.minuto }}" style="width:52px;padding:4px;">
+  </td>
+  <td><input name="destinatarios" value="{{ s.destinatarios or '' }}"
+             placeholder="(config del tenant)" style="width:100%;padding:4px;"></td>
+  <td>—</td>
+  <td>{% if s.activo %}<span class="badge on">activa</span>{% else %}<span class="badge off">inactiva</span>{% endif %}</td>
+  <td><div class="acciones">
+    <button class="mini ok" hx-post="/admin/schedules/{{ s.id }}" hx-include="closest tr"
+            hx-target="#sched-tabla" hx-swap="outerHTML">Guardar</button>
+    <button class="mini" style="background:#6b7280;" hx-get="/admin/schedules/tabla"
+            hx-target="#sched-tabla" hx-swap="outerHTML">Cancelar</button>
+  </div></td>
+</tr>

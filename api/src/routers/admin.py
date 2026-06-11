@@ -129,6 +129,35 @@ async def borrar_schedule(request: Request, sid: int, _admin: str = Depends(requ
     return await _tabla_sched(request)
 
 
+@router.get("/admin/schedules/tabla", response_class=HTMLResponse)
+async def tabla_schedules(request: Request, _admin: str = Depends(require_admin)):
+    return await _tabla_sched(request)
+
+
+@router.get("/admin/schedules/{sid}/edit", response_class=HTMLResponse)
+async def editar_form(request: Request, sid: int, _admin: str = Depends(require_admin)):
+    return _TEMPLATES.TemplateResponse(
+        "_sched_fila_edit.html",
+        {"request": request, "s": await sched.obtener(sid), "dias": sched.DIAS})
+
+
+@router.post("/admin/schedules/{sid}", response_class=HTMLResponse)
+async def actualizar_schedule(
+    request: Request, sid: int,
+    dia_semana:    int = Form(...),
+    hora:          int = Form(...),
+    minuto:        int = Form(0),
+    destinatarios: str = Form(""),
+    _admin:        str = Depends(require_admin),
+):
+    try:
+        await sched.actualizar(sid=sid, dia_semana=dia_semana, hora=hora,
+                               minuto=minuto, destinatarios=destinatarios)
+    except sched.AdminError:
+        pass
+    return await _tabla_sched(request)
+
+
 @router.get("/api/admin/schedules")
 async def api_schedules(_admin: str = Depends(require_admin)):
     return JSONResponse([{**s, "created_at": str(s.get("created_at")),

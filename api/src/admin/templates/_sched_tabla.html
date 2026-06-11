@@ -14,6 +14,9 @@
       <td>{% if s.activo %}<span class="badge on">activa</span>
           {% else %}<span class="badge off">inactiva</span>{% endif %}</td>
       <td><div class="acciones">
+        <button class="mini" style="background:#2563eb;"
+                hx-get="/admin/schedules/{{ s.id }}/edit"
+                hx-target="closest tr" hx-swap="outerHTML">Editar</button>
         <form hx-post="/admin/schedules/{{ s.id }}/toggle" hx-target="#sched-tabla"
               hx-swap="outerHTML" style="margin:0;">
           <input type="hidden" name="activo" value="{{ 'false' if s.activo else 'true' }}">

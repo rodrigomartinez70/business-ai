@@ -85,6 +85,30 @@ async def crear(*, tenant_id: str, reporte: str, dia_semana: int,
     return {"id": sid}
 
 
+async def obtener(sid: int) -> dict | None:
+    r = await config.raw_pool.fetchrow(
+        """SELECT s.*, t.nombre AS tenant_nombre
+             FROM public.report_schedules s
+             JOIN public.tenants t ON t.id = s.tenant_id
+            WHERE s.id = $1""", sid)
+    return dict(r) if r else None
+
+
+async def actualizar(*, sid: int, dia_semana: int, hora: int, minuto: int,
+                     destinatarios: str | None) -> None:
+    if not (1 <= dia_semana <= 7):
+        raise AdminError("Día de la semana inválido (1=lunes … 7=domingo).")
+    if not (0 <= hora <= 23) or not (0 <= minuto <= 59):
+        raise AdminError("Hora inválida.")
+    dest = ", ".join(_parse_dest(destinatarios))
+    await config.raw_pool.execute(
+        """UPDATE public.report_schedules
+              SET dia_semana = $2, hora = $3, minuto = $4, destinatarios = $5
+            WHERE id = $1""",
+        sid, dia_semana, hora, minuto, dest or None)
+    logger.info(f"[admin] schedule #{sid} actualizado → d{dia_semana} {hora:02d}:{minuto:02d}")
+
+
 async def set_activo(sid: int, activo: bool) -> None:
     await config.raw_pool.execute(
         "UPDATE public.report_schedules SET activo = $2 WHERE id = $1", sid, activo)

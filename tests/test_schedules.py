@@ -35,6 +35,14 @@ async def test_crear_valida_antes_de_db():
 
 
 @pytest.mark.asyncio
+async def test_actualizar_valida():
+    with pytest.raises(sched.AdminError):
+        await sched.actualizar(sid=1, dia_semana=0, hora=9, minuto=0, destinatarios=None)
+    with pytest.raises(sched.AdminError):
+        await sched.actualizar(sid=1, dia_semana=1, hora=24, minuto=0, destinatarios=None)
+
+
+@pytest.mark.asyncio
 async def test_tick_requiere_admin(client):
     resp = await client.post("/api/admin/schedules/tick")
     assert resp.status_code == 503        # panel deshabilitado sin ADMIN_PASSWORD
