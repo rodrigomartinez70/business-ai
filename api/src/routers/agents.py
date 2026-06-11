@@ -22,6 +22,7 @@ from ..finanzas.presupuesto import calcular_presupuesto, renderizar_presupuesto_
 from ..finanzas.tesoreria import calcular_tesoreria, renderizar_tesoreria_markdown
 from ..finanzas.cfo import calcular_cfo, renderizar_cfo_markdown
 from ..finanzas.panel import calcular_panel, renderizar_panel_html
+from ..finanzas.informe import calcular_informe, renderizar_informe_html
 from ..verticals.hotel.agents.rentabilidad_canal import (
     calcular_rentabilidad_canal,
     renderizar_rentabilidad_canal_markdown,
@@ -468,6 +469,41 @@ async def agente_panel_finanzas(
         destinatarios = [d.strip() for d in to.split(",")] if to else None
         return enviar_dashboard_email(
             html, cfg, asunto=f"Panel Financiero — {biz} — {corte:%d/%m/%Y}",
+            destinatarios=destinatarios)
+
+    return HTMLResponse(content=html)
+
+
+@router.get("/informe-financiero")
+async def agente_informe_financiero(
+    fecha:   Optional[date] = Query(None, description="Fecha de corte (default: hoy)"),
+    formato: str            = Query("html", description="html | email | json"),
+    to:      Optional[str]  = Query(None, description="Destinatario(s) coma-separados (solo email; override del config)"),
+    _rol:    str            = Depends(get_role),
+):
+    """
+    Informe Financiero — el correo financiero ÚNICO, top-down. Fusiona el
+    dashboard semanal del vertical con el panel financiero (CFO, Tesorería,
+    CxC/CxP, Presupuesto): resumen ejecutivo con los números grandes arriba,
+    índice navegable, y los temas en orden de impacto hasta el detalle.
+
+    - **html**: página renderizada (previsualización).
+    - **email**: genera y envía el informe por correo. `to` dirige el envío.
+    - **json**: estructura completa (dashboard + panel).
+    """
+    corte = fecha or date.today()
+    data  = await calcular_informe(corte)
+    if formato == "json":
+        return data
+
+    cfg = config.get_config()
+    biz = cfg.get("business", {}).get("name", "Negocio")
+    html = renderizar_informe_html(data, cfg, biz)
+
+    if formato == "email":
+        destinatarios = [d.strip() for d in to.split(",")] if to else None
+        return enviar_dashboard_email(
+            html, cfg, asunto=f"Informe Financiero — {biz} — {corte:%d/%m/%Y}",
             destinatarios=destinatarios)
 
     return HTMLResponse(content=html)

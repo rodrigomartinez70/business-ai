@@ -257,3 +257,19 @@ def renderizar_dashboard_html(data: dict, cfg: dict) -> str:
 {body}
 <div class="foot">Reporte automático · los números no salen a servicios externos salvo los insights IA.</div>
 </div></body></html>"""
+
+
+def secciones_html(data: dict, cfg: dict) -> dict:
+    """Secciones del dashboard renderizadas, con ids canónicos, para que el
+    Informe Financiero horizontal las ensamble en su orden top-down."""
+    return {
+        "pnl":         _sec_pnl(data["pnl"], cfg, data.get("insights_pnl")),
+        "comercial":   _sec_ventas(data["ventas"], cfg, data.get("insights_ventas")),
+        "gastos":      _sec_gastos(data["gastos"], cfg),
+        "tributario":  _sec_tributario(data.get("tributario", {})),
+        "conciliacion": _sec_conciliacion(data.get("conciliacion", {})),
+        "estado_dte":  _sec_estado_dte(data.get("estado_dte"), cfg),
+        "cierre":      _sec_cierre(data["cierre"], cfg),
+        "marketing":   _sec_marketing(data.get("marketing"), cfg, data.get("insights_marketing")),
+        "ipc":         renderizar_ipc_html(data.get("ipc")),
+    }

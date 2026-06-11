@@ -1,8 +1,9 @@
-# [SUSPENDIDO] Dashboard semanal por correo (hotel) — lunes 08:00.
+# [SUSPENDIDO] Informe Financiero por correo (hotel) — lunes 08:00.
+# Correo financiero único top-down (reemplaza al dashboard + panel separados).
 # Reactivar descomentando la línea de abajo.
 # 0 8 * * 1 /cron/dashboard_semanal.sh >> /reportes/cron.log 2>&1
 
-# [SUSPENDIDO] Dashboard semanal del RESTAURANTE por correo — lunes 08:10.
+# [SUSPENDIDO] Informe Financiero del RESTAURANTE por correo — lunes 08:10.
 # 10 8 * * 1 /cron/dashboard_restaurante.sh >> /reportes/cron.log 2>&1
 
 # [SUSPENDIDO] Sync diario de Meta Ads (restaurante_toteat) → Postgres — todos los días 07:00.
