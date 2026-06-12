@@ -160,3 +160,16 @@ table_aliases:
   canales_venta: c
   gastos: g
   categorias_gasto: cg
+
+# ─── Módulo Ventas / Comercial (config-driven) ───────────────
+ventas:
+  titulo: "Ventas"
+  kpis:
+    - {clave: ventas, nombre: "Ventas del período", metrica: ventas, unidad: moneda}
+    - {clave: n_pedidos, nombre: "N° pedidos", metrica: n_pedidos, unidad: numero}
+    - {clave: ticket, nombre: "Ticket promedio", formula: "ventas / n_pedidos", unidad: moneda}
+    - {clave: margen_pct, nombre: "Margen bruto %", formula: "(ventas - costo_ventas) / ventas * 100", unidad: pct}
+    - {clave: propinas, nombre: "Propinas", metrica: propinas, unidad: moneda}
+  tablas:
+    - {titulo: "Por canal", fuente: "tabla:ventas_por_canal"}
+    - {titulo: "Top productos", fuente: "tabla:top_productos"}

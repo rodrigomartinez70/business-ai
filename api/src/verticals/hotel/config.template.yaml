@@ -174,3 +174,14 @@ table_aliases:
   consumos_frigobar: f
   consumos_servicios: cs
   categorias_gasto: cg
+
+# ─── Módulo Ventas / Comercial (config-driven) ───────────────
+ventas:
+  titulo: "Comercial"
+  kpis:
+    - {clave: hospedaje, nombre: "Hospedaje (devengado)", metrica: hospedaje, unidad: moneda}
+    - {clave: noches, nombre: "Noches vendidas", metrica: noches, unidad: numero}
+    - {clave: adr, nombre: "ADR (tarifa media)", formula: "hospedaje / noches", unidad: moneda}
+    - {clave: consumos, nombre: "Consumos", metrica: consumos, unidad: moneda}
+  tablas:
+    - {titulo: "Por canal", fuente: "tabla:hospedaje_por_canal"}
