@@ -2,7 +2,7 @@
 
 from datetime import date
 
-from src.metricas.registry import metrica
+from src.metricas.registry import metrica, tabla
 from src.agents._common import to_float
 
 _V = "hotel"
@@ -33,3 +33,17 @@ async def consumos(conn, ini: date, fin: date) -> float:
 @metrica("ingresos", unidad="moneda", label="Ingresos", vertical=_V)
 async def ingresos(conn, ini: date, fin: date) -> float:
     return await hospedaje(conn, ini, fin) + await consumos(conn, ini, fin)
+
+
+@tabla("hospedaje_por_canal", vertical=_V,
+       columnas=[("canal", "Canal", "texto"), ("ingresos", "Hospedaje", "moneda"),
+                 ("noches", "Noches", "numero")])
+async def hospedaje_por_canal(conn, ini: date, fin: date) -> list[dict]:
+    rows = await conn.fetch(
+        """SELECT COALESCE(cv.nombre,'(sin canal)') AS canal,
+                  COALESCE(SUM(r.total_hospedaje),0) AS ingresos, COALESCE(SUM(r.noches),0) AS noches
+             FROM reservas r LEFT JOIN canales_venta cv ON cv.id = r.canal_id
+            WHERE r.estado='checkout' AND r.fecha_salida BETWEEN $1 AND $2
+            GROUP BY cv.nombre ORDER BY ingresos DESC""", ini, fin)
+    return [{"canal": r["canal"], "ingresos": to_float(r["ingresos"]),
+             "noches": int(r["noches"] or 0)} for r in rows]

@@ -19,6 +19,7 @@ from src.finanzas.conciliacion import calcular_conciliacion
 from .agents.ventas import calcular_ventas
 from .agents.pnl import calcular_pnl
 from src.finanzas.pnl import renderizar_pnl_html
+from src.finanzas import comercial
 from src.marketing.dashboard import calcular_marketing, renderizar_marketing_html
 from src.integraciones.sii_dte import estado_dte_dashboard, renderizar_estado_dte_html
 from .agents.cash_flow import calcular_cash_flow
@@ -54,9 +55,15 @@ async def calcular_dashboard() -> dict:
 
     ipc = await obtener_ipc(12)
 
+    # Módulo Ventas config-driven (si el tenant tiene bloque `ventas:`); si no, el actual.
+    _cfg = config.get_config()
+    comercial_html = (await comercial.render(_cfg, "restaurante", desde, corte)
+                      if comercial.tiene_config(_cfg) else None)
+
     return {
         "fecha_envio": str(hoy),
         "semana":      {"inicio": str(desde), "fin": str(corte)},
+        "comercial_html": comercial_html,
         "ventas":      ventas,
         "insights_ventas": insights_ventas,
         "pnl":         pnl,
@@ -264,7 +271,7 @@ def secciones_html(data: dict, cfg: dict) -> dict:
     Informe Financiero horizontal las ensamble en su orden top-down."""
     return {
         "pnl":         _sec_pnl(data["pnl"], cfg, data.get("insights_pnl")),
-        "comercial":   _sec_ventas(data["ventas"], cfg, data.get("insights_ventas")),
+        "comercial":   data.get("comercial_html") or _sec_ventas(data["ventas"], cfg, data.get("insights_ventas")),
         "gastos":      _sec_gastos(data["gastos"], cfg),
         "tributario":  _sec_tributario(data.get("tributario", {})),
         "conciliacion": _sec_conciliacion(data.get("conciliacion", {})),

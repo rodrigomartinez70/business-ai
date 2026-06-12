@@ -29,6 +29,7 @@ from src.finanzas.conciliacion import calcular_conciliacion
 from ...agents.insights import generar_insights
 from .agents.pnl import calcular_pnl
 from src.finanzas.pnl import renderizar_pnl_html
+from src.finanzas import comercial
 from .agents.rentabilidad_canal import calcular_rentabilidad_canal
 from .agents.revenue_management import calcular_revenue_management
 from src.integraciones.sii_dte import estado_dte_dashboard, renderizar_estado_dte_html
@@ -74,9 +75,14 @@ async def calcular_dashboard() -> dict:
 
     problemas = _detectar_problemas(pnl, cash, gastos, rent, cierre)
 
+    _cfg = config.get_config()
+    comercial_html = (await comercial.render(_cfg, "hotel", desde, corte)
+                      if comercial.tiene_config(_cfg) else None)
+
     return {
         "fecha_envio": str(hoy),
         "semana":      {"inicio": str(desde), "fin": str(corte)},
+        "comercial_html": comercial_html,
         "problemas":   problemas,
         "pnl":         pnl,
         "insights_pnl": insights_pnl,
@@ -445,8 +451,9 @@ def secciones_html(data: dict, cfg: dict) -> dict:
     Informe Financiero horizontal las ensamble en su orden top-down."""
     return {
         "pnl":         _sec_pnl(data["pnl"], data["insights_pnl"], cfg),
-        "comercial":   _sec_rent(data["rent"], data["insights_rent"], cfg)
-                       + _sec_revenue(data["revenue"], cfg),
+        "comercial":   data.get("comercial_html") or (
+                       _sec_rent(data["rent"], data["insights_rent"], cfg)
+                       + _sec_revenue(data["revenue"], cfg)),
         "gastos":      _sec_gastos(data["gastos"], cfg, data.get("gastos_analitico")),
         "tributario":  _sec_tributario(data.get("tributario", {})),
         "conciliacion": _sec_conciliacion(data.get("conciliacion", {})),

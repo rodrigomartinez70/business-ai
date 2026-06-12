@@ -56,3 +56,39 @@ def catalogo(vertical: str | None = None) -> list[Metrica]:
     if vertical:
         out.update({n: m for (v, n), m in _REGISTRO.items() if v == vertical})
     return sorted(out.values(), key=lambda m: m.nombre)
+
+
+# ─────────────────────────────────────────────────────────────
+# Fuentes de TABLA (devuelven filas, p. ej. ventas por canal). Mismo modelo
+# que las métricas; se registran al importar el módulo del vertical.
+# ─────────────────────────────────────────────────────────────
+
+@dataclass
+class FuenteTabla:
+    nombre: str
+    fn: Callable                       # async (conn, ini, fin) -> list[dict]
+    columnas: list = field(default_factory=list)   # [(clave, label, tipo)] tipo: texto|moneda|numero|pct
+    vertical: str | None = None
+
+
+_REG_TABLAS: dict[tuple, FuenteTabla] = {}
+
+
+def tabla(nombre: str, *, columnas: list | None = None, vertical: str | None = None):
+    def deco(fn):
+        _REG_TABLAS[(vertical, nombre)] = FuenteTabla(nombre, fn, columnas or [], vertical)
+        return fn
+    return deco
+
+
+def obtener_tabla(nombre: str, vertical: str | None = None) -> FuenteTabla | None:
+    cargar_vertical(vertical)
+    return _REG_TABLAS.get((vertical, nombre)) or _REG_TABLAS.get((None, nombre))
+
+
+def catalogo_tablas(vertical: str | None = None) -> list[FuenteTabla]:
+    cargar_vertical(vertical)
+    out = {n: t for (v, n), t in _REG_TABLAS.items() if v is None}
+    if vertical:
+        out.update({n: t for (v, n), t in _REG_TABLAS.items() if v == vertical})
+    return sorted(out.values(), key=lambda t: t.nombre)
