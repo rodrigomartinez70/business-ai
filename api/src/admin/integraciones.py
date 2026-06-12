@@ -25,14 +25,14 @@ class AdminError(Exception):
 # (columna, etiqueta, es_secreto)
 PROVEEDORES = {
     "meta": {
-        "label": "Meta Ads",
+        "label": "Meta Ads — Marketing",
         "campos": [
             ("access_token", "Access Token", True),
             ("cuenta_id",    "Ad Account ID (act_…)", False),
         ],
     },
     "toteat": {
-        "label": "Toteat (POS restaurante)",
+        "label": "Toteat — Punto de venta gastronómico",
         "campos": [
             ("access_token",    "API Token (xapitoken)", True),
             ("cuenta_id",       "Restaurant ID (xir)", False),
@@ -42,7 +42,7 @@ PROVEEDORES = {
         ],
     },
     "odoo": {
-        "label": "Odoo (ERP)",
+        "label": "Odoo — Contabilidad",
         "campos": [
             ("access_token",   "API Key", True),
             ("cuenta_id",      "Base de datos (db)", False),
@@ -51,7 +51,7 @@ PROVEEDORES = {
         ],
     },
     "defontana": {
-        "label": "Defontana (ERP)",
+        "label": "Defontana — Contabilidad",
         "campos": [
             ("access_token",  "Password", True),
             ("cuenta_id",     "Company (empresa)", False),
