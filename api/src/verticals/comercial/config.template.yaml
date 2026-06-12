@@ -1,0 +1,93 @@
+# ─────────────────────────────────────────────────────────────
+# Plantilla de configuración — preset COMERCIAL / GENÉRICO
+#
+# NO es un vertical con dashboard propio: es la plantilla base para empresas
+# sin POS (packs base+erp), p. ej. una fábrica o una empresa de servicios. El
+# informe lo arma el dashboard horizontal (src/finanzas/dashboard_generico.py).
+# El P&L sale del ERP vía fuentes `cuentas:` (degrada a 0 si no hay mayor cargado).
+# ─────────────────────────────────────────────────────────────
+
+business:
+  name: "Empresa"                # ← el alta lo reemplaza por el nombre real
+  vertical: "comercial"
+  description: "Consultas sobre las finanzas de la empresa"
+  language: "es"
+  model_id: "asistente-ia"
+
+currency:
+  symbol: "$"
+  thousands_separator: "."
+  decimal_separator: ","
+  decimal_places: 0
+
+# ─── Tributario (F29) ────────────────────────────────────────
+tributario:
+  ppm_tasa: 0.0025
+  iva_postergacion_meses: 0
+
+# ─── Roles y API keys ────────────────────────────────────────
+roles:
+  - name: gerente
+    env_key: API_KEY_GERENTE
+    default_key: ger_cambia_esto
+    excluded_tables: []
+
+  - name: administracion
+    env_key: API_KEY_ADMINISTRACION
+    default_key: adm_cambia_esto
+    excluded_tables: []
+
+# ─── Schema ──────────────────────────────────────────────────
+schema:
+  exclude_tables:
+    - audit_log
+
+# ─── P&L desde el ERP (cuentas:) ─────────────────────────────
+# tipo = income | cogs | expense (según el mapeo del plan de cuentas del ERP).
+pnl:
+  plantilla:
+    - {id: ingresos_netos, etiqueta: "Ingresos",            tipo: detalle,  fuente: "cuentas:tipo=income"}
+    - {id: costo_ventas,   etiqueta: "(-) Costo de ventas",  tipo: detalle,  fuente: "cuentas:tipo=cogs",    signo: -1}
+    - {id: margen_bruto,   etiqueta: "= Margen bruto",       tipo: subtotal, fuente: "ref:ingresos_netos,costo_ventas"}
+    - {id: gastos_op,      etiqueta: "(-) Gastos operativos", tipo: detalle, fuente: "cuentas:tipo=expense",  signo: -1}
+    - {id: resultado_neto, etiqueta: "= Resultado neto",     tipo: total,    fuente: "ref:margen_bruto,gastos_op"}
+
+# ─── Reporte ─────────────────────────────────────────────────
+report:
+  email_to: []
+
+# ─── Clasificación de columnas para el formateador ───────────
+money_columns:
+  - monto
+  - total
+  - ingreso
+  - gasto
+  - costo
+  - precio
+  - pago
+  - saldo
+  - debe
+  - haber
+  - valor
+  - variacion
+
+non_money_columns:
+  - _pct
+  - porcentaje
+  - dias
+  - anio
+  - mes
+  - count
+  - pct_
+
+income_keywords:
+  - ingreso
+  - venta
+  - haber
+  - abono
+
+expense_keywords:
+  - gasto
+  - costo
+  - egreso
+  - debe

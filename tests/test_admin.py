@@ -45,6 +45,15 @@ def test_presets_catalogo():
     assert presets["restaurante"]["packs"] == ["base", "pos_gastronomico", "erp"]
     assert presets["hotel"]["packs"] == ["base", "pos_hotelero", "erp"]
     assert presets["restaurante"]["vertical"] == "restaurante"
+    # Preset comercial/genérico (P4): sin POS.
+    assert presets["comercial"]["packs"] == ["base", "erp"]
+    assert presets["comercial"]["vertical"] == "comercial"
+
+
+def test_construir_config_comercial():
+    cfg = svc._construir_config("Fábrica XYZ", "comercial", ["d@x.cl"])
+    assert cfg["business"]["vertical"] == "comercial"
+    assert cfg["pnl"]["plantilla"][0]["fuente"] == "cuentas:tipo=income"
 
 
 def test_packs_catalogo():

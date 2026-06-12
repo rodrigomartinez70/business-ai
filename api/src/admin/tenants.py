@@ -43,6 +43,12 @@ PRESETS: dict[str, dict] = {
         "packs": ["base", "pos_hotelero", "erp"],
         "desc": "PMS hotelero + gastos/facturas + contabilidad.",
     },
+    "comercial": {
+        "label": "Comercial / Genérico",
+        "vertical": "comercial",
+        "packs": ["base", "erp"],
+        "desc": "Empresa sin POS (fábrica, servicios): gastos/facturas + P&L desde el ERP.",
+    },
 }
 
 
