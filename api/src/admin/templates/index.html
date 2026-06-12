@@ -15,13 +15,19 @@
       <div class="grid">
         <label>ID (slug) <input name="tenant_id" placeholder="restaurante_xyz" required></label>
         <label>Nombre <input name="nombre" placeholder="Restaurante XYZ" required></label>
-        <label>Vertical
-          <select name="vertical">
-            {% for v in verticales %}<option value="{{ v }}">{{ v }}</option>{% endfor %}
+        <label>Preset
+          <select name="preset"
+                  hx-get="/admin/packs-form" hx-target="#packs-box" hx-swap="innerHTML"
+                  hx-trigger="change" hx-include="this">
+            {% for p in presets %}<option value="{{ p.id }}">{{ p.label }} — {{ p.desc }}</option>{% endfor %}
           </select>
         </label>
         <label class="full">Destinatarios del reporte (coma-separados)
           <input name="email_to" placeholder="dueno@empresa.cl, contador@empresa.cl"></label>
+        <div class="full">
+          <span class="lbl">Packs de datos</span>
+          <div id="packs-box">{% include "_packs_form.html" %}</div>
+        </div>
       </div>
       <button type="submit">Crear empresa</button>
     </form>

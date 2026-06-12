@@ -38,6 +38,27 @@ def test_construir_config_vertical_invalido():
         svc._construir_config("X", "inexistente", [])
 
 
+# ── Presets y packs del alta (P2) ───────────────────────────────────────
+
+def test_presets_catalogo():
+    presets = {p["id"]: p for p in svc.presets_catalogo()}
+    assert presets["restaurante"]["packs"] == ["base", "pos_gastronomico", "erp"]
+    assert presets["hotel"]["packs"] == ["base", "pos_hotelero", "erp"]
+    assert presets["restaurante"]["vertical"] == "restaurante"
+
+
+def test_packs_catalogo():
+    ids = {p["id"] for p in svc.packs_catalogo()}
+    assert ids == {"base", "pos_gastronomico", "pos_hotelero", "erp"}
+
+
+@pytest.mark.asyncio
+async def test_crear_preset_invalido():
+    # El preset se valida antes de tocar la DB.
+    with pytest.raises(svc.AdminError):
+        await svc.crear(tenant_id="empresa_x", nombre="X", preset="inexistente")
+
+
 # ── Módulos del informe ─────────────────────────────────────────────────
 
 def test_modulo_activo_default_on():

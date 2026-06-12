@@ -2,7 +2,8 @@
 <div class="banner err">⚠ {{ error }}</div>
 {% elif creada %}
 <div class="banner ok">
-  <strong>Empresa «{{ creada.tenant_id }}» creada</strong> (vertical {{ creada.vertical }}).
+  <strong>Empresa «{{ creada.tenant_id }}» creada</strong>
+  (packs: {{ creada.packs | join(", ") }}).
   Guardá esta API key — <em>se muestra una sola vez</em>:
   <div class="key"><code>{{ creada.api_key }}</code></div>
 </div>

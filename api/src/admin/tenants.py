@@ -25,8 +25,34 @@ from .. import config, packs as packs_mod, tenant_registry
 logger = logging.getLogger(__name__)
 
 _SRC_DIR = Path(__file__).resolve().parents[1]          # .../api/src
-VERTICALES = ("hotel", "restaurante")
 _TENANT_RE = re.compile(r"^[a-z][a-z0-9_]{2,59}$")       # slug seguro para nombre de schema
+
+# Presets: plantillas reutilizables que el alta copia al config del tenant. Cada
+# preset propone un set de packs (ajustable en la UI) y trae su config base.
+# El `vertical` se mantiene como etiqueta de transición (ver doc/design-packs.md).
+PRESETS: dict[str, dict] = {
+    "restaurante": {
+        "label": "Restaurante",
+        "vertical": "restaurante",
+        "packs": ["base", "pos_gastronomico", "erp"],
+        "desc": "POS gastronómico (Toteat) + gastos/facturas + contabilidad.",
+    },
+    "hotel": {
+        "label": "Hotel",
+        "vertical": "hotel",
+        "packs": ["base", "pos_hotelero", "erp"],
+        "desc": "PMS hotelero + gastos/facturas + contabilidad.",
+    },
+}
+
+
+def presets_catalogo() -> list[dict]:
+    return [{"id": pid, **p} for pid, p in PRESETS.items()]
+
+
+def packs_catalogo() -> list[dict]:
+    return [{"id": p.id, "label": p.label, "desc": p.descripcion}
+            for p in packs_mod.catalogo()]
 
 
 class AdminError(Exception):
@@ -77,18 +103,23 @@ async def _recargar_registry() -> None:
 # ─────────────────────────────────────────────────────────────
 
 async def listar() -> list[dict]:
+    import asyncpg
     from ..finanzas.informe import MODULOS
-    rows = await config.raw_pool.fetch(
-        """SELECT t.id, t.nombre, t.vertical, t.activo, t.created_at, t.config,
+    _SQL = """SELECT t.id, t.nombre, t.vertical, t.activo, t.created_at, t.config, {packs}
                   (t.config IS NOT NULL) AS config_en_db,
                   (SELECT COUNT(*) FROM public.api_keys k
                     WHERE k.tenant_id = t.id AND k.activa) AS keys_activas
              FROM public.tenants t
-            ORDER BY t.created_at DESC, t.id""")
+            ORDER BY t.created_at DESC, t.id"""
+    try:
+        rows = await config.raw_pool.fetch(_SQL.format(packs="t.packs,"))
+    except asyncpg.UndefinedColumnError:        # pre-migración 011
+        rows = await config.raw_pool.fetch(_SQL.format(packs=""))
     total = len(MODULOS)
     out = []
     for r in rows:
         d = dict(r)
+        d["packs"] = list(d.get("packs") or [])
         cfg = d.pop("config")
         if cfg is not None and not isinstance(cfg, dict):
             cfg = json.loads(cfg)
@@ -106,19 +137,29 @@ async def listar() -> list[dict]:
 # Alta
 # ─────────────────────────────────────────────────────────────
 
-async def crear(*, tenant_id: str, nombre: str, vertical: str,
+async def crear(*, tenant_id: str, nombre: str, preset: str,
+                packs: list[str] | None = None,
                 email_to: list[str] | None = None) -> dict:
     tenant_id = (tenant_id or "").strip().lower()
     nombre    = (nombre or "").strip()
-    vertical  = (vertical or "").strip().lower()
+    preset    = (preset or "").strip().lower()
     email_to  = email_to or []
 
     if not _TENANT_RE.match(tenant_id):
         raise AdminError("ID inválido: minúsculas, empieza con letra, 3-60 chars [a-z0-9_].")
-    if vertical not in VERTICALES:
-        raise AdminError(f"Vertical inválido. Opciones: {', '.join(VERTICALES)}.")
+    if preset not in PRESETS:
+        raise AdminError(f"Preset inválido. Opciones: {', '.join(PRESETS)}.")
     if not nombre:
         raise AdminError("El nombre de la empresa es obligatorio.")
+
+    p = PRESETS[preset]
+    vertical = p["vertical"]
+    # Packs elegidos en la UI (ajustables); si no vienen, los del preset.
+    # normalizar agrega 'base', deduplica y valida.
+    try:
+        packs = packs_mod.normalizar(packs or p["packs"])
+    except packs_mod.PackError as e:
+        raise AdminError(str(e))
 
     existe = await config.raw_pool.fetchval(
         "SELECT 1 FROM public.tenants WHERE id = $1", tenant_id)
@@ -126,7 +167,6 @@ async def crear(*, tenant_id: str, nombre: str, vertical: str,
         raise AdminError(f"Ya existe una empresa con id '{tenant_id}'.")
 
     # El schema se ensambla desde los packs de datos (única fuente de verdad).
-    packs = packs_mod.packs_de_vertical(vertical)
     schema_ddl = packs_mod.schema_ddl(packs)
     cfg = _construir_config(nombre, vertical, email_to)
     api_key = f"{tenant_id[:10]}_{secrets.token_hex(12)}"

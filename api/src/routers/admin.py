@@ -32,11 +32,28 @@ _TEMPLATES = Jinja2Templates(
     directory=str(Path(__file__).resolve().parents[1] / "admin" / "templates"))
 
 
+def _ctx_packs(preset_id: str) -> dict:
+    """Contexto para el partial de checkboxes de packs (con los del preset marcados)."""
+    presets = svc.presets_catalogo()
+    sel = next((p for p in presets if p["id"] == preset_id), presets[0])
+    return {"packs": svc.packs_catalogo(), "marcados": set(sel["packs"])}
+
+
 @router.get("/admin", response_class=HTMLResponse)
 async def panel(request: Request, _admin: str = Depends(require_admin)):
+    presets = svc.presets_catalogo()
     return _TEMPLATES.TemplateResponse(
         "index.html",
-        {"request": request, "tenants": await svc.listar(), "verticales": svc.VERTICALES})
+        {"request": request, "tenants": await svc.listar(), "presets": presets,
+         **_ctx_packs(presets[0]["id"])})
+
+
+@router.get("/admin/packs-form", response_class=HTMLResponse)
+async def packs_form(request: Request, preset: str = "",
+                     _admin: str = Depends(require_admin)):
+    """Refresca los checkboxes de packs al cambiar el preset (HTMX)."""
+    return _TEMPLATES.TemplateResponse(
+        "_packs_form.html", {"request": request, **_ctx_packs(preset)})
 
 
 @router.post("/admin/tenants", response_class=HTMLResponse)
@@ -44,7 +61,8 @@ async def alta(
     request: Request,
     tenant_id: str = Form(...),
     nombre:    str = Form(...),
-    vertical:  str = Form(...),
+    preset:    str = Form(...),
+    packs:     list[str] = Form(default=[]),
     email_to:  str = Form(""),
     _admin:    str = Depends(require_admin),
 ):
@@ -52,7 +70,7 @@ async def alta(
     error = creada = None
     try:
         creada = await svc.crear(tenant_id=tenant_id, nombre=nombre,
-                                 vertical=vertical, email_to=correos)
+                                 preset=preset, packs=packs, email_to=correos)
     except svc.AdminError as e:
         error = str(e)
     return _TEMPLATES.TemplateResponse(

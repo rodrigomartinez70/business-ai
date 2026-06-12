@@ -1,13 +1,16 @@
 <table id="tabla" class="dt"{% if oob %} hx-swap-oob="true"{% endif %}>
   <thead>
-    <tr><th>ID</th><th>Nombre</th><th>Vertical</th><th>Keys</th><th>Estado</th><th>Módulos</th><th>Integr.</th><th>Config</th><th>Modelo</th><th>Email</th></tr>
+    <tr><th>ID</th><th>Nombre</th><th>Packs</th><th>Keys</th><th>Estado</th><th>Módulos</th><th>Integr.</th><th>Config</th><th>Modelo</th><th>Email</th></tr>
   </thead>
   <tbody>
     {% for t in tenants %}
     <tr class="{{ 'off' if not t.activo else '' }}">
       <td><code>{{ t.id }}</code></td>
       <td>{{ t.nombre }}</td>
-      <td>{{ t.vertical }}</td>
+      <td>
+        {% for p in t.packs %}<span class="pack-chip">{{ p }}</span>{% endfor %}
+        {% if not t.packs %}<span style="color:#9ca3af;">{{ t.vertical }}</span>{% endif %}
+      </td>
       <td>{{ t.keys_activas }}</td>
       <td>
         <label class="switch" title="{{ 'Activa' if t.activo else 'Inactiva' }}">

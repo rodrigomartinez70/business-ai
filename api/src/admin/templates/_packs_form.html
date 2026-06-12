@@ -1,0 +1,14 @@
+{# Checkboxes de packs. 'base' siempre activo (deshabilitado). El resto refleja el preset. #}
+<div class="packs-grid">
+  {% for p in packs %}
+  {% set es_base = (p.id == 'base') %}
+  <label class="pack {{ 'on' if (es_base or p.id in marcados) else '' }}">
+    <input type="checkbox" name="packs" value="{{ p.id }}"
+           {% if es_base or p.id in marcados %}checked{% endif %}
+           {% if es_base %}disabled{% endif %}>
+    <span class="pack-name">{{ p.label }}{% if es_base %} <em>(siempre)</em>{% endif %}</span>
+    <span class="pack-desc">{{ p.desc }}</span>
+  </label>
+  {% endfor %}
+</div>
+{# 'base' va deshabilitado (no se envía); el backend lo agrega igual con normalizar(). #}
