@@ -56,6 +56,12 @@ async def _pnl(cfg: dict, corte: date) -> dict:
     return {**_PNL_VACIO}
 
 
+async def calcular_pnl(hasta: date) -> dict:
+    """P&L genérico (plantilla `cuentas:` o vacío). Lo usa `dispatch.pnl()` para
+    empresas sin POS (mismo contrato que el agente de P&L de un vertical)."""
+    return await _pnl(config.get_config(), hasta)
+
+
 async def calcular_dashboard() -> dict:
     hoy          = date.today()
     desde, corte = _semana_cerrada(hoy)

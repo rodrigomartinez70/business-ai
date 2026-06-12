@@ -38,7 +38,11 @@ def conversacional():
 
 
 def pnl():
-    return importlib.import_module(f"src.verticals.{_vertical()}.agents.pnl")
+    v = _vertical()
+    if v in _POS_VERTICALS:
+        return importlib.import_module(f"src.verticals.{v}.agents.pnl")
+    from ..finanzas import dashboard_generico
+    return dashboard_generico
 
 
 def conciliacion():

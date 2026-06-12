@@ -20,21 +20,24 @@ from src.finanzas.presupuesto import calcular_presupuesto
 logger = logging.getLogger(__name__)
 
 
-async def _safe(coro, etiqueta: str):
+async def _safe(factory, etiqueta: str):
+    # factory es un callable que recién resuelve el módulo + arranca el coro dentro
+    # del try: así un vertical sin ese agente (p. ej. comercial sin tributario) degrada
+    # a None en vez de tumbar el CFO.
     try:
-        return await coro
+        return await factory()
     except Exception as e:                       # noqa: BLE001 — un agente caído no debe tumbar el CFO
         logger.warning(f"[cfo] {etiqueta} no disponible: {e}")
         return None
 
 
 async def calcular_cfo(hasta: date) -> dict:
-    pnl   = await _safe(dispatch.pnl().calcular_pnl(hasta), "pnl")
-    teso  = await _safe(calcular_tesoreria(hasta), "tesoreria")
-    cxc   = await _safe(calcular_cuentas_por_cobrar(hasta), "cxc")
-    cxp   = await _safe(calcular_cuentas_por_pagar(hasta), "cxp")
-    presu = await _safe(calcular_presupuesto(hasta), "presupuesto")
-    trib  = await _safe(dispatch.tributario().calcular_tributario_semanal(hasta), "tributario")
+    pnl   = await _safe(lambda: dispatch.pnl().calcular_pnl(hasta), "pnl")
+    teso  = await _safe(lambda: calcular_tesoreria(hasta), "tesoreria")
+    cxc   = await _safe(lambda: calcular_cuentas_por_cobrar(hasta), "cxc")
+    cxp   = await _safe(lambda: calcular_cuentas_por_pagar(hasta), "cxp")
+    presu = await _safe(lambda: calcular_presupuesto(hasta), "presupuesto")
+    trib  = await _safe(lambda: dispatch.tributario().calcular_tributario_semanal(hasta), "tributario")
 
     puntos: list[dict] = []
 
