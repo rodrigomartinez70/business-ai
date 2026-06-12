@@ -7,9 +7,29 @@ cálculo de variaciones porcentuales y semáforos de estado.
 
 from decimal import Decimal
 
+import asyncpg
+
 
 # Semáforo de estado → icono
 SEMAFORO_ICONO = {"ok": "✅", "alerta": "⚠️", "critico": "🚨"}
+
+
+# ── Acceso resiliente a tablas opcionales ────────────────────
+# Una empresa puede no tener cierto pack de datos (p. ej. sin POS → sin `pagos`).
+# Estas variantes devuelven un default en vez de romper si la tabla no existe.
+
+async def fetchval_opt(conn, sql, *args, default=0):
+    try:
+        return await conn.fetchval(sql, *args)
+    except asyncpg.UndefinedTableError:
+        return default
+
+
+async def fetch_opt(conn, sql, *args):
+    try:
+        return await conn.fetch(sql, *args)
+    except asyncpg.UndefinedTableError:
+        return []
 
 
 # ── Conversión y formato ─────────────────────────────────────

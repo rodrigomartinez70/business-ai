@@ -13,7 +13,7 @@ import logging
 from datetime import date, timedelta
 
 from src import config
-from src.agents._common import to_float
+from src.agents._common import to_float, fetchval_opt
 from src.finanzas.cuentas_por_pagar import calcular_cuentas_por_pagar
 from src.finanzas.cuentas_por_cobrar import calcular_cuentas_por_cobrar
 
@@ -30,7 +30,7 @@ async def _posicion_caja(conn, hasta: date) -> tuple[float, str]:
             "SELECT COUNT(*) FROM movimientos_bancarios WHERE fecha <= $1", hasta):
         return round(to_float(saldo), 2), "cartola"
     desde_30 = hasta - timedelta(days=29)
-    ing = to_float(await conn.fetchval(
+    ing = to_float(await fetchval_opt(conn,
         "SELECT COALESCE(SUM(monto),0) FROM pagos WHERE fecha BETWEEN $1 AND $2", desde_30, hasta) or 0)
     egr = to_float(await conn.fetchval(
         "SELECT COALESCE(SUM(monto),0) FROM gastos WHERE fecha BETWEEN $1 AND $2", desde_30, hasta) or 0)
@@ -41,7 +41,7 @@ async def calcular_tesoreria(hasta: date) -> dict:
     desde_90 = hasta - timedelta(days=89)
     async with config.db_pool.acquire() as conn:
         caja, fuente_caja = await _posicion_caja(conn, hasta)
-        cobros_90 = to_float(await conn.fetchval(
+        cobros_90 = to_float(await fetchval_opt(conn,
             "SELECT COALESCE(SUM(monto),0) FROM pagos WHERE fecha BETWEEN $1 AND $2",
             desde_90, hasta) or 0)
         egresos_90 = to_float(await conn.fetchval(

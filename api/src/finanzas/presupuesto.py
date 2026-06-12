@@ -13,7 +13,7 @@ import logging
 from datetime import date
 
 from src import config
-from src.agents._common import to_float
+from src.agents._common import to_float, fetchval_opt
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ async def calcular_presupuesto(hasta: date) -> dict:
         if not presu:
             return {"corte": str(hasta), "anio": anio, "tiene_presupuesto": False}
 
-        ingresos_real = to_float(await conn.fetchval(
+        ingresos_real = to_float(await fetchval_opt(conn,
             "SELECT COALESCE(SUM(monto), 0) FROM pagos WHERE fecha BETWEEN $1 AND $2",
             ini, hasta) or 0)
         gastos_real = await conn.fetch(

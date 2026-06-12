@@ -46,6 +46,24 @@ def test_secciones_generico_claves():
     assert secs["comercial"] == ""     # sin config de ventas → vacía
 
 
+@pytest.mark.asyncio
+async def test_fetch_opt_tabla_inexistente():
+    """Las consultas a tablas opcionales (pagos sin POS) degradan a default/[]."""
+    import asyncpg
+    from src.agents._common import fetchval_opt, fetch_opt
+
+    class _Conn:
+        async def fetchval(self, *a):
+            raise asyncpg.UndefinedTableError("relation does not exist")
+
+        async def fetch(self, *a):
+            raise asyncpg.UndefinedTableError("relation does not exist")
+
+    c = _Conn()
+    assert await fetchval_opt(c, "SELECT 1 FROM pagos", default=0) == 0
+    assert await fetch_opt(c, "SELECT 1 FROM pagos") == []
+
+
 def test_sec_pnl_con_lineas_se_renderiza():
     pnl = {"lineas": [{"concepto": "Ingresos", "tipo": "detalle", "actual": 100.0,
                        "anterior": 0.0, "var_abs": 100.0, "var_pct": None}],

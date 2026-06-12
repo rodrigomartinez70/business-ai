@@ -16,7 +16,7 @@ from datetime import date, timedelta
 
 from src import config
 from src.tenant import get_tenant_or_none
-from src.agents._common import to_float
+from src.agents._common import to_float, fetchval_opt
 
 logger = logging.getLogger(__name__)
 
@@ -62,9 +62,11 @@ async def calcular_cuentas_por_cobrar(hasta: date) -> dict:
     async with config.db_pool.acquire() as conn:
         if vertical == "restaurante":
             cartera = await _cartera_restaurante(conn, hasta)
-        else:
+        elif vertical == "hotel":
             cartera = await _cartera_hotel(conn, hasta)
-        ventas_90 = to_float(await conn.fetchval(
+        else:
+            cartera = []        # empresa sin POS: la cartera vendría de facturas (futuro)
+        ventas_90 = to_float(await fetchval_opt(conn,
             "SELECT COALESCE(SUM(monto), 0) FROM pagos WHERE fecha BETWEEN $1 AND $2",
             desde_90, hasta) or 0)
 

@@ -15,7 +15,7 @@ import logging
 from datetime import date, timedelta
 
 from src import config
-from src.agents._common import to_float
+from src.agents._common import to_float, fetch_opt
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ async def calcular_conciliacion(hasta: date, dias: int = 30) -> dict:
         movimientos = await conn.fetch(
             "SELECT fecha, monto, glosa FROM movimientos_bancarios "
             "WHERE fecha BETWEEN $1 AND $2 ORDER BY fecha", desde, hasta)
-        pagos = await conn.fetch(
+        pagos = await fetch_opt(conn,
             "SELECT fecha, monto FROM pagos WHERE fecha BETWEEN $1 AND $2", desde, hasta)
         gastos = await conn.fetch(
             "SELECT fecha, monto, proveedor FROM gastos WHERE fecha BETWEEN $1 AND $2", desde, hasta)
