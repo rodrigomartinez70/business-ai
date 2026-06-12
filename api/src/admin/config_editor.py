@@ -30,6 +30,20 @@ _SCAFFOLD_KPIS = """
 #     umbral_max: 70
 """
 
+_SCAFFOLD_PNL = """
+# ── P&L particular (descomentá y ajustá la porción variable) ───
+# La estructura base (80%) viene por vertical; acá la podés override por empresa.
+# fuente: metrica:<nombre> | formula:<expr> | const:<clave> | ref:<ids> | hook:<vertical>
+# pnl:
+#   plantilla:
+#     - {id: ing_brutos,   etiqueta: "Ingresos Brutos",     tipo: detalle,  fuente: "metrica:ingresos"}
+#     - {id: costo_ventas, etiqueta: "(-) Costo de Ventas", tipo: detalle,  fuente: "metrica:costo_ventas", signo: -1}
+#     - {id: margen_bruto, etiqueta: "= Margen Bruto",      tipo: subtotal, fuente: "ref:ing_brutos,costo_ventas"}
+#     - {id: gastos_op,    etiqueta: "(-) Gastos Operativos", tipo: detalle, fuente: "metrica:gastos_total", signo: -1}
+#     - {id: resultado,    etiqueta: "= Resultado",         tipo: total,    fuente: "ref:margen_bruto,gastos_op"}
+#   constantes: {devoluciones: 0, impuesto_pct: 0}
+"""
+
 
 async def vertical_de(tenant_id: str) -> str | None:
     return await config.raw_pool.fetchval(
@@ -59,22 +73,32 @@ def _reordenar(d: dict, orden: list[str]) -> dict:
     return out
 
 
+def _esqueleto() -> dict:
+    """Secciones editables que SIEMPRE deben estar presentes (mismo molde para todos)."""
+    return {"business": {}, "report": {"email_to": [], "modulos": {}}, "kpis": [], "pnl": {}}
+
+
 def normalizar_config(cfg: dict) -> dict:
-    """Reordena el config a un orden canónico (top-level + secciones conocidas)."""
+    """Garantiza el esqueleto + reordena a orden canónico (mismo molde en todos los tenants)."""
     if not isinstance(cfg, dict):
-        return cfg
-    cfg = _reordenar(cfg, _ORDEN_TOP)
+        cfg = {}
+    merged = {**_esqueleto(), **cfg}                 # el config real gana; el resto = placeholder
+    if isinstance(merged.get("report"), dict):       # asegurar sub-claves de report
+        merged["report"] = {"email_to": [], "modulos": {}, **merged["report"]}
+    merged = _reordenar(merged, _ORDEN_TOP)
     for sec, orden in _ORDEN_SEC.items():
-        if isinstance(cfg.get(sec), dict):
-            cfg[sec] = _reordenar(cfg[sec], orden)
-    return cfg
+        if isinstance(merged.get(sec), dict):
+            merged[sec] = _reordenar(merged[sec], orden)
+    return merged
 
 
 async def cargar_yaml(tenant_id: str) -> str:
     cfg = normalizar_config(await _cargar_config_efectivo(tenant_id))
     texto = yaml.dump(cfg, default_flow_style=False, allow_unicode=True, sort_keys=False)
-    if "kpis" not in cfg:                  # scaffold para no arrancar en blanco
+    if not cfg.get("kpis"):                # patrón de inicio para los componentes vacíos
         texto += _SCAFFOLD_KPIS
+    if not cfg.get("pnl"):
+        texto += _SCAFFOLD_PNL
     return texto
 
 
