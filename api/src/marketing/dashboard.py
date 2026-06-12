@@ -239,6 +239,8 @@ def renderizar_marketing_html(data: dict, cfg: dict) -> str:
     for c in con_gasto:
         if c["nombre"] == data.get("mejor_campana"):
             ico = "✅ "
+        elif c["nombre"] == data.get("peor_campana"):
+            ico = "🔴 "
         elif c["estado"] == "PAUSED":
             ico = "⏸ "
         else:
@@ -249,8 +251,16 @@ def renderizar_marketing_html(data: dict, cfg: dict) -> str:
     tabla = (f'<table class="dt"><tr><th>Campaña</th><th>Presup./día</th><th>Gasto</th>'
              f'<th>{res_col}</th><th>{cost_col}</th></tr>{filas}</table>') if filas else ""
 
+    leyenda = ""
+    if filas:
+        items = ["✅ mejor"]
+        if data.get("peor_campana") and data.get("peor_campana") != data.get("mejor_campana"):
+            items.append("🔴 peor")
+        leyenda = (f'<div style="font-size:10px;color:#9ca3af;margin-top:4px;">'
+                   f'{" · ".join(items)} (por {cost_col})</div>')
+
     return _card(f"📣 Marketing — {fuente} (últimos {p['dias']} días)",
-                 _kpis(rows) + tabla)
+                 _kpis(rows) + tabla + leyenda)
 
 
 def renderizar_marketing_pagina(data: dict, cfg: dict, titulo: str = "Marketing") -> str:
