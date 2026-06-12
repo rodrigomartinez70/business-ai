@@ -51,7 +51,6 @@ async def calcular_dashboard() -> dict:
 
     insights_ventas = await generar_insights("ventas", ventas)
     insights_pnl    = await generar_insights("pnl", pnl)
-    insights_marketing = await generar_insights("marketing", marketing) if marketing else None
 
     ipc = await obtener_ipc(12)
 
@@ -69,7 +68,6 @@ async def calcular_dashboard() -> dict:
         "pnl":         pnl,
         "insights_pnl": insights_pnl,
         "marketing":   marketing,
-        "insights_marketing": insights_marketing,
         "cash":        cash,
         "gastos":      gastos,
         "tributario":  tributario,
@@ -118,10 +116,10 @@ def _sec_ventas(v: dict, cfg, insights) -> str:
     return _card("📊 Ventas", _kpis(rows) + tabla + top + _ins(insights))
 
 
-def _sec_marketing(m, cfg, insights) -> str:
+def _sec_marketing(m, cfg) -> str:
     if not m:
         return ""   # tenant sin data de marketing → se omite la sección
-    return renderizar_marketing_html(m, cfg, insights)
+    return renderizar_marketing_html(m, cfg)
 
 
 def _sec_estado_dte(d, cfg) -> str:
@@ -250,7 +248,7 @@ def renderizar_dashboard_html(data: dict, cfg: dict) -> str:
         + _sec_conciliacion(data.get("conciliacion", {}))
         + _sec_estado_dte(data.get("estado_dte"), cfg)
         + _sec_cierre(data["cierre"], cfg)
-        + _sec_marketing(data.get("marketing"), cfg, data.get("insights_marketing"))
+        + _sec_marketing(data.get("marketing"), cfg)
         + renderizar_ipc_html(data.get("ipc"))
     )
     return f"""<!DOCTYPE html>
@@ -277,6 +275,6 @@ def secciones_html(data: dict, cfg: dict) -> dict:
         "conciliacion": _sec_conciliacion(data.get("conciliacion", {})),
         "estado_dte":  _sec_estado_dte(data.get("estado_dte"), cfg),
         "cierre":      _sec_cierre(data["cierre"], cfg),
-        "marketing":   _sec_marketing(data.get("marketing"), cfg, data.get("insights_marketing")),
+        "marketing":   _sec_marketing(data.get("marketing"), cfg),
         "ipc":         renderizar_ipc_html(data.get("ipc")),
     }

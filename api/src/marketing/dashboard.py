@@ -14,7 +14,10 @@ from datetime import date, timedelta
 import asyncpg
 
 from src import config
-from src.render import _CSS, _card, _kpis, _fm, _aviso
+from src.render import _CSS, _card, _kpis, _fm
+
+# Nombre visible de la plataforma (una PyME usa una sola fuente de marketing).
+_FUENTE_LABEL = {"meta": "Meta Ads", "google": "Google Ads"}
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +96,10 @@ async def _calcular_marketing(conn, hasta: date, dias: int) -> dict | None:
              GROUP BY c.id, c.nombre, c.estado, c.objetivo, c.presupuesto_diario
              ORDER BY SUM(i.gasto) DESC NULLS LAST
         """, desde, hasta)
+
+        plats = await conn.fetch(
+            "SELECT DISTINCT cm.plataforma FROM canales_marketing cm "
+            "JOIN campanas c ON c.canal_id = cm.id")
     except (asyncpg.UndefinedTableError, asyncpg.InvalidSchemaNameError):
         return None  # tenant sin esquema de marketing
     except Exception as e:  # defensivo: nunca romper el dashboard por marketing
@@ -124,7 +131,6 @@ async def _calcular_marketing(conn, hasta: date, dias: int) -> dict | None:
     }
 
     campanas: list[dict] = []
-    alertas: list[dict] = []
     for c in camp:
         g = float(c["gasto"]); l = float(c["leads"])
         campanas.append({"nombre": c["nombre"], "estado": c["estado"], "objetivo": c["objetivo"],
@@ -134,12 +140,6 @@ async def _calcular_marketing(conn, hasta: date, dias: int) -> dict | None:
                          "mensajes": int(c["mensajes"]), "interacciones": int(c["interacciones"]),
                          "reproducciones": int(c["reproducciones"]),
                          "visitas_perfil": int(c["visitas_perfil"])})
-        if c["estado"] == "PAUSED" and (c["presupuesto_diario"] or 0) > 0:
-            alertas.append({"nivel": "info", "titulo": f"Campaña pausada con presupuesto: {c['nombre']}",
-                            "desc": "Tiene presupuesto asignado pero está en pausa."})
-        if g > 0 and l == 0:
-            alertas.append({"nivel": "alerta", "titulo": f"Gasto sin leads: {c['nombre']}",
-                            "desc": "La campaña gastó sin generar conversiones en el período."})
 
     activas = [c for c in campanas if c["leads"] > 0]
     mejor = min(activas, key=lambda c: c["cpl"]) if activas else None
@@ -153,19 +153,25 @@ async def _calcular_marketing(conn, hasta: date, dias: int) -> dict | None:
                      "visitas_perfil": int(s["visitas_perfil"])}
                     for s in serie]
 
+    # Plataforma activa (una PyME usa una sola fuente de marketing).
+    plataformas = sorted({p["plataforma"] for p in plats if p["plataforma"]})
+    plataforma = plataformas[0] if len(plataformas) == 1 else None
+
     return {
         "periodo": {"desde": str(desde), "hasta": str(hasta), "dias": dias},
         "resumen": resumen,
         "campanas": campanas,
-        "alertas": alertas,
+        "plataforma": plataforma,
+        "fuente_label": _FUENTE_LABEL.get(plataforma, "Marketing"),
         "serie_diaria": serie_diaria,
         "mejor_campana": mejor["nombre"] if mejor else None,
         "peor_campana":  peor["nombre"] if peor else None,
     }
 
 
-def renderizar_marketing_html(data: dict, cfg: dict, insights=None) -> str:
+def renderizar_marketing_html(data: dict, cfg: dict) -> str:
     r = data["resumen"]; p = data["periodo"]
+    fuente = data.get("fuente_label", "Marketing")
 
     def vtxt(v):
         return f"{v:+.1f}%" if v is not None else "—"
@@ -176,8 +182,10 @@ def renderizar_marketing_html(data: dict, cfg: dict, insights=None) -> str:
         ("CPL — costo por lead",   _fm(r["cpl"], cfg)),
         ("Conversión clic→lead",   f"{r['conversion_clic_lead']:.1f}%"),
         ("CPC / CTR",              f"{_fm(r['cpc'], cfg)} / {r['ctr']:.2f}%"),
-        ("Alcance",                f"{r['alcance']:,.0f}"),
     ]
+    # Alcance: solo lo entrega Meta (Google Ads no expone "reach") → métrica dinámica.
+    if data.get("plataforma") == "meta":
+        rows.append(("Alcance", f"{r['alcance']:,.0f}"))
 
     # Solo los proyectos/campañas que tienen presupuesto asignado.
     con_presupuesto = [c for c in data["campanas"] if (c.get("presupuesto_diario") or 0) > 0]
@@ -196,18 +204,15 @@ def renderizar_marketing_html(data: dict, cfg: dict, insights=None) -> str:
     tabla = (f'<table class="dt"><tr><th>Campaña</th><th>Presup./día</th><th>Gasto</th>'
              f'<th>Leads</th><th>CPL</th></tr>{filas}</table>') if filas else ""
 
-    avisos = "".join(_aviso(a["nivel"], a["titulo"], a["desc"]) for a in data["alertas"])
-
-    return _card(f"📣 Marketing — Meta Ads (últimos {p['dias']} días)",
-                 _kpis(rows) + tabla + avisos)
+    return _card(f"📣 Marketing — {fuente} (últimos {p['dias']} días)",
+                 _kpis(rows) + tabla)
 
 
-def renderizar_marketing_pagina(data: dict, cfg: dict, titulo: str = "Marketing",
-                                insights=None) -> str:
+def renderizar_marketing_pagina(data: dict, cfg: dict, titulo: str = "Marketing") -> str:
     """Página HTML standalone (documento completo) con la sección de marketing.
     Útil para generar un dashboard de marketing independiente por tenant."""
     p = data.get("periodo", {})
-    card = renderizar_marketing_html(data, cfg, insights)
+    card = renderizar_marketing_html(data, cfg)
     return f"""<!DOCTYPE html>
 <html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
