@@ -13,7 +13,7 @@ import pytest
 
 from src import packs as pk
 
-_SRC = Path(__file__).resolve().parents[1] / "src"      # .../api/src
+_SRC = Path(pk.__file__).resolve().parent.parent        # .../api/src (ancla al paquete)
 
 _RE_TABLA = re.compile(r"CREATE TABLE IF NOT EXISTS\s+(\w+)", re.IGNORECASE)
 
