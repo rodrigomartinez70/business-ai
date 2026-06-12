@@ -41,8 +41,37 @@ def catalogo_metricas(vertical: str | None) -> list[dict]:
             for m in catalogo(vertical)]
 
 
+# Orden canónico para mostrar el config igual en todos los tenants (jsonb no
+# preserva el orden de claves, así que normalizamos en la vista del editor).
+_ORDEN_TOP = ["business", "currency", "report", "kpis", "pnl", "roles", "schema",
+              "tributario", "money_columns", "non_money_columns", "table_aliases",
+              "income_keywords", "expense_keywords"]
+_ORDEN_SEC = {
+    "business": ["name", "vertical"],
+    "report": ["email_to", "modulos"],
+}
+
+
+def _reordenar(d: dict, orden: list[str]) -> dict:
+    out = {k: d[k] for k in orden if k in d}
+    for k, v in d.items():            # claves no listadas: al final, en su orden
+        out.setdefault(k, v)
+    return out
+
+
+def normalizar_config(cfg: dict) -> dict:
+    """Reordena el config a un orden canónico (top-level + secciones conocidas)."""
+    if not isinstance(cfg, dict):
+        return cfg
+    cfg = _reordenar(cfg, _ORDEN_TOP)
+    for sec, orden in _ORDEN_SEC.items():
+        if isinstance(cfg.get(sec), dict):
+            cfg[sec] = _reordenar(cfg[sec], orden)
+    return cfg
+
+
 async def cargar_yaml(tenant_id: str) -> str:
-    cfg = await _cargar_config_efectivo(tenant_id)
+    cfg = normalizar_config(await _cargar_config_efectivo(tenant_id))
     texto = yaml.dump(cfg, default_flow_style=False, allow_unicode=True, sort_keys=False)
     if "kpis" not in cfg:                  # scaffold para no arrancar en blanco
         texto += _SCAFFOLD_KPIS
