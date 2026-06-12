@@ -219,10 +219,10 @@ def renderizar_marketing_html(data: dict, cfg: dict) -> str:
         v = _resultado(c)
         return _fm(_div(c["gasto"], v), cfg) if v else "—"
 
-    # Solo los proyectos/campañas que tienen presupuesto asignado.
-    con_presupuesto = [c for c in data["campanas"] if (c.get("presupuesto_diario") or 0) > 0]
+    # Solo campañas con gasto en el período (las que no gastaron se omiten).
+    con_gasto = [c for c in data["campanas"] if (c.get("gasto") or 0) > 0]
     filas = ""
-    for c in con_presupuesto:
+    for c in con_gasto:
         if c["nombre"] == data.get("mejor_campana"):
             ico = "✅ "
         elif c["estado"] == "PAUSED":
