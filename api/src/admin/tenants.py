@@ -35,19 +35,19 @@ PRESETS: dict[str, dict] = {
         "label": "Restaurante",
         "vertical": "restaurante",
         "packs": ["base", "pos_gastronomico", "erp"],
-        "desc": "POS gastronómico (Toteat) + gastos/facturas + contabilidad.",
+        "desc": "Punto de venta gastronómico, con gastos, facturas y contabilidad.",
     },
     "hotel": {
         "label": "Hotel",
         "vertical": "hotel",
         "packs": ["base", "pos_hotelero", "erp"],
-        "desc": "PMS hotelero + gastos/facturas + contabilidad.",
+        "desc": "Reservas y habitaciones, con gastos, facturas y contabilidad.",
     },
     "comercial": {
         "label": "Comercial / Genérico",
         "vertical": "comercial",
         "packs": ["base", "erp"],
-        "desc": "Empresa sin POS (fábrica, servicios): gastos/facturas + P&L desde el ERP.",
+        "desc": "Sin punto de venta (fábrica, servicios): gastos, facturas y P&L contable.",
     },
 }
 

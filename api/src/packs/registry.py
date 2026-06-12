@@ -40,20 +40,20 @@ PACKS: dict[str, Pack] = {
         descripcion="Gastos, facturas, banco, presupuesto y auditoría. Siempre activo.",
     ),
     "pos_gastronomico": Pack(
-        id="pos_gastronomico", label="POS Gastronómico",
-        descripcion="Menú, pedidos y cobros del POS de restaurante (Toteat u otro).",
+        id="pos_gastronomico", label="Punto de venta gastronómico",
+        descripcion="Menú, pedidos y cobros del punto de venta gastronómico.",
         metricas_mod="src.verticals.restaurante.metricas",
         requiere=("base",),
     ),
     "pos_hotelero": Pack(
-        id="pos_hotelero", label="POS Hotelero",
-        descripcion="Habitaciones, reservas, cobros y consumos (PMS de hotel).",
+        id="pos_hotelero", label="Reservas y habitaciones",
+        descripcion="Habitaciones, reservas, cobros y consumos.",
         metricas_mod="src.verticals.hotel.metricas",
         requiere=("base",),
     ),
     "erp": Pack(
-        id="erp", label="ERP / Contabilidad",
-        descripcion="Plan de cuentas y saldos mensuales (Odoo, Defontana). Habilita P&L contable.",
+        id="erp", label="Contabilidad",
+        descripcion="Plan de cuentas y saldos mensuales. Habilita el P&L contable.",
         requiere=("base",),
     ),
 }
