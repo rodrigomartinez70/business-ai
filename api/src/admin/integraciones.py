@@ -128,7 +128,7 @@ async def estado(tenant_id: str) -> dict:
         sec_items = [it for it in items if it["categoria"] == clave]
         if sec_items:
             secciones.append({"clave": clave, "titulo": titulo, "icono": icono,
-                              "items": sec_items})
+                              "sistemas": sec_items})    # 'items' choca con dict.items en Jinja
     return {"tenant_id": tenant_id, "integraciones": items, "secciones": secciones}
 
 

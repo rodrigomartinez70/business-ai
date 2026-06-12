@@ -5,7 +5,7 @@
   <section style="margin:22px 0 0;">
     <h3 class="sec-title">{{ sec.icono }} {{ sec.titulo }}</h3>
     <div class="cal-grid">
-      {% for ig in sec.items %}
+      {% for ig in sec.sistemas %}
       {# checkbox-hack: la caluga abre el modal, sin JS #}
       <input type="checkbox" id="ig-{{ ig.proveedor }}" class="ig-toggle">
       <label for="ig-{{ ig.proveedor }}" class="caluga">
