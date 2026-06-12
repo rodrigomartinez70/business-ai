@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<title>MBI Admin — Base de datos</title>
+{% include "_head.html" %}
+</head>
+<body>
+{% include "_menu.html" %}
+<div class="wrap" style="max-width:1100px;">
+  <header><h1>MBI Admin</h1><p>Base de datos (PostgreSQL · Adminer)</p></header>
+  <p style="color:#6b7280;font-size:13px;margin:0 0 10px;">
+    Acceso completo a la base. Si el panel no carga acá embebido (algún navegador
+    bloquea el iframe), <a href="https://admin.majorbi.com" target="_blank"><strong>abrilo en una pestaña nueva</strong></a>.</p>
+  <iframe src="https://admin.majorbi.com" title="Adminer"
+          style="width:100%;height:78vh;border:1px solid #e5e7eb;border-radius:10px;background:#fff;"></iframe>
+</div>
+</body>
+</html>

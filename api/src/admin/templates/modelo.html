@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<title>MBI Admin — Modelo · {{ tenant_id }}</title>
+{% include "_head.html" %}
+</head>
+<body>
+{% include "_menu.html" %}
+<div class="wrap">
+  <header><h1>MBI Admin</h1><p>Modelo de datos — {{ tenant_id }}</p></header>
+  <p style="color:#6b7280;font-size:13px;margin:0 0 8px;">
+    {{ n_tablas }} tablas en el schema <code>{{ tenant_id }}</code> (esquema vivo, solo lectura).</p>
+
+  {% for t in tablas %}
+  <section class="card">
+    <h2 style="font-size:15px;margin:0 0 8px;">{{ t.nombre }}
+      <span style="color:#9ca3af;font-weight:400;font-size:12px;">· {{ t.columnas|length }} columnas</span></h2>
+    <table class="dt">
+      <tr><th>Columna</th><th>Tipo</th><th></th></tr>
+      {% for c in t.columnas %}
+      <tr>
+        <td>{{ c.nombre }}{% if c.pk %} <span class="badge on" style="font-size:9px;padding:1px 6px;">PK</span>{% endif %}</td>
+        <td style="color:#6b7280;">{{ c.tipo }}</td>
+        <td style="color:#9ca3af;font-size:11px;">{{ '' if c.nullable else 'NOT NULL' }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </section>
+  {% endfor %}
+
+  <p style="margin:14px 0;"><a href="/admin" class="icon-btn" style="background:#eef2f7;">&larr; Volver a empresas</a>
+     · <a href="/admin/db" class="icon-btn" style="background:#eef2f7;">Abrir base de datos</a></p>
+</div>
+</body>
+</html>

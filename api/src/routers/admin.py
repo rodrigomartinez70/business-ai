@@ -18,6 +18,7 @@ from fastapi.templating import Jinja2Templates
 from .. import config, tenant_registry
 from ..admin import config_editor as cfged
 from ..admin import integraciones as integ
+from ..admin import modelo as modelo_svc
 from ..admin import schedules as sched
 from ..admin import tenants as svc
 from ..admin import users as usr
@@ -79,6 +80,18 @@ async def toggle(
 async def api_listar(_admin: str = Depends(require_admin)):
     return JSONResponse(
         [{**t, "created_at": str(t.get("created_at"))} for t in await svc.listar()])
+
+
+@router.get("/admin/db", response_class=HTMLResponse)
+async def panel_db(request: Request, _admin: str = Depends(require_admin)):
+    """Acceso a PostgreSQL embebido (Adminer) + link de respaldo."""
+    return _TEMPLATES.TemplateResponse("db.html", {"request": request})
+
+
+@router.get("/admin/tenants/{tenant_id}/modelo", response_class=HTMLResponse)
+async def panel_modelo(request: Request, tenant_id: str, _admin: str = Depends(require_admin)):
+    return _TEMPLATES.TemplateResponse(
+        "modelo.html", {"request": request, **(await modelo_svc.modelo(tenant_id))})
 
 
 @router.get("/admin/tenants/{tenant_id}/preview", response_class=HTMLResponse)
