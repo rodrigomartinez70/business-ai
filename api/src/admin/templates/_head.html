@@ -87,4 +87,27 @@
   .pack-chip{display:inline-block;background:#eef2f7;color:#374151;border-radius:9px;
         padding:1px 8px;margin:1px 3px 1px 0;font-size:10px;font-weight:600;}
   @media(max-width:640px){.packs-grid{grid-template-columns:1fr;}}
+  /* Integraciones: secciones + calugas + modal (checkbox-hack, sin JS) */
+  .sec-title{font-size:13px;font-weight:700;color:#374151;text-transform:uppercase;
+        letter-spacing:.4px;margin:0 0 4px;}
+  .cal-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin:8px 0 4px;}
+  .ig-toggle{position:absolute;opacity:0;width:0;height:0;}
+  .caluga{display:flex;flex-direction:column;align-items:center;gap:9px;padding:18px 12px;
+        border:1px solid #e5e7eb;border-radius:14px;background:#fff;cursor:pointer;
+        transition:.15s;text-align:center;}
+  .caluga:hover{border-color:#f97316;box-shadow:0 4px 14px rgba(0,0,0,.07);transform:translateY(-2px);}
+  .cal-logo{width:46px;height:46px;border-radius:13px;display:flex;align-items:center;
+        justify-content:center;font-weight:800;font-size:19px;color:#fff;flex:none;}
+  .cal-name{font-size:13px;font-weight:600;color:#1f2937;line-height:1.2;}
+  .cal-state{font-size:10px;font-weight:700;padding:2px 9px;border-radius:10px;text-transform:uppercase;}
+  .cal-state.on{background:#dcfce7;color:#166534;} .cal-state.off{background:#f3f4f6;color:#9ca3af;}
+  .ig-modal{display:none;position:fixed;inset:0;z-index:60;align-items:center;justify-content:center;padding:16px;}
+  .ig-toggle:checked ~ .ig-modal{display:flex;}
+  .ig-modal-bg{position:absolute;inset:0;background:rgba(17,24,39,.45);}
+  .ig-modal-box{position:relative;background:#fff;border-radius:16px;padding:20px 22px;
+        width:min(440px,94vw);max-height:88vh;overflow:auto;box-shadow:0 24px 60px rgba(0,0,0,.28);}
+  .ig-modal-head{display:flex;align-items:center;justify-content:space-between;
+        margin:0 0 14px;border-bottom:1px solid #f0f0f0;padding-bottom:12px;}
+  .ig-modal-x{cursor:pointer;font-size:24px;color:#9ca3af;line-height:1;padding:0 6px;border-radius:8px;text-decoration:none;}
+  .ig-modal-x:hover{background:#f3f4f6;color:#374151;}
 </style>

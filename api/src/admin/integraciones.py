@@ -22,9 +22,18 @@ class AdminError(Exception):
     """Error de validación de integración (→ 400)."""
 
 
-# (columna, etiqueta, es_secreto)
+# Categorías (secciones de la UI), en orden de presentación: (clave, título, ícono)
+CATEGORIAS = [
+    ("marketing", "Marketing", "📣"),
+    ("pos",       "Punto de venta", "🧾"),
+    ("erp",       "Contabilidad / ERP", "📒"),
+]
+
+# (columna, etiqueta, es_secreto). `sistema` = nombre corto para la caluga;
+# `categoria` = sección; `color` = fondo del logo.
 PROVEEDORES = {
     "meta": {
+        "sistema": "Meta Ads", "categoria": "marketing", "color": "#1877F2",
         "label": "Meta Ads — Marketing",
         "campos": [
             ("access_token", "Access Token", True),
@@ -32,6 +41,7 @@ PROVEEDORES = {
         ],
     },
     "google_ads": {
+        "sistema": "Google Ads", "categoria": "marketing", "color": "#4285F4",
         "label": "Google Ads — Marketing",
         "campos": [
             ("access_token",            "Refresh Token (OAuth2)", True),
@@ -42,6 +52,7 @@ PROVEEDORES = {
         ],
     },
     "toteat": {
+        "sistema": "Toteat", "categoria": "pos", "color": "#FF6B35",
         "label": "Toteat — Punto de venta gastronómico",
         "campos": [
             ("access_token",    "API Token (xapitoken)", True),
@@ -52,6 +63,7 @@ PROVEEDORES = {
         ],
     },
     "odoo": {
+        "sistema": "Odoo", "categoria": "erp", "color": "#714B67",
         "label": "Odoo — Contabilidad",
         "campos": [
             ("access_token",   "API Key", True),
@@ -61,6 +73,7 @@ PROVEEDORES = {
         ],
     },
     "defontana": {
+        "sistema": "Defontana", "categoria": "erp", "color": "#0EA5E9",
         "label": "Defontana — Contabilidad",
         "campos": [
             ("access_token",  "Password", True),
@@ -102,10 +115,21 @@ async def estado(tenant_id: str) -> dict:
                 valor = str(cfg.get(col.split(".", 1)[1], "") or "")
             campos.append({"col": col, "label": label, "secreto": secreto,
                            "valor": valor})
-        items.append({"proveedor": prov, "label": meta["label"],
+        sistema = meta.get("sistema", meta["label"])
+        items.append({"proveedor": prov, "label": meta["label"], "sistema": sistema,
+                      "categoria": meta.get("categoria", "otros"),
+                      "color": meta.get("color", "#6b7280"), "sigla": sistema[:1].upper(),
                       "configurado": configurado, "tiene_token": tiene_token,
                       "activo": bool(row and row["activo"]), "campos": campos})
-    return {"tenant_id": tenant_id, "integraciones": items}
+
+    # Agrupar en secciones, en el orden de CATEGORIAS (omite las vacías).
+    secciones = []
+    for clave, titulo, icono in CATEGORIAS:
+        sec_items = [it for it in items if it["categoria"] == clave]
+        if sec_items:
+            secciones.append({"clave": clave, "titulo": titulo, "icono": icono,
+                              "items": sec_items})
+    return {"tenant_id": tenant_id, "integraciones": items, "secciones": secciones}
 
 
 async def guardar(tenant_id: str, proveedor: str, valores: dict) -> None:
