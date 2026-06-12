@@ -11,6 +11,10 @@ import importlib
 from ..tenant import get_tenant_or_none
 from . import registry
 
+# Verticales con dashboard POS propio. El resto (comercial/genérico) usa el
+# dashboard horizontal config-driven (ver doc/design-packs.md, P3).
+_POS_VERTICALS = registry.VERTICALS
+
 
 def _vertical() -> str:
     ctx = get_tenant_or_none()
@@ -18,7 +22,11 @@ def _vertical() -> str:
 
 
 def dashboard():
-    return registry.cargar(_vertical()).dashboard
+    v = _vertical()
+    if v in _POS_VERTICALS:
+        return registry.cargar(v).dashboard
+    from ..finanzas import dashboard_generico
+    return dashboard_generico
 
 
 def tributario():
