@@ -8,18 +8,22 @@ Rutas (todas detrás de HTTP Basic, rol plataforma):
   GET  /api/admin/tenants           → listado JSON
 """
 
+from datetime import date
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
+from .. import config, tenant_registry
 from ..admin import config_editor as cfged
 from ..admin import integraciones as integ
 from ..admin import schedules as sched
 from ..admin import tenants as svc
 from ..admin import users as usr
 from ..admin.auth import require_admin
+from ..finanzas.informe import calcular_informe, renderizar_informe_html
+from ..tenant import set_tenant, reset_tenant
 
 router = APIRouter(tags=["admin"])
 
@@ -75,6 +79,26 @@ async def toggle(
 async def api_listar(_admin: str = Depends(require_admin)):
     return JSONResponse(
         [{**t, "created_at": str(t.get("created_at"))} for t in await svc.listar()])
+
+
+@router.get("/admin/tenants/{tenant_id}/preview", response_class=HTMLResponse)
+async def preview_email(tenant_id: str, _admin: str = Depends(require_admin)):
+    """Previsualiza el email (Informe Financiero) de la empresa, tal cual se enviaría:
+    módulos activos + datos/integraciones de ese tenant. Sin API key, solo admin."""
+    ctx = tenant_registry.get_tenant_by_id(tenant_id)
+    if ctx is None:
+        return HTMLResponse(
+            f'<div style="font-family:sans-serif;padding:40px;color:#991b1b;">'
+            f'La empresa «{tenant_id}» no existe o está inactiva.</div>', status_code=404)
+    token = set_tenant(ctx)
+    try:
+        data = await calcular_informe(date.today())
+        cfg = config.get_config()
+        biz = cfg.get("business", {}).get("name", tenant_id)
+        html = renderizar_informe_html(data, cfg, biz)
+    finally:
+        reset_tenant(token)
+    return HTMLResponse(html)
 
 
 @router.get("/admin/tenants/{tenant_id}/modulos", response_class=HTMLResponse)

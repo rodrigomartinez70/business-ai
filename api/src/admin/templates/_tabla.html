@@ -1,6 +1,6 @@
 <table id="tabla" class="dt"{% if oob %} hx-swap-oob="true"{% endif %}>
   <thead>
-    <tr><th>ID</th><th>Nombre</th><th>Vertical</th><th>Keys</th><th>Estado</th><th>Módulos</th><th>Integr.</th><th>Config</th></tr>
+    <tr><th>ID</th><th>Nombre</th><th>Vertical</th><th>Keys</th><th>Estado</th><th>Módulos</th><th>Integr.</th><th>Config</th><th>Email</th></tr>
   </thead>
   <tbody>
     {% for t in tenants %}
@@ -32,9 +32,13 @@
         <a class="icon-btn" href="/admin/tenants/{{ t.id }}/config"
            title="Config / KPIs particulares">&#128221;</a>
       </td>
+      <td>
+        <a class="icon-btn" href="/admin/tenants/{{ t.id }}/preview" target="_blank"
+           title="Previsualizar el email">&#128065;</a>
+      </td>
     </tr>
     {% else %}
-    <tr><td colspan="8" style="color:#9ca3af;">Sin empresas todavía.</td></tr>
+    <tr><td colspan="9" style="color:#9ca3af;">Sin empresas todavía.</td></tr>
     {% endfor %}
   </tbody>
 </table>
