@@ -14,7 +14,7 @@ from fastapi.responses import HTMLResponse
 
 from .. import config
 from ..auth import get_tenant_ctx, get_tenant_ctx_web
-from ..integraciones import meta_ads, odoo, sii_dte, toteat
+from ..integraciones import google_ads, meta_ads, odoo, sii_dte, toteat
 from ..tenant import TenantContext
 
 logger = logging.getLogger(__name__)
@@ -73,6 +73,31 @@ async def sync_toteat(
         logger.error(f"Sync Toteat falló para '{ctx.tenant_id}': {e}")
         raise HTTPException(status_code=502, detail="No se pudo sincronizar con Toteat.")
     logger.info(f"Sync Toteat OK '{ctx.tenant_id}': {res}")
+    return res
+
+
+@router.post("/google_ads/sync")
+async def sync_google_ads(
+    dias: int = Query(120, ge=1, le=365, description="Ventana a sincronizar hacia atrás"),
+    mock: bool = Query(False, description="Genera datos de muestra (sin llamar a Google Ads)"),
+    ctx: TenantContext = Depends(get_tenant_ctx),
+):
+    """
+    Sincroniza campañas + métricas de Google Ads del tenant hacia el esquema de
+    marketing (plataforma='google'). Se agrega con Meta en el módulo de Marketing.
+    Idempotente (upsert). Pensado para el cron diario.
+    """
+    hasta = date.today()
+    desde = hasta - timedelta(days=dias)
+    try:
+        async with config.db_pool.acquire() as conn:
+            res = await google_ads.sincronizar(conn, ctx.tenant_id, desde, hasta, mock=mock)
+    except (RuntimeError, NotImplementedError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Sync Google Ads falló para '{ctx.tenant_id}': {e}")
+        raise HTTPException(status_code=502, detail="No se pudo sincronizar con Google Ads.")
+    logger.info(f"Sync Google Ads OK '{ctx.tenant_id}': {res}")
     return res
 
 

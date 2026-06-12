@@ -31,6 +31,16 @@ PROVEEDORES = {
             ("cuenta_id",    "Ad Account ID (act_…)", False),
         ],
     },
+    "google_ads": {
+        "label": "Google Ads — Marketing",
+        "campos": [
+            ("access_token",            "Refresh Token (OAuth2)", True),
+            ("cuenta_id",               "Customer ID (000-000-0000)", False),
+            ("config.developer_token",  "Developer Token", False),
+            ("config.client_id",        "OAuth Client ID", False),
+            ("config.login_customer_id", "Login Customer ID (opcional)", False),
+        ],
+    },
     "toteat": {
         "label": "Toteat — Punto de venta gastronómico",
         "campos": [
