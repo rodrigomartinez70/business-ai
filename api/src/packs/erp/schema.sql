@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────
--- Pack: erp  (Odoo / Defontana / contabilidad importada)
+-- Pack: erp  (contabilidad importada del ERP)
 --
 -- Plan de cuentas + saldos mensuales por cuenta. Habilita las fuentes
 -- `cuentas:` (tipo/grupo/codigo/id) y el P&L contable.

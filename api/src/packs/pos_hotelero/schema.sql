@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────
--- Pack: pos_hotelero  (PMS de hotel)
+-- Pack: pos_hotelero  (reservas y habitaciones)
 --
 -- Habitaciones, huéspedes, reservas, cobros y consumos. Habilita las
 -- fuentes de Ventas hoteleras (hospedaje, noches, consumos, ADR/RevPAR,

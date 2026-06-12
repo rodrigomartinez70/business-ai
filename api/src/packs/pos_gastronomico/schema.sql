@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────
--- Pack: pos_gastronomico  (POS de restaurante: Toteat u otro)
+-- Pack: pos_gastronomico  (punto de venta gastronómico)
 --
 -- Menú, pedidos y cobros del punto de venta gastronómico. Habilita las
 -- fuentes de Ventas POS (ventas, n_pedidos, propinas, ventas_por_canal,
@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS categorias_menu (
 
 CREATE TABLE IF NOT EXISTS productos (
     id           SERIAL PRIMARY KEY,
-    id_externo   VARCHAR(64),                 -- id en POS externo (Toteat) para upsert idempotente
+    id_externo   VARCHAR(64),                 -- id en el POS externo para upsert idempotente
     categoria_id INTEGER REFERENCES categorias_menu(id),
     nombre       VARCHAR(120) NOT NULL,
     precio       NUMERIC(10,2) NOT NULL,
@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS productos (
 
 CREATE TABLE IF NOT EXISTS pedidos (
     id            SERIAL PRIMARY KEY,
-    id_externo    VARCHAR(64),                           -- id de orden en POS externo (Toteat)
+    id_externo    VARCHAR(64),                           -- id de orden en el POS externo
     mesa_id       INTEGER REFERENCES mesas(id),          -- NULL si es delivery/takeaway
     canal_id      INTEGER REFERENCES canales_venta(id),
     fecha         DATE NOT NULL,
