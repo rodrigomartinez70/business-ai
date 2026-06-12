@@ -114,7 +114,7 @@ Cuando estos 3 sean config-driven/por-pack, **`vertical` desaparece**.
 | Fase | Entregable | Estado |
 |------|------------|--------|
 | **P1** | `src/packs/` (base, pos_gastronomico, pos_hotelero, erp) + `public.tenants.packs` + `cargar_packs` en el registry. El alta ensambla el schema desde packs. Migrar tenants actuales (set `packs`). Sin cambio visible. | **✅ HECHO** (commit 58bcafb, migración 011 aplicada en prod, backfill 1:1 verificado) |
-| **P2** | **Alta de empresa por packs** (checkboxes) + preset opcional (plantillas reutilizables), en MBI Admin. | pendiente |
+| **P2** | **Alta de empresa por packs** (checkboxes) + preset (plantillas reutilizables), en MBI Admin. | **✅ HECHO** (commit f0896ff, verificado en vivo: select de preset + checkboxes HTMX + chips en la tabla) |
 | **P3** | Soltar lo vertical-code: Cierre config-driven + orquestación del informe por módulos → **eliminar `vertical`**. | pendiente |
 | **P4** | Packs nuevos (pos_retail, servicios…) + crear la **Fábrica** (base + erp) con su Ventas por `cuentas:`. | pendiente |
 
