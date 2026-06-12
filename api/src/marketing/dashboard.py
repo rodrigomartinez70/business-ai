@@ -176,16 +176,48 @@ def renderizar_marketing_html(data: dict, cfg: dict) -> str:
     def vtxt(v):
         return f"{v:+.1f}%" if v is not None else "—"
 
-    rows = [
-        ("Inversión publicitaria", f"{_fm(r['inversion'], cfg)} ({vtxt(r['var_inversion_pct'])})"),
-        ("Leads generados",        f"{r['leads']:,.0f} ({vtxt(r['var_leads_pct'])})"),
-        ("CPL — costo por lead",   _fm(r["cpl"], cfg)),
-        ("Conversión clic→lead",   f"{r['conversion_clic_lead']:.1f}%"),
-        ("CPC / CTR",              f"{_fm(r['cpc'], cfg)} / {r['ctr']:.2f}%"),
-    ]
+    # KPI principal dinámica según el objetivo dominante de las campañas:
+    #   lead-gen → Leads / CPL · mensajería (WhatsApp/DM) → Mensajes / Costo x mensaje
+    #   sin conversiones → tráfico → Clics / CPC. Se elige el de mayor volumen.
+    leads = r["leads"]; mensajes = r["mensajes"]
+    if leads >= mensajes and leads > 0:
+        modo = "leads"
+    elif mensajes > 0:
+        modo = "mensajes"
+    else:
+        modo = "trafico"
+
+    rows = [("Inversión publicitaria",
+             f"{_fm(r['inversion'], cfg)} ({vtxt(r['var_inversion_pct'])})")]
+    if modo == "leads":
+        rows += [
+            ("Leads generados",      f"{leads:,.0f} ({vtxt(r['var_leads_pct'])})"),
+            ("CPL — costo por lead", _fm(r["cpl"], cfg)),
+            ("Conversión clic→lead", f"{r['conversion_clic_lead']:.1f}%"),
+        ]
+        res_col, cost_col = "Leads", "CPL"
+    elif modo == "mensajes":
+        rows += [
+            ("Mensajes iniciados",      f"{mensajes:,.0f} ({vtxt(r['var_mensajes_pct'])})"),
+            ("Costo por mensaje",       _fm(r["costo_mensaje"], cfg)),
+            ("Conversión clic→mensaje", f"{_div(mensajes, r['clics']) * 100:.1f}%"),
+        ]
+        res_col, cost_col = "Mensajes", "Costo x msj"
+    else:
+        rows += [("Clics generados", f"{r['clics']:,.0f} ({vtxt(r['var_clics_pct'])})")]
+        res_col, cost_col = "Clics", "CPC"
+    rows.append(("CPC / CTR", f"{_fm(r['cpc'], cfg)} / {r['ctr']:.2f}%"))
     # Alcance: solo lo entrega Meta (Google Ads no expone "reach") → métrica dinámica.
     if data.get("plataforma") == "meta":
         rows.append(("Alcance", f"{r['alcance']:,.0f}"))
+
+    # Resultado/costo por campaña según el modo (mismo eje que la KPI principal).
+    def _resultado(c):
+        return {"leads": c["leads"], "mensajes": c["mensajes"], "trafico": c["clics"]}[modo]
+
+    def _costo(c):
+        v = _resultado(c)
+        return _fm(_div(c["gasto"], v), cfg) if v else "—"
 
     # Solo los proyectos/campañas que tienen presupuesto asignado.
     con_presupuesto = [c for c in data["campanas"] if (c.get("presupuesto_diario") or 0) > 0]
@@ -197,12 +229,11 @@ def renderizar_marketing_html(data: dict, cfg: dict) -> str:
             ico = "⏸ "
         else:
             ico = ""
-        cpl = _fm(c["cpl"], cfg) if c["leads"] else "—"
         filas += (f'<tr><td>{ico}{c["nombre"]}</td><td>{_fm(c["presupuesto_diario"], cfg)}</td>'
                   f'<td>{_fm(c["gasto"], cfg)}</td>'
-                  f'<td style="text-align:right;">{c["leads"]:,.0f}</td><td>{cpl}</td></tr>')
+                  f'<td style="text-align:right;">{_resultado(c):,.0f}</td><td>{_costo(c)}</td></tr>')
     tabla = (f'<table class="dt"><tr><th>Campaña</th><th>Presup./día</th><th>Gasto</th>'
-             f'<th>Leads</th><th>CPL</th></tr>{filas}</table>') if filas else ""
+             f'<th>{res_col}</th><th>{cost_col}</th></tr>{filas}</table>') if filas else ""
 
     return _card(f"📣 Marketing — {fuente} (últimos {p['dias']} días)",
                  _kpis(rows) + tabla)
