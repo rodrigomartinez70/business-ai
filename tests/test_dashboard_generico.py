@@ -47,7 +47,8 @@ def test_secciones_generico_claves():
 
 
 def test_sec_pnl_con_lineas_se_renderiza():
-    pnl = {"lineas": [{"id": "x", "etiqueta": "X", "actual": 100, "anterior": 0, "var_pct": None}],
+    pnl = {"lineas": [{"concepto": "Ingresos", "tipo": "detalle", "actual": 100.0,
+                       "anterior": 0.0, "var_abs": 100.0, "var_pct": None}],
            "resumen": {}, "periodo": {"actual": {"label": "2026 YTD"}, "anterior": {"label": "2025 YTD"}}}
     html = dg._sec_pnl(pnl, {})
     assert "P&L" in html
