@@ -14,7 +14,7 @@ from fastapi.responses import HTMLResponse
 
 from .. import config
 from ..auth import get_tenant_ctx, get_tenant_ctx_web
-from ..integraciones import meta_ads, sii_dte, toteat
+from ..integraciones import meta_ads, odoo, sii_dte, toteat
 from ..tenant import TenantContext
 
 logger = logging.getLogger(__name__)
@@ -73,6 +73,30 @@ async def sync_toteat(
         logger.error(f"Sync Toteat falló para '{ctx.tenant_id}': {e}")
         raise HTTPException(status_code=502, detail="No se pudo sincronizar con Toteat.")
     logger.info(f"Sync Toteat OK '{ctx.tenant_id}': {res}")
+    return res
+
+
+@router.post("/odoo/sync")
+async def sync_odoo(
+    dias: int = Query(730, ge=1, le=1460, description="Ventana a sincronizar (mayor contable)"),
+    mock: bool = Query(False, description="Genera plan de cuentas + saldos de muestra"),
+    ctx: TenantContext = Depends(get_tenant_ctx),
+):
+    """
+    Sincroniza el mayor contable de Odoo (plan de cuentas + saldos mensuales) hacia
+    plan_cuentas/saldos_cuentas del tenant, para armar el P&L contable. Idempotente.
+    """
+    hasta = date.today()
+    desde = hasta - timedelta(days=dias)
+    try:
+        async with config.db_pool.acquire() as conn:
+            res = await odoo.sincronizar_contabilidad(conn, ctx.tenant_id, desde, hasta, mock=mock)
+    except RuntimeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Sync Odoo falló para '{ctx.tenant_id}': {e}")
+        raise HTTPException(status_code=502, detail="No se pudo sincronizar con Odoo.")
+    logger.info(f"Sync Odoo OK '{ctx.tenant_id}': {res}")
     return res
 
 

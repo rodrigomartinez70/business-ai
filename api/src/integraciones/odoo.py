@@ -236,3 +236,131 @@ async def obtener_datos(creds: Optional[dict], desde: date, hasta: date,
         "productos": [_parse_producto(r) for r in raw["productos"]],
         "clientes": [_parse_cliente(r) for r in raw["clientes"]],
     }
+
+
+# ─────────────────────────────────────────────────────────────
+# Contabilidad: plan de cuentas + saldos mensuales (para el P&L contable)
+# ─────────────────────────────────────────────────────────────
+
+_MAP_TIPO = {                       # account_type Odoo → tipo normalizado nuestro
+    "income": "income", "income_other": "income", "other_income": "income",
+    "expense_direct_cost": "cogs", "cost_of_revenue": "cogs",
+    "expense": "expense", "expense_depreciation": "expense",
+}
+_TIPOS_RESULTADO = ["income", "income_other", "expense", "expense_direct_cost", "expense_depreciation"]
+
+
+def _tipo_cuenta(account_type: str | None) -> str:
+    return _MAP_TIPO.get(account_type or "", "otro")
+
+
+def _grupo_de(codigo: str | None) -> str:
+    return codigo.rsplit(".", 1)[0] if codigo and "." in codigo else (codigo or "")
+
+
+_MOCK_PLAN = [                        # (codigo, nombre, tipo)
+    ("4.1.01", "Ventas",                  "income"),
+    ("5.1.01", "Costo de Ventas",         "cogs"),
+    ("6.1.01", "Gastos de Marketing",     "expense"),
+    ("6.2.01", "Sueldos Administración",  "expense"),
+    ("6.2.02", "Honorarios",              "expense"),
+    ("6.3.01", "Gastos Generales",        "expense"),
+    ("6.9.01", "Impuesto a la Renta",     "tax"),
+]
+
+
+async def obtener_plan_cuentas(creds: Optional[dict], *, mock: bool = False) -> list[dict]:
+    if mock:
+        return [{"id_externo": c, "codigo": c, "nombre": n, "tipo": t, "grupo": _grupo_de(c)}
+                for c, n, t in _MOCK_PLAN]
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        uid = await _authenticate(client, creds)
+        rows = await _search_read(
+            client, creds, uid, "account.account",
+            [["account_type", "in", _TIPOS_RESULTADO]],
+            ["code", "name", "account_type"], limit=5000)
+    return [{"id_externo": str(r["id"]), "codigo": r.get("code"), "nombre": r.get("name"),
+             "tipo": _tipo_cuenta(r.get("account_type")), "grupo": _grupo_de(r.get("code"))}
+            for r in rows]
+
+
+def _mock_saldos(desde: date, hasta: date) -> list[dict]:
+    base = {"4.1.01": 7_500_000, "5.1.01": 2_700_000, "6.1.01": 1_500_000,
+            "6.2.01": 4_000_000, "6.2.02": 1_200_000, "6.3.01": 2_500_000, "6.9.01": 800_000}
+    out, y, m = [], desde.year, desde.month
+    while (y, m) <= (hasta.year, hasta.month):
+        rng = random.Random(y * 100 + m)
+        for c, amt in base.items():
+            v = int(amt * (0.9 + rng.random() * 0.2))
+            if c.startswith("4."):                       # income → haber
+                out.append({"cuenta_externa": c, "anio": y, "mes": m, "debe": 0, "haber": v})
+            else:                                        # costo/gasto/impuesto → debe
+                out.append({"cuenta_externa": c, "anio": y, "mes": m, "debe": v, "haber": 0})
+        m, y = (1, y + 1) if m == 12 else (m + 1, y)
+    return out
+
+
+async def obtener_saldos(creds: Optional[dict], desde: date, hasta: date,
+                         *, mock: bool = False) -> list[dict]:
+    if mock:
+        return _mock_saldos(desde, hasta)
+    import datetime as _dt
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        uid = await _authenticate(client, creds)
+        rows = await _jsonrpc(
+            client, creds["url"], "object", "execute_kw",
+            [creds["db"], uid, creds["api_key"], "account.move.line", "read_group",
+             [[["parent_state", "=", "posted"], ["date", ">=", desde.isoformat()],
+               ["date", "<=", hasta.isoformat()]],
+              ["debit:sum", "credit:sum"], ["account_id", "date:month"]],
+             {"lazy": False}]) or []
+    saldos = []
+    for r in rows:
+        acc = r.get("account_id")
+        if not isinstance(acc, (list, tuple)):
+            continue
+        try:
+            d = _dt.datetime.strptime(r.get("date:month") or "", "%B %Y")
+        except ValueError:
+            continue
+        saldos.append({"cuenta_externa": str(acc[0]), "anio": d.year, "mes": d.month,
+                       "debe": float(r.get("debit", 0) or 0), "haber": float(r.get("credit", 0) or 0)})
+    return saldos
+
+
+async def sincronizar_contabilidad(conn, tenant_id: str, desde: date, hasta: date,
+                                   *, mock: bool = False) -> dict:
+    """Trae plan de cuentas + saldos y los upserta en plan_cuentas / saldos_cuentas del tenant."""
+    creds = None
+    if not mock:
+        creds = await obtener_credenciales(conn, tenant_id)
+        if not creds:
+            raise RuntimeError("Sin credenciales de Odoo. Usá mock=true.")
+    plan = await obtener_plan_cuentas(creds, mock=mock)
+    saldos = await obtener_saldos(creds, desde, hasta, mock=mock)
+
+    idmap = {}
+    for c in plan:
+        cid = await conn.fetchval(
+            """INSERT INTO plan_cuentas (id_externo, codigo, nombre, tipo, grupo)
+               VALUES ($1,$2,$3,$4,$5)
+               ON CONFLICT (id_externo) DO UPDATE
+                   SET codigo=EXCLUDED.codigo, nombre=EXCLUDED.nombre,
+                       tipo=EXCLUDED.tipo, grupo=EXCLUDED.grupo
+               RETURNING id""",
+            c["id_externo"], c["codigo"], c["nombre"], c["tipo"], c["grupo"])
+        idmap[c["id_externo"]] = cid
+    n = 0
+    for s in saldos:
+        cid = idmap.get(s["cuenta_externa"])
+        if not cid:
+            continue
+        await conn.execute(
+            """INSERT INTO saldos_cuentas (cuenta_id, anio, mes, debe, haber)
+               VALUES ($1,$2,$3,$4,$5)
+               ON CONFLICT (cuenta_id, anio, mes) DO UPDATE
+                   SET debe=EXCLUDED.debe, haber=EXCLUDED.haber""",
+            cid, s["anio"], s["mes"], s["debe"], s["haber"])
+        n += 1
+    return {"tenant": tenant_id, "cuentas": len(plan), "saldos": n,
+            "modo": "mock" if mock else "api"}

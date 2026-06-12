@@ -3,7 +3,9 @@ Tests del P&L por plantilla (F2): resolución de líneas (signo/ref/const/formul
 validación de la plantilla.
 """
 
-from src.finanzas.pnl_plantilla import _resolver, _necesarias, validar_pnl
+import pytest
+
+from src.finanzas.pnl_plantilla import _resolver, _necesarias, _filtros_cuentas, validar_pnl
 
 PLANTILLA = [
     {"id": "ing",       "etiqueta": "Ingresos",   "tipo": "detalle",  "fuente": "metrica:ventas"},
@@ -47,3 +49,41 @@ def test_validar_errores():
     assert any("inexistente" in e for e in errs)
     assert any("futura" in e for e in errs)
     assert any("falta 'id'" in e for e in errs)
+
+
+# ── Fuente cuentas: (P&L contable desde ERP) ────────────────────────────
+
+PLANTILLA_CTA = [
+    {"id": "ing",    "etiqueta": "Ingresos",  "tipo": "detalle",  "fuente": "cuentas:tipo=income"},
+    {"id": "costo",  "etiqueta": "(-) Costo", "tipo": "detalle",  "fuente": "cuentas:tipo=cogs", "signo": -1},
+    {"id": "margen", "etiqueta": "= Margen",  "tipo": "subtotal", "fuente": "ref:ing,costo"},
+]
+
+
+def test_filtros_cuentas():
+    assert _filtros_cuentas(PLANTILLA_CTA) == {"tipo=income", "tipo=cogs"}
+
+
+def test_resolver_cuentas():
+    res = _resolver(PLANTILLA_CTA, {}, {}, {"tipo=income": 1000.0, "tipo=cogs": 350.0})
+    assert res["ing"] == 1000.0 and res["costo"] == -350.0 and res["margen"] == 650.0
+
+
+def test_validar_cuentas():
+    assert validar_pnl("hotel", {"plantilla": PLANTILLA_CTA}) == []
+    errs = validar_pnl("hotel", {"plantilla": [{"id": "x", "fuente": "cuentas:zzz=1"}]})
+    assert any("filtro de cuentas inválido" in e for e in errs)
+
+
+# ── Odoo mock: plan de cuentas + saldos ─────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_odoo_plan_y_saldos_mock():
+    from datetime import date
+    from src.integraciones import odoo
+    plan = await odoo.obtener_plan_cuentas(None, mock=True)
+    tipos = {c["tipo"] for c in plan}
+    assert {"income", "cogs", "expense"} <= tipos and all(c["grupo"] for c in plan)
+    saldos = await odoo.obtener_saldos(None, date(2025, 1, 1), date(2026, 6, 30), mock=True)
+    meses = {(s["anio"], s["mes"]) for s in saldos}
+    assert (2025, 1) in meses and (2026, 6) in meses

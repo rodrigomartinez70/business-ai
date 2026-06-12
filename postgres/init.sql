@@ -144,6 +144,25 @@ CREATE TABLE presupuesto (
     UNIQUE (anio, mes, tipo, categoria)
 );
 
+CREATE TABLE plan_cuentas (
+    id        SERIAL PRIMARY KEY,
+    id_externo VARCHAR(64) UNIQUE,
+    codigo    VARCHAR(40),
+    nombre    VARCHAR(200),
+    tipo      VARCHAR(40),
+    grupo     VARCHAR(80)
+);
+
+CREATE TABLE saldos_cuentas (
+    id        SERIAL PRIMARY KEY,
+    cuenta_id INTEGER NOT NULL REFERENCES plan_cuentas(id),
+    anio      SMALLINT NOT NULL,
+    mes       SMALLINT NOT NULL CHECK (mes BETWEEN 1 AND 12),
+    debe      NUMERIC(14,2) DEFAULT 0,
+    haber     NUMERIC(14,2) DEFAULT 0,
+    UNIQUE (cuenta_id, anio, mes)
+);
+
 CREATE TABLE audit_log (
     id              SERIAL PRIMARY KEY,
     rol             VARCHAR(50),
@@ -178,7 +197,7 @@ END
 $$;
 
 GRANT USAGE ON SCHEMA public TO negocio_user;
-GRANT SELECT ON habitaciones, canales_venta, huespedes, reservas, pagos, categorias_gasto, gastos, consumos_frigobar, consumos_servicios, documentos_tributarios, movimientos_bancarios, presupuesto TO negocio_user;
+GRANT SELECT ON habitaciones, canales_venta, huespedes, reservas, pagos, categorias_gasto, gastos, consumos_frigobar, consumos_servicios, documentos_tributarios, movimientos_bancarios, presupuesto, plan_cuentas, saldos_cuentas TO negocio_user;
 GRANT INSERT ON audit_log TO negocio_user;
 GRANT USAGE, SELECT ON SEQUENCE audit_log_id_seq TO negocio_user;
 
@@ -202,7 +221,7 @@ END
 $$;
 
 GRANT USAGE ON SCHEMA public TO negocio_ingest;
-GRANT SELECT, INSERT ON habitaciones, canales_venta, huespedes, reservas, pagos, categorias_gasto, gastos, consumos_frigobar, consumos_servicios, documentos_tributarios, movimientos_bancarios, presupuesto TO negocio_ingest;
+GRANT SELECT, INSERT, UPDATE ON habitaciones, canales_venta, huespedes, reservas, pagos, categorias_gasto, gastos, consumos_frigobar, consumos_servicios, documentos_tributarios, movimientos_bancarios, presupuesto, plan_cuentas, saldos_cuentas TO negocio_ingest;
 GRANT INSERT ON audit_log TO negocio_ingest;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO negocio_ingest;
 

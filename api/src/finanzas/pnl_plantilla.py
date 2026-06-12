@@ -47,8 +47,54 @@ async def _metricas(vertical, nombres, ini, fin) -> dict:
     return valores
 
 
-def _resolver(plantilla, metricas: dict, constantes: dict) -> dict:
+def _filtros_cuentas(plantilla: list) -> set[str]:
+    return {(ln.get("fuente") or "").split(":", 1)[1].strip()
+            for ln in plantilla if (ln.get("fuente") or "").startswith("cuentas:")}
+
+
+async def _suma_filtro(conn, filt: str, anio: int, mes_max: int) -> float:
+    """Suma los saldos (período actual del año) de las cuentas que matchean el filtro,
+    normalizado por tipo (income = haber-debe; resto = debe-haber). Parametrizado."""
+    if "=" not in filt:
+        return 0.0
+    campo, valor = (s.strip() for s in filt.split("=", 1))
+    base = ("SELECT pc.tipo AS tipo, COALESCE(SUM(s.haber),0) AS h, COALESCE(SUM(s.debe),0) AS d "
+            "FROM plan_cuentas pc JOIN saldos_cuentas s ON s.cuenta_id = pc.id "
+            "WHERE s.anio = $1 AND s.mes <= $2 AND ")
+    if campo == "tipo":
+        cond, arg = "pc.tipo = $3", valor
+    elif campo == "grupo":
+        cond, arg = "pc.grupo = $3", valor
+    elif campo == "codigo":
+        cond, arg = "pc.codigo LIKE $3", valor + "%"
+    elif campo == "id":
+        cond, arg = "pc.id_externo = ANY($3::text[])", [x.strip() for x in valor.split(",")]
+    else:
+        return 0.0
+    try:
+        rows = await conn.fetch(base + cond + " GROUP BY pc.tipo", anio, mes_max, arg)
+    except Exception:                                # noqa: BLE001 — tenant sin mayor cargado
+        return 0.0
+    total = 0.0
+    for r in rows:
+        h, d = float(r["h"]), float(r["d"])
+        total += (h - d) if r["tipo"] == "income" else (d - h)
+    return total
+
+
+async def _cuentas(filtros: set[str], anio: int, mes_max: int) -> dict:
+    out: dict[str, float] = {}
+    if not filtros:
+        return out
+    async with config.db_pool.acquire() as conn:
+        for filt in filtros:
+            out[filt] = await _suma_filtro(conn, filt, anio, mes_max)
+    return out
+
+
+def _resolver(plantilla, metricas: dict, constantes: dict, cuentas: dict | None = None) -> dict:
     """Resuelve {id: valor} top-down (ref usa líneas ya calculadas)."""
+    cuentas = cuentas or {}
     res: dict[str, float] = {}
     for ln in plantilla:
         f = (ln.get("fuente") or "")
@@ -59,6 +105,8 @@ def _resolver(plantilla, metricas: dict, constantes: dict) -> dict:
             v = formula.evaluar(f.split(":", 1)[1], metricas)
         elif f.startswith("const:"):
             v = float(constantes.get(f.split(":", 1)[1].strip(), 0) or 0)
+        elif f.startswith("cuentas:"):
+            v = cuentas.get(f.split(":", 1)[1].strip(), 0.0)
         elif f.startswith("ref:"):
             v = sum(res.get(i.strip(), 0.0) for i in f.split(":", 1)[1].split(","))
         else:
@@ -82,8 +130,11 @@ async def calcular_desde_plantilla(vertical, plantilla, constantes, hasta) -> di
     nombres = _necesarias(plantilla)
     val_a = await _metricas(vertical, nombres, ini_act, fin_act)
     val_b = await _metricas(vertical, nombres, ini_ant, fin_ant)
-    res_a = _resolver(plantilla, val_a, constantes or {})
-    res_b = _resolver(plantilla, val_b, constantes or {})
+    filtros = _filtros_cuentas(plantilla)
+    cta_a = await _cuentas(filtros, fin_act.year, fin_act.month)      # YTD contable
+    cta_b = await _cuentas(filtros, fin_ant.year, fin_ant.month)
+    res_a = _resolver(plantilla, val_a, constantes or {}, cta_a)
+    res_b = _resolver(plantilla, val_b, constantes or {}, cta_b)
 
     lineas = []
     for ln in plantilla:
@@ -149,6 +200,12 @@ def validar_pnl(vertical: str | None, pnl_cfg: dict) -> list[str]:
             for r in f.split(":", 1)[1].split(","):
                 if r.strip() not in vistos:
                     errores.append(f"{et}: ref '{r.strip()}' debe ser una línea anterior.")
+        elif f.startswith("cuentas:"):
+            filt = f.split(":", 1)[1].strip()
+            campo = filt.split("=", 1)[0].strip() if "=" in filt else ""
+            if campo not in ("tipo", "grupo", "codigo", "id"):
+                errores.append(f"{et}: filtro de cuentas inválido '{filt}' "
+                               f"(usá tipo=/grupo=/codigo=/id=).")
         elif not f.startswith("const:") and not f.startswith("hook:"):
             errores.append(f"{et}: fuente inválida '{f}'.")
         vistos.add(ln["id"])
