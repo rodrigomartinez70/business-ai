@@ -19,6 +19,20 @@ from src.render import _CSS, _card, _kpis, _fm
 # Nombre visible de la plataforma (una PyME usa una sola fuente de marketing).
 _FUENTE_LABEL = {"meta": "Meta Ads", "google": "Google Ads"}
 
+
+def _modo_conversion(leads: float, mensajes: float) -> str:
+    """Eje de conversión dominante de la cuenta (por volumen): lead-gen, mensajería
+    o tráfico. Lo usan el ranking de campañas y la KPI principal del render."""
+    if leads >= mensajes and leads > 0:
+        return "leads"
+    if mensajes > 0:
+        return "mensajes"
+    return "trafico"
+
+
+# Métrica de "resultado" por modo (para costo por resultado y ranking de campañas).
+_METRICA_MODO = {"leads": "leads", "mensajes": "mensajes", "trafico": "clics"}
+
 logger = logging.getLogger(__name__)
 
 
@@ -141,9 +155,13 @@ async def _calcular_marketing(conn, hasta: date, dias: int) -> dict | None:
                          "reproducciones": int(c["reproducciones"]),
                          "visitas_perfil": int(c["visitas_perfil"])})
 
-    activas = [c for c in campanas if c["leads"] > 0]
-    mejor = min(activas, key=lambda c: c["cpl"]) if activas else None
-    peor  = max(activas, key=lambda c: c["cpl"]) if activas else None
+    # Mejor/peor campaña por su costo de resultado, según el eje dominante de la
+    # cuenta (CPL en lead-gen, costo x mensaje en mensajería, CPC en tráfico).
+    modo = _modo_conversion(resumen["leads"], resumen["mensajes"])
+    _metr = _METRICA_MODO[modo]
+    rankeable = [c for c in campanas if c[_metr] > 0 and c["gasto"] > 0]
+    mejor = min(rankeable, key=lambda c: c["gasto"] / c[_metr]) if rankeable else None
+    peor  = max(rankeable, key=lambda c: c["gasto"] / c[_metr]) if rankeable else None
 
     serie_diaria = [{"fecha": str(s["fecha"]), "gasto": float(s["gasto"]),
                      "impresiones": int(s["impresiones"]), "clics": int(s["clics"]),
@@ -161,6 +179,7 @@ async def _calcular_marketing(conn, hasta: date, dias: int) -> dict | None:
         "periodo": {"desde": str(desde), "hasta": str(hasta), "dias": dias},
         "resumen": resumen,
         "campanas": campanas,
+        "modo": modo,
         "plataforma": plataforma,
         "fuente_label": _FUENTE_LABEL.get(plataforma, "Marketing"),
         "serie_diaria": serie_diaria,
@@ -178,14 +197,9 @@ def renderizar_marketing_html(data: dict, cfg: dict) -> str:
 
     # KPI principal dinámica según el objetivo dominante de las campañas:
     #   lead-gen → Leads / CPL · mensajería (WhatsApp/DM) → Mensajes / Costo x mensaje
-    #   sin conversiones → tráfico → Clics / CPC. Se elige el de mayor volumen.
+    #   sin conversiones → tráfico → Clics / CPC. El modo lo decide la capa de datos.
     leads = r["leads"]; mensajes = r["mensajes"]
-    if leads >= mensajes and leads > 0:
-        modo = "leads"
-    elif mensajes > 0:
-        modo = "mensajes"
-    else:
-        modo = "trafico"
+    modo = data.get("modo") or _modo_conversion(leads, mensajes)
 
     rows = [("Inversión publicitaria",
              f"{_fm(r['inversion'], cfg)} ({vtxt(r['var_inversion_pct'])})")]
