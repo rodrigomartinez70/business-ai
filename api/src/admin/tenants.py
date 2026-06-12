@@ -20,7 +20,7 @@ from pathlib import Path
 
 import yaml
 
-from .. import config, tenant_registry
+from .. import config, packs as packs_mod, tenant_registry
 
 logger = logging.getLogger(__name__)
 
@@ -42,10 +42,6 @@ _COLOR_MODULOS = {
 
 def hash_key(api_key: str) -> str:
     return hashlib.sha256(api_key.encode()).hexdigest()
-
-
-def _schema_sql(vertical: str) -> Path:
-    return _SRC_DIR / "verticals" / vertical / "schema.sql"
 
 
 def _config_template(vertical: str) -> dict:
@@ -123,16 +119,16 @@ async def crear(*, tenant_id: str, nombre: str, vertical: str,
         raise AdminError(f"Vertical inválido. Opciones: {', '.join(VERTICALES)}.")
     if not nombre:
         raise AdminError("El nombre de la empresa es obligatorio.")
-    if not _schema_sql(vertical).exists():
-        raise AdminError(f"No existe schema.sql del vertical '{vertical}'.")
 
     existe = await config.raw_pool.fetchval(
         "SELECT 1 FROM public.tenants WHERE id = $1", tenant_id)
     if existe:
         raise AdminError(f"Ya existe una empresa con id '{tenant_id}'.")
 
+    # El schema se ensambla desde los packs de datos (única fuente de verdad).
+    packs = packs_mod.packs_de_vertical(vertical)
+    schema_ddl = packs_mod.schema_ddl(packs)
     cfg = _construir_config(nombre, vertical, email_to)
-    schema_ddl = _schema_sql(vertical).read_text()
     api_key = f"{tenant_id[:10]}_{secrets.token_hex(12)}"
 
     async with config.raw_pool.acquire() as conn:
@@ -145,19 +141,19 @@ async def crear(*, tenant_id: str, nombre: str, vertical: str,
         await _otorgar_permisos(conn, tenant_id)
 
         await conn.execute(
-            """INSERT INTO public.tenants (id, nombre, vertical, config_path, config, activo)
-               VALUES ($1, $2, $3, $4, $5::jsonb, TRUE)""",
+            """INSERT INTO public.tenants (id, nombre, vertical, config_path, config, packs, activo)
+               VALUES ($1, $2, $3, $4, $5::jsonb, $6, TRUE)""",
             tenant_id, nombre, vertical, f"/app/tenants/{tenant_id}/config.yaml",
-            json.dumps(cfg))
+            json.dumps(cfg), packs)
         await conn.execute(
             """INSERT INTO public.api_keys (key_hash, tenant_id, rol, descripcion, activa)
                VALUES ($1, $2, 'gerente', $3, TRUE)""",
             hash_key(api_key), tenant_id, f"gerente — {tenant_id}")
 
     await _recargar_registry()
-    logger.info(f"[admin] tenant creado: {tenant_id} ({vertical})")
+    logger.info(f"[admin] tenant creado: {tenant_id} ({vertical}, packs={packs})")
     # La API key se devuelve UNA sola vez (solo se guarda su hash).
-    return {"tenant_id": tenant_id, "vertical": vertical, "api_key": api_key}
+    return {"tenant_id": tenant_id, "vertical": vertical, "packs": packs, "api_key": api_key}
 
 
 async def _otorgar_permisos(conn, tenant_id: str) -> None:

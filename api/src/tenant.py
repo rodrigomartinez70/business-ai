@@ -30,6 +30,7 @@ class TenantContext:
     vertical:     str    # 'hotel', 'restaurante'
     config:       dict   # contenido del config.yaml del tenant
     schema_cache: dict   # {rol: schema_text} — schema PostgreSQL para el LLM
+    packs:        list = field(default_factory=list)   # packs de datos activos (base, pos_*, erp)
 
     # ── Helpers de acceso al config ───────────────────────────
 

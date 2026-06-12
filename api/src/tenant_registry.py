@@ -73,14 +73,22 @@ async def load_all_tenants(
     try:
         try:
             rows = await pool.fetch(
-                "SELECT id, nombre, vertical, config_path, config "
+                "SELECT id, nombre, vertical, config_path, config, packs "
                 "FROM public.tenants WHERE activo = TRUE"
             )
         except asyncpg.UndefinedColumnError:
-            # Pre-migración 007: todavía no existe la columna config (JSONB).
-            rows = await pool.fetch(
-                "SELECT id, nombre, vertical, config_path FROM public.tenants WHERE activo = TRUE"
-            )
+            # Fallback escalonado: si falta 'packs' (pre-011) preservamos 'config';
+            # si también falta 'config' (pre-007) caemos a lo mínimo. El orden importa
+            # para no perder el config JSONB si el código sale antes que la migración 011.
+            try:
+                rows = await pool.fetch(
+                    "SELECT id, nombre, vertical, config_path, config "
+                    "FROM public.tenants WHERE activo = TRUE"
+                )
+            except asyncpg.UndefinedColumnError:
+                rows = await pool.fetch(
+                    "SELECT id, nombre, vertical, config_path FROM public.tenants WHERE activo = TRUE"
+                )
     except asyncpg.UndefinedTableError:
         logger.warning(
             "public.tenants no existe — modo legado. "
@@ -123,12 +131,16 @@ async def load_all_tenants(
             logger.error(f"No se pudo construir schema cache para '{tenant_id}': {e}")
             continue
 
+        from .packs import packs_de_vertical
+        packs = list(row.get("packs") or []) or packs_de_vertical(vertical)
+
         base_ctx = TenantContext(
             tenant_id    = tenant_id,
             rol          = "",          # se completa al indexar cada key
             vertical     = vertical,
             config       = cfg,
             schema_cache = schema_cache,
+            packs        = packs,
         )
         _TENANT_INDEX[tenant_id] = base_ctx
 
@@ -179,12 +191,14 @@ async def _load_legacy_tenant(
             f"Schema '{tenant_id}' no existe — usando 'public' para el schema cache."
         )
 
+    from .packs import packs_de_vertical
     base_ctx = TenantContext(
         tenant_id    = tenant_id,
         rol          = "",
         vertical     = vertical,
         config       = cfg,
         schema_cache = schema_cache,
+        packs        = packs_de_vertical(vertical),
     )
     _TENANT_INDEX[tenant_id] = base_ctx
 
