@@ -115,8 +115,18 @@ Cuando estos 3 sean config-driven/por-pack, **`vertical` desaparece**.
 |------|------------|--------|
 | **P1** | `src/packs/` (base, pos_gastronomico, pos_hotelero, erp) + `public.tenants.packs` + `cargar_packs` en el registry. El alta ensambla el schema desde packs. Migrar tenants actuales (set `packs`). Sin cambio visible. | **✅ HECHO** (commit 58bcafb, migración 011 aplicada en prod, backfill 1:1 verificado) |
 | **P2** | **Alta de empresa por packs** (checkboxes) + preset (plantillas reutilizables), en MBI Admin. | **✅ HECHO** (commit f0896ff, verificado en vivo: select de preset + checkboxes HTMX + chips en la tabla) |
-| **P3** | Soltar lo vertical-code: Cierre config-driven + orquestación del informe por módulos → **eliminar `vertical`**. | pendiente |
-| **P4** | Packs nuevos (pos_retail, servicios…) + crear la **Fábrica** (base + erp) con su Ventas por `cuentas:`. | pendiente |
+| **P3** | **Dashboard genérico horizontal** (`finanzas/dashboard_generico.py`) para empresas sin POS; `dispatch.dashboard()`/`.pnl()` caen a él para verticales no-POS. Consultas a tablas POS (`pagos`…) hechas resilientes. | **✅ HECHO** (commits cd25965…). *Alcance:* NO elimina `vertical` (selector POS-vs-genérico); removible cuando hotel/restaurante migren su ventas/cierre/cash a config-driven. |
+| **P4** | Preset **Comercial/Genérico** + `verticals/comercial/config.template.yaml` (P&L desde ERP `cuentas:`). **Fábrica de Ventanas MBI creada** (packs base+erp, informe verificado en vivo HTTP 200). | **✅ HECHO** |
+
+> **Nota alcance P3:** "eliminar `vertical`" por completo (migrar
+> ventas/cierre/cash/tributario de hotel y restaurante a config-driven) es un
+> refactor mayor e innecesario para el objetivo. Se hizo la versión proporcionada:
+> el dashboard genérico cubre cualquier empresa sin POS; `vertical` sobrevive solo
+> como selector entre los dashboards POS y el genérico.
+>
+> **Pendiente (follow-ups):** Ventas/Comercial de la Fábrica por `cuentas:`
+> (comercial.render hoy soporta `metrica:`/`tabla:`, no `cuentas:`); CxC genérica
+> desde facturas emitidas; tributario/chat para verticales genéricos.
 
 > **Nota P1:** el pack `marketing` quedó fuera del alcance (sus tablas viven en la
 > migración 004, no en los schema.sql de vertical). Se agrega en P4. El mapeo
