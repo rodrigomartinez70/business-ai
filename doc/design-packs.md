@@ -111,12 +111,17 @@ Cuando estos 3 sean config-driven/por-pack, **`vertical` desaparece**.
 
 ## 6. Fases
 
-| Fase | Entregable |
-|------|------------|
-| **P1** | `src/packs/` (base, pos_gastronomico, pos_hotelero, erp, marketing) + `public.tenants.packs` + `cargar_packs` en el registry. Migrar tenants actuales (set `packs`). Sin cambio visible. |
-| **P2** | **Alta de empresa por packs** (checkboxes) + preset opcional, en MBI Admin. El alta aplica la unión de schemas. |
-| **P3** | Soltar lo vertical-code: Cierre config-driven + orquestación del informe por módulos → **eliminar `vertical`**. |
-| **P4** | Packs nuevos (pos_retail, servicios…) + crear la **Fábrica** (base + erp) con su Ventas por `cuentas:`. |
+| Fase | Entregable | Estado |
+|------|------------|--------|
+| **P1** | `src/packs/` (base, pos_gastronomico, pos_hotelero, erp) + `public.tenants.packs` + `cargar_packs` en el registry. El alta ensambla el schema desde packs. Migrar tenants actuales (set `packs`). Sin cambio visible. | **✅ HECHO** (commit 58bcafb, migración 011 aplicada en prod, backfill 1:1 verificado) |
+| **P2** | **Alta de empresa por packs** (checkboxes) + preset opcional (plantillas reutilizables), en MBI Admin. | pendiente |
+| **P3** | Soltar lo vertical-code: Cierre config-driven + orquestación del informe por módulos → **eliminar `vertical`**. | pendiente |
+| **P4** | Packs nuevos (pos_retail, servicios…) + crear la **Fábrica** (base + erp) con su Ventas por `cuentas:`. | pendiente |
+
+> **Nota P1:** el pack `marketing` quedó fuera del alcance (sus tablas viven en la
+> migración 004, no en los schema.sql de vertical). Se agrega en P4. El mapeo
+> `cargar_packs` hoy delega en los módulos de métricas por-vertical existentes
+> (`src.verticals.<v>.metricas`); las fuentes se mudan físicamente al pack en P3.
 
 ---
 
