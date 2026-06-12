@@ -103,9 +103,13 @@ def _build_schema_text(
         lines.append("")
 
     if kpis:
-        lines.append("KPIs importantes:")
-        for kpi in kpis:
-            lines.append(f"- {kpi['name']}: {kpi['description']}")
+        # Solo los KPIs legados (name/description) son contexto para el text-to-SQL.
+        # Los KPIs por fórmula (clave/nombre/formula) no aplican acá.
+        legados = [k for k in kpis if k.get("name")]
+        if legados:
+            lines.append("KPIs importantes:")
+            for kpi in legados:
+                lines.append(f"- {kpi['name']}: {kpi.get('description', '')}")
 
     return "\n".join(lines)
 

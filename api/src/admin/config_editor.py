@@ -71,6 +71,13 @@ async def guardar(tenant_id: str, texto: str) -> list[str]:
     cfg, errores = validar(texto, row["vertical"])
     if errores:
         return errores
+    # Prueba de carga ANTES de persistir: un config que rompe el schema cache
+    # no debe guardarse nunca (rompería el tenant en la recarga del registry).
+    from ..schema import build_schema_cache_for_tenant
+    try:
+        await build_schema_cache_for_tenant(config.raw_pool, cfg, tenant_id)
+    except Exception as e:                            # noqa: BLE001
+        return [f"El config no es válido para el tenant: {e}"]
     await config.raw_pool.execute(
         "UPDATE public.tenants SET config = $2::jsonb WHERE id = $1",
         tenant_id, json.dumps(cfg))
