@@ -111,7 +111,8 @@ def validar(texto: str, vertical: str | None) -> tuple[dict | None, list[str]]:
         cfg = {}
     if not isinstance(cfg, dict):
         return None, ["El config debe ser un objeto (clave: valor)."]
-    errores = mk.validar(vertical, cfg.get("kpis", []))
+    from ..finanzas.pnl_plantilla import validar_pnl
+    errores = mk.validar(vertical, cfg.get("kpis", [])) + validar_pnl(vertical, cfg.get("pnl") or {})
     return (None, errores) if errores else (cfg, [])
 
 
