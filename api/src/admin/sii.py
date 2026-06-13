@@ -10,8 +10,10 @@ de módulos. La carga de RCV usa `finanzas.rcv.normalizar_rcv` y hace upsert en
 import base64
 import json
 import logging
+from datetime import date
 
 from .. import config
+from ..finanzas.conciliacion import conciliar_y_marcar
 from ..finanzas.rcv import normalizar_rcv
 from ..integraciones import sii_auth, sii_rcv_api
 from . import tenants as t
@@ -183,6 +185,19 @@ async def sincronizar_rcv_rango(tenant_id: str, anio_d: int, mes_d: int,
             tot[k] += r[k]
     logger.info(f"[admin] backfill RCV {tenant_id} {anio_d}-{mes_d}→{anio_h}-{mes_h}: {tot}")
     return {"desde": f"{anio_d}-{mes_d:02d}", "hasta": f"{anio_h}-{mes_h:02d}", **tot}
+
+
+async def conciliar(tenant_id: str, dias: int = 90) -> dict:
+    """Cruza los DTE del tenant con su cartola y marca cobradas/pagadas → CxC/CxP
+    reflejan lo realmente pendiente (camino sin ERP: SII + banco)."""
+    if not t._TENANT_RE.match(tenant_id):
+        raise AdminError("ID de empresa inválido.")
+    async with config.raw_pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(f'SET LOCAL search_path = "{tenant_id}", public')
+            res = await conciliar_y_marcar(conn, date.today(), dias=dias)
+    logger.info(f"[admin] conciliación {tenant_id}: {res}")
+    return res
 
 
 # ─────────────────────────────────────────────────────────────

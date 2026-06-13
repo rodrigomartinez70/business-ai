@@ -35,6 +35,73 @@ def _buscar(monto_abs: float, fecha: date, candidatos: list[dict]) -> dict | Non
     return None
 
 
+# ── Conciliación que MARCA documentos como cobrados/pagados ───
+_TOL_PAGO_DIAS = 120     # un pago/cobro puede ocurrir hasta N días después de la factura
+_RESUELTOS = ("cobrado", "cobrada", "pagado", "pagada", "anulado", "anulada")
+
+
+def _match_doc(monto_abs: float, fecha_pago: date, candidatos: list[dict]) -> dict | None:
+    """Primera factura no usada con monto ≈ y emitida en/antes del pago (≤120d)."""
+    for c in candidatos:
+        if c["used"] or abs(c["monto"] - monto_abs) > _TOL_MONTO:
+            continue
+        dias = (fecha_pago - c["fecha"]).days
+        if 0 <= dias <= _TOL_PAGO_DIAS:
+            c["used"] = True
+            return c
+    return None
+
+
+async def conciliar_y_marcar(conn, hasta: date, dias: int = 60) -> dict:
+    """Cruza la cartola (movimientos_bancarios) con los DTE pendientes y marca:
+      - abono (ingreso) ↔ factura/boleta de VENTA  → estado 'cobrado'
+      - cargo (egreso)  ↔ factura de COMPRA         → estado 'pagado'
+    Regla: mismo monto (±$1) y la factura emitida en/antes del movimiento (≤120d).
+    Devuelve los conteos. `conn` debe tener el search_path del tenant."""
+    desde = hasta - timedelta(days=dias - 1)
+    movs = await conn.fetch(
+        "SELECT fecha, monto FROM movimientos_bancarios WHERE fecha BETWEEN $1 AND $2 ORDER BY fecha",
+        desde, hasta)
+    desde_docs = hasta - timedelta(days=dias - 1 + _TOL_PAGO_DIAS)
+    try:
+        docs = await conn.fetch(
+            "SELECT id, clase, fecha, monto_total FROM documentos_tributarios "
+            "WHERE clase IN ('compra','venta') AND fecha BETWEEN $1 AND $2 "
+            "AND LOWER(COALESCE(estado,'')) <> ALL($3::text[])",
+            desde_docs, hasta, list(_RESUELTOS))
+    except Exception:                                # noqa: BLE001 — sin clase / sin tabla
+        return {"cobradas": 0, "pagadas": 0, "monto_cobrado": 0.0, "monto_pagado": 0.0,
+                "movimientos": len(movs)}
+
+    ventas  = [{"id": d["id"], "fecha": d["fecha"], "monto": to_float(d["monto_total"]), "used": False}
+               for d in docs if d["clase"] == "venta"]
+    compras = [{"id": d["id"], "fecha": d["fecha"], "monto": to_float(d["monto_total"]), "used": False}
+               for d in docs if d["clase"] == "compra"]
+
+    cobrar, pagar = [], []
+    mc = mp = 0.0
+    for m in movs:
+        monto = to_float(m["monto"])
+        if monto > 0:                                # abono → cobro de una venta
+            c = _match_doc(monto, m["fecha"], ventas)
+            if c:
+                cobrar.append(c["id"]); mc += c["monto"]
+        elif monto < 0:                              # cargo → pago de una compra
+            c = _match_doc(abs(monto), m["fecha"], compras)
+            if c:
+                pagar.append(c["id"]); mp += c["monto"]
+
+    if cobrar:
+        await conn.execute("UPDATE documentos_tributarios SET estado='cobrado', "
+                           "updated_at=now() WHERE id = ANY($1::int[])", cobrar)
+    if pagar:
+        await conn.execute("UPDATE documentos_tributarios SET estado='pagado', "
+                           "updated_at=now() WHERE id = ANY($1::int[])", pagar)
+    return {"cobradas": len(cobrar), "pagadas": len(pagar),
+            "monto_cobrado": round(mc, 2), "monto_pagado": round(mp, 2),
+            "movimientos": len(movs)}
+
+
 async def calcular_conciliacion(hasta: date, dias: int = 30) -> dict:
     """Concilia la cartola con los libros en la ventana [hasta-dias+1, hasta]."""
     desde = hasta - timedelta(days=dias - 1)

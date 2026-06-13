@@ -277,6 +277,20 @@ async def sincronizar_rcv_sii(request: Request, tenant_id: str,
          "sii_cert": await sii_svc.cert_estado(tenant_id), "cert_msg": msg})
 
 
+@router.post("/admin/tenants/{tenant_id}/conciliar", response_class=HTMLResponse)
+async def conciliar_tenant(request: Request, tenant_id: str,
+                           _admin: str = Depends(require_admin)):
+    try:
+        r = await sii_svc.conciliar(tenant_id)
+        msg = (f"🔗 Conciliación ({r['movimientos']} movimientos): "
+               f"{r['cobradas']} cobradas (${r['monto_cobrado']:,.0f}) · "
+               f"{r['pagadas']} pagadas (${r['monto_pagado']:,.0f}) marcadas.")
+    except sii_svc.AdminError as e:
+        msg = f"⚠ {e}"
+    return _TEMPLATES.TemplateResponse(
+        "_sii_resultado.html", {"request": request, "res": None, "msg": msg})
+
+
 @router.post("/admin/tenants/{tenant_id}/sii-rcv-rango", response_class=HTMLResponse)
 async def backfill_rcv_sii(request: Request, tenant_id: str, desde: str = Form(...),
                            hasta: str = Form(...), _admin: str = Depends(require_admin)):

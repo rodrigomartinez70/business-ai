@@ -23,4 +23,15 @@
   </label>
 </div>
 {% endfor %}
+<div class="modrow" style="border-bottom:0;">
+  <div style="flex:1;">
+    <div style="font-weight:600;font-size:14px;">Conciliar con banco</div>
+    <div style="color:#6b7280;font-size:12px;">Cruza los DTE con la cartola y marca
+      cobradas/pagadas → CxC/CxP reflejan lo realmente pendiente (sin ERP).</div>
+  </div>
+  <button class="mini" type="button"
+          hx-post="/admin/tenants/{{ tenant_id }}/conciliar"
+          hx-target="#sii-resultado" hx-swap="innerHTML"
+          hx-confirm="¿Conciliar los DTE con la cartola y marcar cobradas/pagadas?">🔗 Conciliar</button>
+</div>
 <div id="sii-resultado" style="margin-top:10px;"></div>
