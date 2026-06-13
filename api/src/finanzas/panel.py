@@ -122,7 +122,7 @@ def _sec_tesoreria(d: dict) -> str:
     f = d["flujo_semanal"]
     rows = ("<table>"
             + _kv("Liquidez", _badge(d["semaforo"]))
-            + _kv("Caja estimada", f'{_m(d["caja_estimada"])} <span style="color:#9ca3af;font-weight:400;">({d["fuente_caja"]})</span>')
+            + _kv(f'Caja estimada <span style="color:#9ca3af;font-weight:400;">({d["fuente_caja"]})</span>', _m(d["caja_estimada"]))
             + _kv("Cobros / semana", _m(f["cobros"]))
             + _kv("Egresos / semana", _m(f["egresos"]))
             + _kv("Flujo neto / semana", _m(f["neto"]))
