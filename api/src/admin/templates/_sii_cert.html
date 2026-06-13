@@ -12,6 +12,12 @@
           hx-post="/admin/tenants/{{ tenant_id }}/sii-cert/probar"
           hx-target="#sii-cert" hx-swap="innerHTML">Probar conexión</button>
 </div>
+<form style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;"
+      hx-post="/admin/tenants/{{ tenant_id }}/sii-rcv" hx-target="#sii-cert" hx-swap="innerHTML">
+  <label style="font-size:12px;color:#374151;">Sincronizar RCV del período
+    <input type="month" name="periodo" required style="font-size:12px;margin-left:6px;"></label>
+  <button class="mini" type="submit">Traer del SII</button>
+</form>
 <details style="margin-top:10px;">
   <summary style="cursor:pointer;font-size:12px;color:#6b7280;">Reemplazar certificado</summary>
   {% set mostrar_form = true %}

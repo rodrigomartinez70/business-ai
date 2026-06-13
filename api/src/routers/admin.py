@@ -251,6 +251,32 @@ async def probar_cert_sii(request: Request, tenant_id: str,
          "sii_cert": await sii_svc.cert_estado(tenant_id), "cert_msg": msg})
 
 
+@router.post("/admin/tenants/{tenant_id}/sii-rcv", response_class=HTMLResponse)
+async def sincronizar_rcv_sii(request: Request, tenant_id: str,
+                              periodo: str = Form(...), _admin: str = Depends(require_admin)):
+    from ..integraciones.sii_auth import SiiAuthError
+    msg = None
+    try:
+        anio, mes = int(periodo[:4]), int(periodo[5:7])
+    except (ValueError, IndexError):
+        anio = mes = 0
+    if not (1 <= mes <= 12):
+        msg = "⚠ Período inválido (usá el selector de mes)."
+    else:
+        try:
+            r = await sii_svc.sincronizar_rcv(tenant_id, anio, mes)
+            msg = (f"✓ RCV {r['periodo']}: {r['recibidos']} recibidos · {r['emitidos']} emitidos "
+                   f"→ {r['insertados']} nuevos, {r['actualizados']} actualizados.")
+        except (sii_svc.AdminError, SiiAuthError) as e:
+            msg = f"⚠ {e}"
+        except Exception as e:                    # noqa: BLE001 — red/SOAP del SII
+            msg = f"⚠ No se pudo consultar el RCV en el SII: {e}"
+    return _TEMPLATES.TemplateResponse(
+        "_sii_cert.html",
+        {"request": request, "tenant_id": tenant_id,
+         "sii_cert": await sii_svc.cert_estado(tenant_id), "cert_msg": msg})
+
+
 @router.post("/admin/tenants/{tenant_id}/integraciones/{proveedor}", response_class=HTMLResponse)
 async def guardar_integracion(request: Request, tenant_id: str, proveedor: str,
                               _admin: str = Depends(require_admin)):

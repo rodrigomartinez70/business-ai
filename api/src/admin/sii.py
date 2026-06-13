@@ -13,7 +13,7 @@ import logging
 
 from .. import config
 from ..finanzas.rcv import normalizar_rcv
-from ..integraciones import sii_auth
+from ..integraciones import sii_auth, sii_rcv_api
 from . import tenants as t
 
 logger = logging.getLogger(__name__)
@@ -85,24 +85,64 @@ async def subir_rcv(tenant_id: str, contenido: bytes, modo: str = "insertar") ->
     if not await config.raw_pool.fetchval("SELECT 1 FROM public.tenants WHERE id = $1", tenant_id):
         raise AdminError(f"No existe la empresa '{tenant_id}'.")
 
-    insertados = actualizados = 0
     async with config.raw_pool.acquire() as conn:
         async with conn.transaction():
-            await conn.execute(f'SET LOCAL search_path = "{tenant_id}"')
-            for d in docs:
-                try:
-                    nuevo = await conn.fetchval(
-                        _UPSERT, d["clase"], d["tipo"], d["numero_documento"],
-                        d["rut_contraparte"], d["proveedor"], d["fecha"],
-                        d["monto_neto"], d["monto_iva"], d["monto_total"])
-                except Exception as e:                       # noqa: BLE001
-                    raise AdminError(f"No se pudo cargar en '{tenant_id}': {e}")
-                insertados += 1 if nuevo else 0
-                actualizados += 0 if nuevo else 1
+            insertados, actualizados = await _upsert_docs(conn, tenant_id, docs)
     logger.info(f"[admin] RCV {res['meta']['clase']} cargado en {tenant_id}: "
                 f"{insertados} nuevos, {actualizados} actualizados")
     return {"modo": "insertar", "insertados": insertados, "actualizados": actualizados,
             **res["meta"]}
+
+
+async def _upsert_docs(conn, tenant_id: str, docs: list[dict]) -> tuple[int, int]:
+    """Upsert idempotente de documentos en el schema del tenant. Devuelve
+    (insertados, actualizados). Reusado por la carga CSV y por la sync del SII."""
+    insertados = actualizados = 0
+    await conn.execute(f'SET LOCAL search_path = "{tenant_id}"')
+    for d in docs:
+        try:
+            nuevo = await conn.fetchval(
+                _UPSERT, d["clase"], d["tipo"], d["numero_documento"],
+                d["rut_contraparte"], d["proveedor"], d["fecha"],
+                d["monto_neto"], d["monto_iva"], d["monto_total"])
+        except Exception as e:                       # noqa: BLE001
+            raise AdminError(f"No se pudo cargar en '{tenant_id}': {e}")
+        insertados += 1 if nuevo else 0
+        actualizados += 0 if nuevo else 1
+    return insertados, actualizados
+
+
+async def sincronizar_rcv(tenant_id: str, anio: int, mes: int) -> dict:
+    """Fase B paso 2: token SII → consulta RCV (compras=recibidos + ventas=emitidos)
+    del período → upsert en documentos_tributarios. Re-ejecutar un período cerrado lo
+    actualiza (upsert idempotente)."""
+    if not t._TENANT_RE.match(tenant_id):
+        raise AdminError("ID de empresa inválido.")
+    row = await config.raw_pool.fetchrow(
+        "SELECT access_token, cuenta_id, config FROM public.integraciones "
+        "WHERE tenant_id = $1 AND proveedor = 'sii'", tenant_id)
+    if not row or not row["access_token"]:
+        raise AdminError("No hay certificado SII cargado para esta empresa.")
+    cfg = row["config"] if isinstance(row["config"], dict) else json.loads(row["config"] or "{}")
+    ambiente = cfg.get("ambiente", "certificacion")
+    rut = cfg.get("rut") or row["cuenta_id"] or ""
+
+    token = await sii_auth.obtener_token(
+        base64.b64decode(row["access_token"]), cfg.get("password", ""), ambiente)
+    recibidos = await sii_rcv_api.consultar(token, rut, anio, mes, "COMPRA", ambiente)
+    emitidos  = await sii_rcv_api.consultar(token, rut, anio, mes, "VENTA", ambiente)
+    docs = recibidos + emitidos
+
+    insertados = actualizados = 0
+    if docs:
+        async with config.raw_pool.acquire() as conn:
+            async with conn.transaction():
+                insertados, actualizados = await _upsert_docs(conn, tenant_id, docs)
+    logger.info(f"[admin] RCV SII {tenant_id} {anio}-{mes}: "
+                f"recibidos={len(recibidos)} emitidos={len(emitidos)} "
+                f"ins={insertados} act={actualizados}")
+    return {"periodo": f"{anio}-{mes:02d}", "recibidos": len(recibidos),
+            "emitidos": len(emitidos), "insertados": insertados, "actualizados": actualizados}
 
 
 # ─────────────────────────────────────────────────────────────
