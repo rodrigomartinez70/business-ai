@@ -125,6 +125,33 @@ async def _ventas_desde_rcv(cfg: dict, hasta: date) -> str | None:
     return _card("📊 Ventas / Comercial", _kpis(rows) + tabla)
 
 
+async def _cierre_desde_rcv(hasta: date) -> dict | None:
+    """Cierre del período de una empresa sin POS: ventas diarias del RCV con desglose
+    por tipo de DTE (facturas / boletas), mes a la fecha. Análogo al cierre de caja
+    de un POS, pero a nivel de documentos emitidos."""
+    ini_act, fin_act, _ia, _fa = _mtd(hasta)
+    async with config.db_pool.acquire() as conn:
+        try:
+            rows = await conn.fetch(
+                f"SELECT fecha, "
+                f"COALESCE(SUM(monto_total) FILTER (WHERE tipo='factura'),0) AS facturas, "
+                f"COALESCE(SUM(monto_total) FILTER (WHERE tipo='boleta'),0)  AS boletas, "
+                f"COALESCE(SUM(CASE WHEN tipo='nota_credito' THEN -monto_total ELSE monto_total END),0) AS total, "
+                f"COUNT(*) AS n FROM documentos_tributarios "
+                f"WHERE clase='venta' AND fecha BETWEEN $1 AND $2 AND {_VALIDO_DTE} "
+                f"GROUP BY fecha ORDER BY fecha", ini_act, fin_act)
+        except Exception:                             # noqa: BLE001 — sin clase/tabla
+            return None
+    if not rows:
+        return None
+    dias = [{"fecha": str(r["fecha"]), "facturas": to_float(r["facturas"]),
+             "boletas": to_float(r["boletas"]), "total": to_float(r["total"]),
+             "n": int(r["n"])} for r in rows]
+    tot = {k: round(sum(d[k] for d in dias), 2) for k in ("facturas", "boletas", "total")}
+    tot["n"] = sum(d["n"] for d in dias)
+    return {"dias": dias, "totales": tot}
+
+
 async def _gastos_desde_rcv(hasta: date) -> dict | None:
     """Control de gastos desde las compras del RCV (facturas recibidas, neto) — para
     empresas sin POS cuyo libro `gastos` está vacío. Mes a la fecha vs mismo tramo del
@@ -169,6 +196,7 @@ async def calcular_dashboard() -> dict:
     conciliacion = await calcular_conciliacion(corte, 30)
     marketing    = await calcular_marketing(corte, 61)     # None si no hay tablas/datos
     tributario   = await calcular_tributario_semanal(hoy, _ingresos_comercial)   # F29 mes a la fecha
+    cierre       = await _cierre_desde_rcv(hoy)            # ventas diarias por DTE (mes a la fecha)
     ipc          = await obtener_ipc(12)
 
     comercial_html = (await comercial.render(cfg, _vertical_de(cfg), desde, corte)
@@ -184,6 +212,7 @@ async def calcular_dashboard() -> dict:
         "comercial_html": comercial_html,
         "marketing":      marketing,
         "tributario":     tributario,
+        "cierre":         cierre,
         "ipc":            ipc,
     }
 
@@ -272,10 +301,27 @@ def _sec_tributario(trib: dict) -> str:
     return _card("🇨🇱 Copiloto Tributario", body)
 
 
+def _sec_cierre(c: dict, cfg) -> str:
+    """Cierre del período: ventas diarias por tipo de DTE (facturas/boletas)."""
+    if not c or not c.get("dias"):
+        return ""
+    t = c["totales"]
+    filas = "".join(
+        f'<tr><td>{d["fecha"][5:]}</td><td>{_fm(d["facturas"], cfg)}</td>'
+        f'<td>{_fm(d["boletas"], cfg)}</td><td>{_fm(d["total"], cfg)}</td>'
+        f'<td style="text-align:right;">{d["n"]}</td></tr>' for d in c["dias"])
+    tabla = (f'<table class="dt"><tr><th>Día</th><th>Facturas</th><th>Boletas</th>'
+             f'<th>Total</th><th>Docs</th></tr>{filas}</table>')
+    rows = [("Total facturas", _fm(t["facturas"], cfg)),
+            ("Total boletas",  _fm(t["boletas"], cfg)),
+            ("Total ventas (facturado)", _fm(t["total"], cfg)),
+            ("Documentos emitidos", str(t["n"]))]
+    return _card("🧾 Cierre del período — ventas diarias", _kpis(rows) + tabla)
+
+
 def secciones_html(data: dict, cfg: dict) -> dict:
-    """Mismas claves canónicas que un dashboard de vertical; las que no aplican
-    (cierre, estado_dte) se omiten y el Informe las degrada solas. Marketing y
-    Tributario aparecen si la empresa tiene datos (mkt / DTE del RCV)."""
+    """Mismas claves canónicas que un dashboard de vertical; estado_dte se omite.
+    Marketing, Tributario y Cierre aparecen si la empresa tiene datos del RCV."""
     mkt = data.get("marketing")
     return {
         "pnl":          _sec_pnl(data["pnl"], cfg),
@@ -284,5 +330,6 @@ def secciones_html(data: dict, cfg: dict) -> dict:
         "conciliacion": _sec_conciliacion(data.get("conciliacion", {})),
         "marketing":    renderizar_marketing_html(mkt, cfg) if mkt else "",
         "tributario":   _sec_tributario(data.get("tributario", {})),
+        "cierre":       _sec_cierre(data.get("cierre"), cfg),
         "ipc":          renderizar_ipc_html(data.get("ipc")),
     }

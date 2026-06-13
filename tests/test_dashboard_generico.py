@@ -41,7 +41,8 @@ def test_secciones_generico_claves():
         "ipc": None,
     }
     secs = dg.secciones_html(data, {})
-    assert set(secs) == {"pnl", "comercial", "gastos", "conciliacion", "marketing", "tributario", "ipc"}
+    assert set(secs) == {"pnl", "comercial", "gastos", "conciliacion", "marketing", "tributario", "cierre", "ipc"}
+    assert secs["cierre"] == ""        # sin datos de cierre → vacía
     assert secs["pnl"] == ""           # sin líneas de P&L → sección vacía
     assert secs["comercial"] == ""     # sin config de ventas → vacía
     assert secs["marketing"] == ""     # sin datos de marketing → vacía
