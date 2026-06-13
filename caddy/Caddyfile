@@ -1,3 +1,13 @@
+# ── Opciones globales ─────────────────────────────────────────
+# TLS on-demand para los dashboards por empresa: Caddy consulta a la API si el
+# host es el subdominio de una empresa activa antes de emitir el certificado.
+# (Debe ir primero en el archivo.)
+{
+    on_demand_tls {
+        ask http://negocio_api:8000/internal/caddy-ask
+    }
+}
+
 # ── Hotel MBI ─────────────────────────────────────────────────
 hotel-mbi.majorbi.com {
     reverse_proxy negocio_open_webui:8080
@@ -15,3 +25,15 @@ admin.majorbi.com {
 
 # ── Por tenant — generado por scripts/provision_tenant.py ─────
 import /etc/caddy/tenants/*.caddy
+
+# ── Dashboards por empresa ────────────────────────────────────
+# Catch-all: {empresa-con-guiones}.majorbi.com → API, que resuelve el tenant
+# por el header Host. Los subdominios explícitos de arriba (hotel-mbi, api,
+# admin) y los de tenants/*.caddy GANAN sobre este wildcard (Caddy elige el más
+# específico). Requiere DNS wildcard: *.majorbi.com A → IP del servidor.
+*.majorbi.com {
+    tls {
+        on_demand
+    }
+    reverse_proxy negocio_api:8000
+}
