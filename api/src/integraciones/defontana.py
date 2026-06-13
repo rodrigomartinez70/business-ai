@@ -197,3 +197,51 @@ async def obtener_datos(creds: Optional[dict], desde: date, hasta: date,
     if not creds:
         raise RuntimeError("Sin credenciales de Defontana. Usá mock=True.")
     return await _fetch_real(creds, desde, hasta)
+
+
+# ─────────────────────────────────────────────────────────────
+# Sincronización al tenant (facturas → documentos_tributarios)
+# ─────────────────────────────────────────────────────────────
+
+_UPSERT_DOC = """
+INSERT INTO documentos_tributarios
+    (clase, tipo, numero_documento, rut_contraparte, proveedor,
+     fecha, monto_neto, monto_iva, monto_total, estado, observaciones)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'defontana')
+ON CONFLICT (clase, tipo, numero_documento, rut_contraparte)
+    WHERE numero_documento IS NOT NULL AND rut_contraparte IS NOT NULL
+DO UPDATE SET monto_neto = EXCLUDED.monto_neto, monto_iva = EXCLUDED.monto_iva,
+              monto_total = EXCLUDED.monto_total, fecha = EXCLUDED.fecha,
+              proveedor = EXCLUDED.proveedor, observaciones = 'defontana', updated_at = now()
+RETURNING (xmax = 0)
+"""
+
+
+def _mapear_doc(f: dict) -> tuple:
+    """Factura normalizada de Defontana → fila de documentos_tributarios (RCV)."""
+    t = f.get("tipo") or ""
+    clase = "compra" if "compra" in t else "venta"
+    tipo = "boleta" if t == "boleta" else "nota_credito" if t == "nota_credito" else "factura"
+    estado = "pagado" if f.get("estado") == "pagado" else "registrado"
+    fecha = f["fecha"]
+    if isinstance(fecha, str):
+        fecha = date.fromisoformat(fecha[:10])
+    numero = str(f.get("numero") or f.get("id_externo") or "")
+    return (clase, tipo, numero, f.get("rut"), f.get("partner") or "—",
+            fecha, f["monto_neto"], f.get("monto_iva", 0), f["monto_total"], estado)
+
+
+async def sincronizar(conn, tenant_id: str, desde: date, hasta: date,
+                      *, mock: bool = False) -> dict:
+    """Trae documentos de Defontana y los upserta en documentos_tributarios del tenant
+    (mismo destino que el RCV del SII). Etiqueta observaciones='defontana' para poder
+    limpiarlos sin tocar la data del SII. `conn` ya viene con search_path al tenant."""
+    creds = None if mock else await obtener_credenciales(conn, tenant_id)
+    datos = await obtener_datos(creds, desde, hasta, mock=mock)
+    insertados = actualizados = 0
+    for f in datos.get("facturas", []):
+        nuevo = await conn.fetchval(_UPSERT_DOC, *_mapear_doc(f))
+        insertados += 1 if nuevo else 0
+        actualizados += 0 if nuevo else 1
+    return {"facturas": insertados, "actualizadas": actualizados,
+            "modo": "mock" if mock else "api"}

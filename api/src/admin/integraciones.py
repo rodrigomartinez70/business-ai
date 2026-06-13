@@ -17,7 +17,7 @@ from datetime import date, timedelta
 import asyncpg
 
 from .. import config
-from ..integraciones import google_ads, meta_ads, odoo, toteat
+from ..integraciones import defontana, google_ads, meta_ads, odoo, toteat
 from .tenants import _TENANT_RE
 
 logger = logging.getLogger(__name__)
@@ -191,6 +191,7 @@ _MUESTRA = {
     "google_ads": (google_ads.sincronizar,         120),
     "toteat":     (toteat.sincronizar,              30),
     "odoo":       (odoo.sincronizar_contabilidad,   730),
+    "defontana":  (defontana.sincronizar,           730),
 }
 
 PROVEEDORES_CON_MUESTRA = set(_MUESTRA)
@@ -234,6 +235,7 @@ _LIMPIEZA = {
     "meta":       _sql_marketing("meta"),
     "google_ads": _sql_marketing("google"),
     "odoo":       ["DELETE FROM saldos_cuentas", "DELETE FROM plan_cuentas"],
+    "defontana":  ["DELETE FROM documentos_tributarios WHERE observaciones = 'defontana'"],
     "toteat":     ["DELETE FROM detalle_pedido", "DELETE FROM pagos", "DELETE FROM pedidos",
                    "DELETE FROM productos", "DELETE FROM categorias_menu",
                    "DELETE FROM mesas", "DELETE FROM canales_venta"],
