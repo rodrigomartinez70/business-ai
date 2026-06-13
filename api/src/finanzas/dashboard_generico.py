@@ -80,6 +80,43 @@ async def _ingresos_comercial(conn, ini: date, fin: date) -> float:
     return to_float(v or 0)
 
 
+_VALIDO_DTE = ("LOWER(COALESCE(estado,'')) NOT IN "
+               "('pendiente_revision','anulado','anulada','rechazado','rechazada')")
+
+
+async def _ventas_desde_rcv(cfg: dict, desde: date, corte: date) -> str | None:
+    """Ventas/Comercial de una empresa sin POS: facturas/boletas emitidas del RCV
+    (clase='venta', neto) + variación y top clientes. Devuelve el HTML del card."""
+    largo = (corte - desde).days
+    ant_fin = desde - timedelta(days=1)
+    ant_desde = ant_fin - timedelta(days=largo)
+    async with config.db_pool.acquire() as conn:
+        try:
+            cur = await conn.fetchrow(
+                f"SELECT COALESCE(SUM(monto_neto),0) AS neto, COUNT(*) AS n FROM documentos_tributarios "
+                f"WHERE clase='venta' AND fecha BETWEEN $1 AND $2 AND {_VALIDO_DTE}", desde, corte)
+            tp = await conn.fetchval(
+                f"SELECT COALESCE(SUM(monto_neto),0) FROM documentos_tributarios "
+                f"WHERE clase='venta' AND fecha BETWEEN $1 AND $2 AND {_VALIDO_DTE}", ant_desde, ant_fin)
+            top = await conn.fetch(
+                f"SELECT COALESCE(NULLIF(TRIM(proveedor),''),'—') AS cliente, SUM(monto_neto) AS m "
+                f"FROM documentos_tributarios WHERE clase='venta' AND fecha BETWEEN $1 AND $2 AND {_VALIDO_DTE} "
+                f"GROUP BY 1 ORDER BY 2 DESC LIMIT 5", desde, corte)
+        except Exception:                             # noqa: BLE001 — sin clase/tabla
+            return None
+    neto, n = to_float(cur["neto"]), int(cur["n"] or 0)
+    if neto == 0 and n == 0:
+        return None
+    tp = to_float(tp)
+    var = f"{round((neto - tp) * 100 / tp, 1):+.1f}%" if tp > 0 else "—"
+    rows = [("Ventas netas (emitidas)", _fm(neto, cfg)),
+            ("N° documentos", str(n)),
+            ("vs período anterior", var)]
+    filas = "".join(f'<tr><td>{r["cliente"]}</td><td>{_fm(to_float(r["m"]), cfg)}</td></tr>' for r in top)
+    tabla = (f'<table class="dt"><tr><th>Cliente</th><th>Ventas</th></tr>{filas}</table>') if filas else ""
+    return _card("📊 Ventas / Comercial", _kpis(rows) + tabla)
+
+
 async def _gastos_desde_rcv(desde: date, corte: date) -> dict | None:
     """Control de gastos desde las compras del RCV (facturas recibidas, neto) — para
     empresas sin POS cuyo libro `gastos` está vacío. El SII no categoriza → 'Sin
@@ -127,7 +164,8 @@ async def calcular_dashboard() -> dict:
     ipc          = await obtener_ipc(12)
 
     comercial_html = (await comercial.render(cfg, _vertical_de(cfg), desde, corte)
-                      if comercial.tiene_config(cfg) else None)
+                      if comercial.tiene_config(cfg)
+                      else await _ventas_desde_rcv(cfg, desde, corte))   # sin POS → RCV
 
     return {
         "fecha_envio":    str(hoy),
