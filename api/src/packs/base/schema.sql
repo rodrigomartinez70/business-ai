@@ -84,7 +84,49 @@ CREATE TABLE IF NOT EXISTS audit_log (
     timestamp    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- ── Marketing (HORIZONTAL: cualquier empresa puede tener una plataforma de ads) ──
+CREATE TABLE IF NOT EXISTS canales_marketing (
+    id          SERIAL PRIMARY KEY,
+    nombre      VARCHAR(80) UNIQUE NOT NULL,   -- 'Meta', 'Google', ...
+    tipo        VARCHAR(30) DEFAULT 'pagado',  -- 'pagado' | 'organico'
+    plataforma  VARCHAR(40),                   -- 'meta', 'google'
+    activo      BOOLEAN DEFAULT TRUE
+);
+
+CREATE TABLE IF NOT EXISTS campanas (
+    id                 SERIAL PRIMARY KEY,
+    canal_id           INTEGER REFERENCES canales_marketing(id),
+    id_externo         VARCHAR(64) UNIQUE,       -- id de la campaña en la plataforma
+    nombre             VARCHAR(200) NOT NULL,
+    objetivo           VARCHAR(80),              -- 'OUTCOME_LEADS', 'REACH', ...
+    estado             VARCHAR(30),              -- 'ACTIVE', 'PAUSED', ...
+    presupuesto_diario NUMERIC(14,2),
+    fecha_inicio       DATE,
+    fecha_fin          DATE,
+    actualizado_en     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS insights_marketing (
+    id             SERIAL PRIMARY KEY,
+    campana_id     INTEGER NOT NULL REFERENCES campanas(id),
+    fecha          DATE NOT NULL,
+    gasto          NUMERIC(14,2) DEFAULT 0,
+    impresiones    BIGINT DEFAULT 0,
+    clics          BIGINT DEFAULT 0,
+    alcance        BIGINT DEFAULT 0,
+    conversiones   NUMERIC(14,2) DEFAULT 0,    -- acciones de conversión (ej. leads)
+    mensajes       BIGINT DEFAULT 0,           -- conversaciones de mensajes iniciadas
+    interacciones  BIGINT DEFAULT 0,           -- post/page engagement
+    reproducciones BIGINT DEFAULT 0,           -- video views
+    visitas_perfil BIGINT DEFAULT 0,           -- visitas al perfil (IG/FB)
+    moneda         VARCHAR(8) DEFAULT 'CLP',
+    actualizado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (campana_id, fecha)
+);
+
 -- Índices
+CREATE INDEX IF NOT EXISTS idx_insights_fecha       ON insights_marketing(fecha);
+CREATE INDEX IF NOT EXISTS idx_campanas_canal       ON campanas(canal_id);
 CREATE INDEX IF NOT EXISTS idx_gastos_fecha         ON gastos(fecha);
 CREATE INDEX IF NOT EXISTS idx_gastos_categoria     ON gastos(categoria_id);
 CREATE INDEX IF NOT EXISTS idx_documentos_estado    ON documentos_tributarios(estado);
