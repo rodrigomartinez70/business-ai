@@ -25,6 +25,7 @@ from ..admin import tenants as svc
 from ..admin import users as usr
 from ..admin.auth import require_admin
 from ..finanzas.informe import calcular_informe, renderizar_informe_html
+from ..finanzas.dashboard_web import renderizar_dashboard_web
 from ..tenant import set_tenant, reset_tenant
 
 router = APIRouter(tags=["admin"])
@@ -146,6 +147,26 @@ async def preview_email(tenant_id: str, _admin: str = Depends(require_admin)):
         cfg = config.get_config()
         biz = cfg.get("business", {}).get("name", tenant_id)
         html = renderizar_informe_html(data, cfg, biz)
+    finally:
+        reset_tenant(token)
+    return HTMLResponse(html)
+
+
+@router.get("/admin/tenants/{tenant_id}/dashboard", response_class=HTMLResponse)
+async def preview_dashboard(tenant_id: str, _admin: str = Depends(require_admin)):
+    """Previsualiza el dashboard WEB (HTML interactivo con KPIs y gráficas) de la
+    empresa — la misma data del informe, en formato sitio. Solo admin."""
+    ctx = tenant_registry.get_tenant_by_id(tenant_id)
+    if ctx is None:
+        return HTMLResponse(
+            f'<div style="font-family:sans-serif;padding:40px;color:#991b1b;">'
+            f'La empresa «{tenant_id}» no existe o está inactiva.</div>', status_code=404)
+    token = set_tenant(ctx)
+    try:
+        data = await calcular_informe(date.today())
+        cfg = config.get_config()
+        biz = cfg.get("business", {}).get("name", tenant_id)
+        html = renderizar_dashboard_web(data, cfg, biz)
     finally:
         reset_tenant(token)
     return HTMLResponse(html)

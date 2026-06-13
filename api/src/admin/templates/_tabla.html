@@ -40,8 +40,10 @@
            title="Modelo de datos (tablas/columnas)">&#128208;</a>
       </td>
       <td style="white-space:nowrap;">
+        <a class="icon-btn" href="/admin/tenants/{{ t.id }}/dashboard" target="_blank"
+           title="Dashboard web (KPIs + gráficas)">&#128202;</a>
         <a class="icon-btn" href="/admin/tenants/{{ t.id }}/preview" target="_blank"
-           title="Previsualizar el email">&#128065;</a>
+           title="Previsualizar el email" style="margin-left:6px;">&#128065;</a>
         <button class="icon-btn del" type="button" title="Eliminar empresa (irreversible)"
                 style="margin-left:6px;"
                 hx-post="/admin/tenants/{{ t.id }}/eliminar"
