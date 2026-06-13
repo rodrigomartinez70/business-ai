@@ -15,13 +15,15 @@ import logging
 from datetime import date, timedelta
 
 from src import config
-from src.render import _card, _kpis, _fm, renderizar_ipc_html
+from src.agents._common import to_float
+from src.render import _card, _kpis, _fm, _subt, _aviso, renderizar_ipc_html
 from src.finanzas.economia import obtener_ipc
 from src.finanzas.control_gastos import calcular_control_gastos
 from src.finanzas.conciliacion import calcular_conciliacion
 from src.finanzas.pnl import renderizar_pnl_html
 from src.finanzas.pnl_plantilla import calcular_desde_plantilla
 from src.finanzas import comercial
+from src.finanzas.tributario import calcular_tributario_semanal
 from src.marketing.dashboard import calcular_marketing, renderizar_marketing_html
 
 logger = logging.getLogger(__name__)
@@ -63,6 +65,19 @@ async def calcular_pnl(hasta: date) -> dict:
     return await _pnl(config.get_config(), hasta)
 
 
+async def _ingresos_comercial(conn, ini: date, fin: date) -> float:
+    """Ingreso afecto de una empresa Comercial: ventas emitidas del RCV (neto).
+    Defensivo: 0 si el schema no tiene `clase`/documentos."""
+    try:
+        v = await conn.fetchval(
+            "SELECT COALESCE(SUM(monto_neto), 0) FROM documentos_tributarios "
+            "WHERE clase = 'venta' AND estado = 'registrado' AND fecha BETWEEN $1 AND $2",
+            ini, fin)
+    except Exception:                                 # noqa: BLE001
+        return 0.0
+    return to_float(v or 0)
+
+
 async def calcular_dashboard() -> dict:
     hoy          = date.today()
     desde, corte = _semana_cerrada(hoy)
@@ -72,6 +87,7 @@ async def calcular_dashboard() -> dict:
     gastos       = await calcular_control_gastos(desde, corte)
     conciliacion = await calcular_conciliacion(corte, 30)
     marketing    = await calcular_marketing(corte, 61)     # None si no hay tablas/datos
+    tributario   = await calcular_tributario_semanal(corte, _ingresos_comercial)
     ipc          = await obtener_ipc(12)
 
     comercial_html = (await comercial.render(cfg, _vertical_de(cfg), desde, corte)
@@ -85,6 +101,7 @@ async def calcular_dashboard() -> dict:
         "conciliacion":   conciliacion,
         "comercial_html": comercial_html,
         "marketing":      marketing,
+        "tributario":     tributario,
         "ipc":            ipc,
     }
 
@@ -133,10 +150,50 @@ def _sec_conciliacion(con: dict) -> str:
     return _card("🏦 Conciliación bancaria", body)
 
 
+def _sec_tributario(trib: dict) -> str:
+    """Copiloto Tributario / F29 (horizontal). El IVA débito/crédito sale de los DTE
+    del RCV (clase venta/compra) cargados en documentos_tributarios."""
+    if not trib or not trib.get("agente_iva"):
+        return ""
+    iva = trib["agente_iva"]; cum = trib.get("agente_cumplimiento", {}); rie = trib.get("agente_riesgo", {})
+    f29 = iva.get("f29", {})
+    body = _subt(f"Agente IVA / F29 — período {f29.get('periodo', '')}")
+    body += _kpis([
+        ("IVA débito", f"${f29.get('iva_debito', 0):,.0f}"),
+        ("IVA crédito", f"${f29.get('iva_credito', 0):,.0f}"),
+        ("Remanente mes anterior", f"${f29.get('remanente_anterior', 0):,.0f}"),
+        ("IVA a pagar", f"${f29.get('iva_a_pagar', 0):,.0f}"),
+        (f"PPM ({f29.get('ppm_tasa_pct', 0)}%)", f"${f29.get('ppm', 0):,.0f}"),
+        ("Retención honorarios", f"${f29.get('retencion_honorarios', 0):,.0f}"),
+        ("TOTAL F29 a pagar", f"${f29.get('total_a_pagar', 0):,.0f}"),
+        ("Vence", f"{f29.get('vencimiento', 'N/A')} (en {f29.get('dias_para_vencimiento', 0)}d)"),
+    ])
+    body += _subt("Agente Cumplimiento — Próximos vencimientos")
+    venc = cum.get("proximos_vencimientos", [])
+    if venc:
+        filas = "".join(f'<tr><td>{x["fecha"]}</td><td>{x["nombre"]}</td>'
+                        f'<td style="text-align:right;">{x["dias_restantes"]}d</td></tr>' for x in venc[:6])
+        body += f'<table class="dt"><tr><th>Fecha</th><th>Obligación</th><th>Faltan</th></tr>{filas}</table>'
+    score = rie.get("score_riesgo", "bajo")
+    ico = "🔴" if score == "alto" else "🟠" if score == "medio" else "🟢"
+    body += _subt(f"Agente Riesgo — Nivel: {ico} {score}")
+    docs = rie.get("documentos_pendientes", {})
+    if docs.get("cantidad", 0) > 0:
+        body += _aviso("alerta", f"{docs['cantidad']} documento(s) pendiente(s)",
+                       f"IVA potencial recuperable: ${docs.get('iva_potencial_recuperable', 0):,.0f}")
+    for inc in rie.get("inconsistencias", []):
+        body += _aviso(inc.get("nivel", "info"), inc.get("titulo", ""), inc.get("descripcion", ""))
+    for al in rie.get("alertas", []):
+        body += _aviso(al.get("nivel", "info"), al.get("titulo", ""), al.get("descripcion", ""), al.get("recomendacion", ""))
+    if not rie.get("inconsistencias") and not rie.get("alertas"):
+        body += '<div style="font-size:12px;color:#047857;margin-top:6px;">Sin inconsistencias ni alertas.</div>'
+    return _card("🇨🇱 Copiloto Tributario", body)
+
+
 def secciones_html(data: dict, cfg: dict) -> dict:
     """Mismas claves canónicas que un dashboard de vertical; las que no aplican
-    (cierre, tributario, estado_dte) se omiten y el Informe las degrada solas.
-    Marketing aparece si la empresa tiene datos de marketing (Meta/Google)."""
+    (cierre, estado_dte) se omiten y el Informe las degrada solas. Marketing y
+    Tributario aparecen si la empresa tiene datos (mkt / DTE del RCV)."""
     mkt = data.get("marketing")
     return {
         "pnl":          _sec_pnl(data["pnl"], cfg),
@@ -144,5 +201,6 @@ def secciones_html(data: dict, cfg: dict) -> dict:
         "gastos":       _sec_gastos(data["gastos"], cfg),
         "conciliacion": _sec_conciliacion(data.get("conciliacion", {})),
         "marketing":    renderizar_marketing_html(mkt, cfg) if mkt else "",
+        "tributario":   _sec_tributario(data.get("tributario", {})),
         "ipc":          renderizar_ipc_html(data.get("ipc")),
     }
