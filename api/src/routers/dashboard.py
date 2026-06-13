@@ -13,7 +13,7 @@ import logging
 from datetime import date
 
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from .. import config, tenant_registry
 from .. import dashboard_users as du
@@ -27,9 +27,9 @@ router = APIRouter(tags=["dashboard"])
 _COOKIE = "mbi_dash"
 
 
-def _tenant_de_host(request: Request) -> str | None:
-    """test-mbi.majorbi.com → 'test_mbi'. None si el host no es un subdominio de tenant."""
-    host = (request.headers.get("host") or "").split(":")[0].lower()
+def _tenant_de_hostname(host: str) -> str | None:
+    """test-mbi.majorbi.com → 'test_mbi'. None si no es un subdominio de un nivel."""
+    host = (host or "").split(":")[0].lower()
     base = config.DASHBOARD_BASE_DOMAIN.lower()
     if not host.endswith("." + base):
         return None
@@ -37,6 +37,10 @@ def _tenant_de_host(request: Request) -> str | None:
     if not sub or "." in sub:                 # solo un nivel de subdominio
         return None
     return sub.replace("-", "_")
+
+
+def _tenant_de_host(request: Request) -> str | None:
+    return _tenant_de_hostname(request.headers.get("host") or "")
 
 
 def _pagina_neutral() -> HTMLResponse:
@@ -131,3 +135,14 @@ async def logout():
     resp = RedirectResponse("/login", status_code=303)
     resp.delete_cookie(_COOKIE)
     return resp
+
+
+@router.get("/internal/caddy-ask")
+async def caddy_ask(domain: str = ""):
+    """Endpoint para el TLS on-demand de Caddy: 200 si el host corresponde a una
+    empresa activa (Caddy emite el certificado), 404 si no (no lo emite). Permite
+    *.majorbi.com → un certificado por empresa, sin config por tenant."""
+    tid = _tenant_de_hostname(domain)
+    if tid and tenant_registry.get_tenant_by_id(tid) is not None:
+        return Response(status_code=200)
+    return Response(status_code=404)
