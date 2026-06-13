@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<title>MBI Admin — Usuarios de {{ biz }}</title>
+{% include "_head.html" %}
+</head>
+<body>
+{% include "_menu.html" %}
+<div class="wrap">
+  <header><h1>Usuarios del dashboard</h1>
+    <p>{{ biz }} · <code>{{ tenant_id }}</code></p></header>
+
+  <section class="card">
+    <h2>Acceso</h2>
+    <p style="color:#6b7280;font-size:13px;margin:0 0 6px;">
+      Estos usuarios entran al dashboard web de la empresa en:</p>
+    <p style="margin:0;"><a href="https://{{ dash_url }}" target="_blank"><code>https://{{ dash_url }}</code></a></p>
+  </section>
+
+  <section class="card">
+    <h2>Nuevo usuario</h2>
+    <form hx-post="/admin/tenants/{{ tenant_id }}/usuarios" hx-target="#resultado" hx-swap="innerHTML">
+      <div class="grid">
+        <label>Email <input name="email" type="email" placeholder="persona@empresa.cl" required></label>
+        <label>Contraseña <input name="password" type="password" minlength="8"
+               autocomplete="new-password" placeholder="mín. 8 caracteres" required></label>
+      </div>
+      <button type="submit">Crear usuario</button>
+    </form>
+    <div id="resultado"></div>
+  </section>
+
+  <section class="card">
+    <h2>Usuarios</h2>
+    {% include "_dash_users_tabla.html" %}
+  </section>
+</div>
+</body>
+</html>

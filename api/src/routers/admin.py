@@ -24,6 +24,7 @@ from ..admin import sii as sii_svc
 from ..admin import tenants as svc
 from ..admin import users as usr
 from ..admin.auth import require_admin
+from .. import dashboard_users as du
 from ..finanzas.informe import calcular_informe, renderizar_informe_html
 from ..finanzas.dashboard_web import renderizar_dashboard_web
 from ..tenant import set_tenant, reset_tenant
@@ -592,6 +593,91 @@ async def toggle_usuario(request: Request, uid: int, activo: str = Form(...),
 async def borrar_usuario(request: Request, uid: int, _admin: str = Depends(require_admin)):
     await usr.eliminar(uid)
     return await _tabla_usuarios(request)
+
+
+# ─────────────────────────────────────────────────────────────
+# Usuarios del DASHBOARD WEB por empresa (public.dashboard_users)
+# ─────────────────────────────────────────────────────────────
+
+def _dash_url(tenant_id: str) -> str:
+    return f"{tenant_id.replace('_', '-')}.{config.DASHBOARD_BASE_DOMAIN}"
+
+
+def _biz_de(tenant_id: str) -> str:
+    ctx = tenant_registry.get_tenant_by_id(tenant_id)
+    if ctx is None:
+        return tenant_id
+    token = set_tenant(ctx)
+    try:
+        return config.get_config().get("business", {}).get("name", tenant_id)
+    finally:
+        reset_tenant(token)
+
+
+async def _tabla_dash_users(request: Request, tenant_id: str):
+    return _TEMPLATES.TemplateResponse(
+        "_dash_users_tabla.html",
+        {"request": request, "tenant_id": tenant_id, "usuarios": await du.listar(tenant_id)})
+
+
+@router.get("/admin/tenants/{tenant_id}/usuarios", response_class=HTMLResponse)
+async def panel_dash_users(request: Request, tenant_id: str, _admin: str = Depends(require_admin)):
+    return _TEMPLATES.TemplateResponse(
+        "usuarios_dash.html",
+        {"request": request, "tenant_id": tenant_id, "biz": _biz_de(tenant_id),
+         "dash_url": _dash_url(tenant_id), "usuarios": await du.listar(tenant_id)})
+
+
+@router.post("/admin/tenants/{tenant_id}/usuarios", response_class=HTMLResponse)
+async def alta_dash_user(request: Request, tenant_id: str, email: str = Form(...),
+                         password: str = Form(...), _admin: str = Depends(require_admin)):
+    resultado, error = None, None
+    try:
+        await du.crear(tenant_id, email, password)
+        resultado = f"Usuario «{email}» creado."
+    except du.DashUserError as e:
+        error = str(e)
+    return _TEMPLATES.TemplateResponse(
+        "_dash_users_resultado.html",
+        {"request": request, "tenant_id": tenant_id, "usuarios": await du.listar(tenant_id),
+         "resultado": resultado, "error": error})
+
+
+@router.get("/admin/tenants/{tenant_id}/usuarios/tabla", response_class=HTMLResponse)
+async def tabla_dash_users(request: Request, tenant_id: str, _admin: str = Depends(require_admin)):
+    return await _tabla_dash_users(request, tenant_id)
+
+
+@router.get("/admin/tenants/{tenant_id}/usuarios/{uid}/password", response_class=HTMLResponse)
+async def form_password_dash(request: Request, tenant_id: str, uid: int,
+                             _admin: str = Depends(require_admin)):
+    u = next((x for x in await du.listar(tenant_id) if x["id"] == uid), None)
+    return _TEMPLATES.TemplateResponse(
+        "_dash_user_pass.html", {"request": request, "tenant_id": tenant_id, "u": u})
+
+
+@router.post("/admin/tenants/{tenant_id}/usuarios/{uid}/password", response_class=HTMLResponse)
+async def cambiar_password_dash(request: Request, tenant_id: str, uid: int,
+                                password: str = Form(...), _admin: str = Depends(require_admin)):
+    try:
+        await du.cambiar_password(uid, password)
+    except du.DashUserError:
+        pass
+    return await _tabla_dash_users(request, tenant_id)
+
+
+@router.post("/admin/tenants/{tenant_id}/usuarios/{uid}/toggle", response_class=HTMLResponse)
+async def toggle_dash_user(request: Request, tenant_id: str, uid: int, activo: str = Form(...),
+                           _admin: str = Depends(require_admin)):
+    await du.set_activo(uid, activo == "true")
+    return await _tabla_dash_users(request, tenant_id)
+
+
+@router.post("/admin/tenants/{tenant_id}/usuarios/{uid}/delete", response_class=HTMLResponse)
+async def borrar_dash_user(request: Request, tenant_id: str, uid: int,
+                           _admin: str = Depends(require_admin)):
+    await du.eliminar(uid)
+    return await _tabla_dash_users(request, tenant_id)
 
 
 @router.get("/api/admin/schedules")

@@ -8,6 +8,8 @@ PÁGINA web pensada para abrir a diario en el navegador: KPIs grandes, gráficas
 `renderizar_dashboard_web(data, cfg, biz)` → str (HTML completo, self-contained).
 """
 
+from __future__ import annotations
+
 import json
 from datetime import date
 
@@ -57,7 +59,7 @@ def _extraer(data: dict) -> dict:
     }
 
 
-def renderizar_dashboard_web(data: dict, cfg: dict, biz: str) -> str:
+def renderizar_dashboard_web(data: dict, cfg: dict, biz: str, logout_url: str | None = None) -> str:
     e = _extraer(data)
     corte = data.get("corte", str(date.today()))
     cfo, ind, tes, cxc, cxp = e["cfo"], e["ind"], e["tes"], e["cxc"], e["cxp"]
@@ -131,9 +133,10 @@ def renderizar_dashboard_web(data: dict, cfg: dict, biz: str) -> str:
                           "posicion": chart_posicion}, ensure_ascii=False)
 
     sem_color = _SEM_COLOR.get(sem, "#6b7280")
+    logout = (f'<a class="logout" href="{logout_url}">Salir</a>' if logout_url else "")
     return _PAGINA.format(biz=biz, corte=corte, sem=sem.upper(), sem_color=sem_color,
                           tiles=tiles_html, puntos=puntos_html, pagos=pagos_html,
-                          payload=payload)
+                          payload=payload, logout=logout)
 
 
 _PAGINA = """<!doctype html>
@@ -177,9 +180,13 @@ _PAGINA = """<!doctype html>
   .delta{{font-size:12px;font-weight:600}} .delta.pos{{color:#16a34a}} .delta.neg{{color:#dc2626}}
   .muted,.empty{{color:#94a3b8;font-size:13px}}
   .foot{{text-align:center;color:#94a3b8;font-size:11px;margin-top:26px}}
+  .logout{{position:absolute;top:20px;right:26px;color:#fff;opacity:.85;font-size:13px;
+          text-decoration:none;border:1px solid rgba(255,255,255,.4);padding:5px 12px;border-radius:8px}}
+  .logout:hover{{opacity:1}}
 </style></head>
 <body>
-  <div class="hero">
+  <div class="hero" style="position:relative">
+    {logout}
     <h1>{biz}</h1>
     <div class="sub">Dashboard financiero · corte {corte}</div>
     <span class="badge">{sem}</span>

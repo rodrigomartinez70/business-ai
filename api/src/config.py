@@ -43,6 +43,14 @@ REPORT_EMAIL_TO = os.getenv("REPORT_EMAIL_TO", "")   # coma-separado para varios
 ADMIN_USER     = os.getenv("ADMIN_USER", "admin")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")     # vacío = panel /admin deshabilitado
 
+# Secreto para firmar la cookie de sesión del dashboard web (por empresa).
+# Si no se define, deriva de ADMIN_PASSWORD (estable en prod).
+DASHBOARD_SECRET = os.getenv("DASHBOARD_SECRET", "") or ADMIN_PASSWORD
+
+# Dominio base para resolver el tenant desde el subdominio del dashboard
+# (ej. test-mbi.majorbi.com → tenant test_mbi). Convención: '_' → '-'.
+DASHBOARD_BASE_DOMAIN = os.getenv("DASHBOARD_BASE_DOMAIN", "majorbi.com")
+
 
 def admin_disponible() -> bool:
     """True si el back-office de administración está habilitado (ADMIN_PASSWORD seteado)."""
