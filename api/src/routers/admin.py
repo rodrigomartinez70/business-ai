@@ -185,7 +185,8 @@ async def panel_integraciones(request: Request, tenant_id: str,
     return _TEMPLATES.TemplateResponse(
         "integraciones.html",
         {"request": request, **(await integ.estado(tenant_id)),
-         "sii_caps": (await sii_svc.estado(tenant_id))["sii_caps"]})
+         "sii_caps": (await sii_svc.estado(tenant_id))["sii_caps"],
+         "sii_cert": await sii_svc.cert_estado(tenant_id)})
 
 
 @router.post("/admin/tenants/{tenant_id}/sii/{cap}", response_class=HTMLResponse)
@@ -211,6 +212,43 @@ async def subir_rcv(request: Request, tenant_id: str,
         msg = f"⚠ {e}"
     return _TEMPLATES.TemplateResponse(
         "_sii_resultado.html", {"request": request, "res": res, "msg": msg})
+
+
+@router.post("/admin/tenants/{tenant_id}/sii-cert", response_class=HTMLResponse)
+async def subir_cert_sii(request: Request, tenant_id: str,
+                         archivo: UploadFile = File(...), password: str = Form(""),
+                         rut: str = Form(""), ambiente: str = Form("certificacion"),
+                         _admin: str = Depends(require_admin)):
+    from ..integraciones.sii_auth import SiiAuthError
+    contenido = await archivo.read()
+    msg = None
+    try:
+        await sii_svc.guardar_cert(tenant_id, contenido, password, rut, ambiente)
+        msg = "✓ Certificado válido y guardado."
+    except (sii_svc.AdminError, SiiAuthError) as e:
+        msg = f"⚠ {e}"
+    return _TEMPLATES.TemplateResponse(
+        "_sii_cert.html",
+        {"request": request, "tenant_id": tenant_id,
+         "sii_cert": await sii_svc.cert_estado(tenant_id), "cert_msg": msg})
+
+
+@router.post("/admin/tenants/{tenant_id}/sii-cert/probar", response_class=HTMLResponse)
+async def probar_cert_sii(request: Request, tenant_id: str,
+                          _admin: str = Depends(require_admin)):
+    from ..integraciones.sii_auth import SiiAuthError
+    msg = None
+    try:
+        token = await sii_svc.probar_conexion(tenant_id)
+        msg = f"✓ Conexión OK con el SII. Token: {token[:14]}…"
+    except (sii_svc.AdminError, SiiAuthError) as e:
+        msg = f"⚠ {e}"
+    except Exception as e:                        # noqa: BLE001 — red/SOAP del SII
+        msg = f"⚠ No se pudo conectar al SII: {e}"
+    return _TEMPLATES.TemplateResponse(
+        "_sii_cert.html",
+        {"request": request, "tenant_id": tenant_id,
+         "sii_cert": await sii_svc.cert_estado(tenant_id), "cert_msg": msg})
 
 
 @router.post("/admin/tenants/{tenant_id}/integraciones/{proveedor}", response_class=HTMLResponse)

@@ -1,0 +1,23 @@
+{% if cert_msg %}<div class="banner {{ 'err' if '⚠' in cert_msg else 'ok' }}">{{ cert_msg }}</div>{% endif %}
+
+{% if sii_cert %}
+<div style="font-size:13px;color:#374151;margin:4px 0;">
+  <div><strong>Titular:</strong> {{ sii_cert.titular or '—' }}</div>
+  <div><strong>RUT:</strong> {{ sii_cert.rut }} ·
+       <strong>Vence:</strong> {{ sii_cert.vence or '—' }} ·
+       <strong>Ambiente:</strong> {{ sii_cert.ambiente }}</div>
+</div>
+<div class="acciones" style="margin-top:8px;">
+  <button class="mini ok" type="button"
+          hx-post="/admin/tenants/{{ tenant_id }}/sii-cert/probar"
+          hx-target="#sii-cert" hx-swap="innerHTML">Probar conexión</button>
+</div>
+<details style="margin-top:10px;">
+  <summary style="cursor:pointer;font-size:12px;color:#6b7280;">Reemplazar certificado</summary>
+  {% set mostrar_form = true %}
+  {% include "_sii_cert_form.html" %}
+</details>
+{% else %}
+{% set mostrar_form = true %}
+{% include "_sii_cert_form.html" %}
+{% endif %}

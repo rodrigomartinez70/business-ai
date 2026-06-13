@@ -7,11 +7,13 @@ de módulos. La carga de RCV usa `finanzas.rcv.normalizar_rcv` y hace upsert en
 `documentos_tributarios` del schema del tenant (vía raw_pool + search_path).
 """
 
+import base64
 import json
 import logging
 
 from .. import config
 from ..finanzas.rcv import normalizar_rcv
+from ..integraciones import sii_auth
 from . import tenants as t
 
 logger = logging.getLogger(__name__)
@@ -101,3 +103,59 @@ async def subir_rcv(tenant_id: str, contenido: bytes, modo: str = "insertar") ->
                 f"{insertados} nuevos, {actualizados} actualizados")
     return {"modo": "insertar", "insertados": insertados, "actualizados": actualizados,
             **res["meta"]}
+
+
+# ─────────────────────────────────────────────────────────────
+# Certificado SII (Fase B) — guardar en public.integraciones (proveedor='sii')
+# ─────────────────────────────────────────────────────────────
+
+async def cert_estado(tenant_id: str) -> dict | None:
+    """Info (no sensible) del certificado SII cargado, o None."""
+    row = await config.raw_pool.fetchrow(
+        "SELECT cuenta_id, config FROM public.integraciones "
+        "WHERE tenant_id = $1 AND proveedor = 'sii'", tenant_id)
+    if not row:
+        return None
+    cfg = row["config"] if isinstance(row["config"], dict) else json.loads(row["config"] or "{}")
+    return {"rut": cfg.get("rut") or row["cuenta_id"] or "—",
+            "titular": cfg.get("titular", ""), "vence": cfg.get("vence", ""),
+            "ambiente": cfg.get("ambiente", "certificacion")}
+
+
+async def guardar_cert(tenant_id: str, pfx_bytes: bytes, password: str,
+                       rut: str, ambiente: str) -> dict:
+    """Valida que el .pfx abre con su clave y lo guarda (base64) + metadata."""
+    if not t._TENANT_RE.match(tenant_id):
+        raise AdminError("ID de empresa inválido.")
+    if ambiente not in sii_auth.AMBIENTES:
+        ambiente = "certificacion"
+    _key, cert = sii_auth.cargar_pfx(pfx_bytes, password)     # SiiAuthError si falla
+    info = sii_auth.info_cert(cert)
+    cfg = {"password": password, "ambiente": ambiente,
+           "rut": (rut or info.get("rut") or "").strip(),
+           "titular": info.get("titular", ""), "vence": info.get("vence", "")}
+    await config.raw_pool.execute(
+        """INSERT INTO public.integraciones
+               (tenant_id, proveedor, access_token, cuenta_id, config, activo, actualizado_en)
+           VALUES ($1, 'sii', $2, $3, $4::jsonb, TRUE, now())
+           ON CONFLICT (tenant_id, proveedor) DO UPDATE
+               SET access_token = EXCLUDED.access_token, cuenta_id = EXCLUDED.cuenta_id,
+                   config = EXCLUDED.config, activo = TRUE, actualizado_en = now()""",
+        tenant_id, base64.b64encode(pfx_bytes).decode(), cfg["rut"], json.dumps(cfg))
+    logger.info(f"[admin] cert SII guardado para {tenant_id} ({cfg['ambiente']})")
+    return info
+
+
+async def probar_conexion(tenant_id: str) -> str:
+    """Carga el cert guardado y obtiene un token del SII (CrSeed→firma→GetToken).
+    Devuelve un prefijo del token. Lanza AdminError/SiiAuthError con el detalle."""
+    row = await config.raw_pool.fetchrow(
+        "SELECT access_token, config FROM public.integraciones "
+        "WHERE tenant_id = $1 AND proveedor = 'sii'", tenant_id)
+    if not row or not row["access_token"]:
+        raise AdminError("No hay certificado SII cargado para esta empresa.")
+    cfg = row["config"] if isinstance(row["config"], dict) else json.loads(row["config"] or "{}")
+    token = await sii_auth.obtener_token(
+        base64.b64decode(row["access_token"]), cfg.get("password", ""),
+        cfg.get("ambiente", "certificacion"))
+    return token

@@ -1,0 +1,18 @@
+<form style="margin-top:8px;" hx-post="/admin/tenants/{{ tenant_id }}/sii-cert"
+      hx-encoding="multipart/form-data" hx-target="#sii-cert" hx-swap="innerHTML">
+  <div class="grid">
+    <label class="full">Certificado (.pfx / .p12)
+      <input type="file" name="archivo" accept=".pfx,.p12" required style="font-size:12px;"></label>
+    <label>Clave del certificado
+      <input type="password" name="password" autocomplete="new-password"></label>
+    <label>RUT (opcional — se lee del cert)
+      <input name="rut" placeholder="76.123.456-7"></label>
+    <label class="full">Ambiente
+      <select name="ambiente">
+        <option value="certificacion">Certificación (maullin)</option>
+        <option value="produccion">Producción (palena)</option>
+      </select>
+    </label>
+  </div>
+  <button class="mini" type="submit" style="margin-top:10px;">Guardar y validar</button>
+</form>
