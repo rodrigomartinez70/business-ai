@@ -6,15 +6,9 @@
     <h3 class="sec-title">{{ sec.icono }} {{ sec.titulo }}</h3>
     <div class="cal-grid">
       {% for ig in sec.sistemas %}
-      {# checkbox-hack: la caluga abre el modal, sin JS #}
+      {# checkbox-hack: el modal va PEGADO al checkbox (selector +) para que cada
+         caluga abra solo su modal; la caluga (label for=) va después. #}
       <input type="checkbox" id="ig-{{ ig.proveedor }}" class="ig-toggle">
-      <label for="ig-{{ ig.proveedor }}" class="caluga">
-        <span class="cal-logo" style="background:{{ ig.color }};">{{ ig.sigla }}</span>
-        <span class="cal-name">{{ ig.sistema }}</span>
-        <span class="cal-state {{ 'on' if ig.configurado else 'off' }}">
-          {{ 'Configurada' if ig.configurado else 'Mock' }}</span>
-      </label>
-
       <div class="ig-modal">
         <label for="ig-{{ ig.proveedor }}" class="ig-modal-bg" title="Cerrar"></label>
         <div class="ig-modal-box">
@@ -61,6 +55,12 @@
           </form>
         </div>
       </div>
+      <label for="ig-{{ ig.proveedor }}" class="caluga">
+        <span class="cal-logo" style="background:{{ ig.color }};">{{ ig.sigla }}</span>
+        <span class="cal-name">{{ ig.sistema }}</span>
+        <span class="cal-state {{ 'on' if ig.configurado else 'off' }}">
+          {{ 'Configurada' if ig.configurado else 'Mock' }}</span>
+      </label>
       {% endfor %}
     </div>
   </section>
