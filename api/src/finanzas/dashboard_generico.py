@@ -22,6 +22,7 @@ from src.finanzas.conciliacion import calcular_conciliacion
 from src.finanzas.pnl import renderizar_pnl_html
 from src.finanzas.pnl_plantilla import calcular_desde_plantilla
 from src.finanzas import comercial
+from src.marketing.dashboard import calcular_marketing, renderizar_marketing_html
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,7 @@ async def calcular_dashboard() -> dict:
     pnl          = await _pnl(cfg, corte)
     gastos       = await calcular_control_gastos(desde, corte)
     conciliacion = await calcular_conciliacion(corte, 30)
+    marketing    = await calcular_marketing(corte, 61)     # None si no hay tablas/datos
     ipc          = await obtener_ipc(12)
 
     comercial_html = (await comercial.render(cfg, _vertical_de(cfg), desde, corte)
@@ -82,6 +84,7 @@ async def calcular_dashboard() -> dict:
         "gastos":         gastos,
         "conciliacion":   conciliacion,
         "comercial_html": comercial_html,
+        "marketing":      marketing,
         "ipc":            ipc,
     }
 
@@ -131,13 +134,15 @@ def _sec_conciliacion(con: dict) -> str:
 
 
 def secciones_html(data: dict, cfg: dict) -> dict:
-    """Mismas claves canónicas que un dashboard de vertical; las que no aplican a
-    una empresa sin POS (cierre, tributario, marketing, estado_dte) se omiten y el
-    Informe las degrada solas."""
+    """Mismas claves canónicas que un dashboard de vertical; las que no aplican
+    (cierre, tributario, estado_dte) se omiten y el Informe las degrada solas.
+    Marketing aparece si la empresa tiene datos de marketing (Meta/Google)."""
+    mkt = data.get("marketing")
     return {
         "pnl":          _sec_pnl(data["pnl"], cfg),
         "comercial":    data.get("comercial_html") or "",
         "gastos":       _sec_gastos(data["gastos"], cfg),
         "conciliacion": _sec_conciliacion(data.get("conciliacion", {})),
+        "marketing":    renderizar_marketing_html(mkt, cfg) if mkt else "",
         "ipc":          renderizar_ipc_html(data.get("ipc")),
     }
