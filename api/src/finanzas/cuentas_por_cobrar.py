@@ -14,6 +14,8 @@ cobro, sobre la venta diaria promedio de los últimos 90 días). Sin LLM — SQL
 import logging
 from datetime import date, timedelta
 
+import asyncpg
+
 from src import config
 from src.tenant import get_tenant_or_none
 from src.agents._common import to_float, fetchval_opt
@@ -21,6 +23,35 @@ from src.agents._common import to_float, fetchval_opt
 logger = logging.getLogger(__name__)
 
 _MAX_LISTA = 10
+_COBRADOS = ("cobrado", "cobrada", "pagado", "pagada", "anulado", "anulada")
+
+
+async def _cartera_documentos(conn, hasta: date) -> list[dict]:
+    """CxC de una empresa sin POS: facturas/boletas emitidas del RCV (clase='venta')
+    aún no cobradas. El SII da el documento; el estado de cobro real exige conciliar
+    con el banco o el ERP."""
+    try:
+        rows = await conn.fetch(
+            "SELECT fecha, proveedor AS cliente, monto_total AS total "
+            "FROM documentos_tributarios "
+            "WHERE clase = 'venta' AND fecha <= $1 "
+            "AND LOWER(COALESCE(estado, '')) <> ALL($2::text[])", hasta, list(_COBRADOS))
+    except asyncpg.UndefinedColumnError:
+        return []
+    return [{"fecha": r["fecha"], "cliente": r["cliente"] or "—",
+             "monto": round(to_float(r["total"]), 2)}
+            for r in rows if to_float(r["total"]) > 1]
+
+
+async def _ventas_doc_90(conn, desde: date, hasta: date) -> float:
+    """Ventas emitidas (RCV) en la ventana, para el DSO de una empresa sin POS."""
+    try:
+        v = await conn.fetchval(
+            "SELECT COALESCE(SUM(monto_total), 0) FROM documentos_tributarios "
+            "WHERE clase = 'venta' AND fecha BETWEEN $1 AND $2", desde, hasta)
+    except asyncpg.UndefinedColumnError:
+        return 0.0
+    return to_float(v or 0)
 
 
 async def _cartera_hotel(conn, hasta: date) -> list[dict]:
@@ -65,10 +96,13 @@ async def calcular_cuentas_por_cobrar(hasta: date) -> dict:
         elif vertical == "hotel":
             cartera = await _cartera_hotel(conn, hasta)
         else:
-            cartera = []        # empresa sin POS: la cartera vendría de facturas (futuro)
-        ventas_90 = to_float(await fetchval_opt(conn,
-            "SELECT COALESCE(SUM(monto), 0) FROM pagos WHERE fecha BETWEEN $1 AND $2",
-            desde_90, hasta) or 0)
+            cartera = await _cartera_documentos(conn, hasta)   # sin POS → facturas emitidas (RCV)
+        if vertical in ("restaurante", "hotel"):
+            ventas_90 = to_float(await fetchval_opt(conn,
+                "SELECT COALESCE(SUM(monto), 0) FROM pagos WHERE fecha BETWEEN $1 AND $2",
+                desde_90, hasta) or 0)
+        else:
+            ventas_90 = await _ventas_doc_90(conn, desde_90, hasta)
 
     buckets = {"d0_30": 0.0, "d31_60": 0.0, "d60_mas": 0.0}
     items = []

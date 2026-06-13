@@ -12,6 +12,8 @@ Sin LLM — SQL puro.
 import logging
 from datetime import date, timedelta
 
+import asyncpg
+
 from src import config
 from src.agents._common import to_float
 
@@ -31,15 +33,17 @@ def _monto(d) -> float:
 
 async def calcular_cuentas_por_pagar(hasta: date, plazo_dias: int = PLAZO_DIAS) -> dict:
     """CxP abiertas al corte `hasta`, con vencimiento estimado = fecha + plazo_dias."""
+    # Solo facturas de COMPRA (clase='compra'); las ventas del RCV no son obligaciones
+    # a pagar. Defensivo: si el schema no tiene `clase` (pre-012), solo había compras.
+    _sql = ("SELECT fecha, proveedor, numero_documento, monto_neto, monto_iva, "
+            "monto_total, estado FROM documentos_tributarios "
+            "WHERE LOWER(COALESCE(estado, '')) <> ALL($1::text[]) AND fecha <= $2 {clase} "
+            "ORDER BY fecha")
     async with config.db_pool.acquire() as conn:
-        docs = await conn.fetch(
-            """SELECT fecha, proveedor, numero_documento, monto_neto, monto_iva,
-                      monto_total, estado
-                 FROM documentos_tributarios
-                WHERE LOWER(COALESCE(estado, '')) <> ALL($1::text[])
-                  AND fecha <= $2
-                ORDER BY fecha""",
-            list(_PAGADOS), hasta)
+        try:
+            docs = await conn.fetch(_sql.format(clase="AND clase = 'compra'"), list(_PAGADOS), hasta)
+        except asyncpg.UndefinedColumnError:
+            docs = await conn.fetch(_sql.format(clase=""), list(_PAGADOS), hasta)
 
     buckets = {"por_vencer": 0.0, "d1_30": 0.0, "d31_60": 0.0, "d60_mas": 0.0}
     por_proveedor: dict[str, float] = {}
