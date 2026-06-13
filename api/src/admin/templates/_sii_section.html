@@ -8,6 +8,28 @@
   </div>
 
   <div class="card" style="margin:10px 0;">
+    <div style="font-weight:700;font-size:14px;margin:0 0 2px;">🧪 Datos de muestra (demo)</div>
+    <div style="color:#6b7280;font-size:12px;margin:0 0 8px;">
+      Para probar sin conectividad real. Quedan <strong>etiquetados como mock</strong>:
+      "Limpiar muestra" los borra y la data real (cert/cartola) queda intacta.</div>
+    <div class="acciones" style="gap:8px;flex-wrap:wrap;">
+      <button class="icon-btn" type="button"
+              hx-post="/admin/tenants/{{ tenant_id }}/sii-muestra"
+              hx-target="#muestra-resultado" hx-swap="innerHTML"
+              hx-confirm="¿Cargar DTE de muestra (ventas + compras, 3 meses) en {{ tenant_id }}?">📥 Datos SII</button>
+      <button class="icon-btn" type="button"
+              hx-post="/admin/tenants/{{ tenant_id }}/banco-muestra"
+              hx-target="#muestra-resultado" hx-swap="innerHTML"
+              hx-confirm="¿Generar movimientos bancarios de muestra que calcen con los DTE?">📥 Datos banco</button>
+      <button class="icon-btn del" type="button"
+              hx-post="/admin/tenants/{{ tenant_id }}/muestra-limpiar"
+              hx-target="#muestra-resultado" hx-swap="innerHTML"
+              hx-confirm="¿Borrar SOLO la data de muestra (mock)? La data real no se toca.">🗑 Limpiar muestra</button>
+    </div>
+    <div id="muestra-resultado" style="margin-top:10px;"></div>
+  </div>
+
+  <div class="card" style="margin:10px 0;">
     <div style="font-weight:700;font-size:14px;margin:0 0 2px;">🔐 Conexión SII (certificado digital)</div>
     <div style="color:#6b7280;font-size:12px;margin:0 0 8px;">
       Fase B: con el certificado se trae el RCV automáticamente, sin subir CSV.</div>

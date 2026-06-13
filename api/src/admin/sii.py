@@ -10,9 +10,11 @@ de módulos. La carga de RCV usa `finanzas.rcv.normalizar_rcv` y hace upsert en
 import base64
 import json
 import logging
-from datetime import date
+import random
+from datetime import date, timedelta
 
 from .. import config
+from ..agents._common import to_float
 from ..finanzas.conciliacion import conciliar_y_marcar
 from ..finanzas.rcv import normalizar_rcv
 from ..integraciones import sii_auth, sii_rcv_api
@@ -254,3 +256,141 @@ async def probar_conexion(tenant_id: str) -> str:
         base64.b64decode(row["access_token"]), cfg.get("password", ""),
         cfg.get("ambiente", "certificacion"))
     return token
+
+
+# ─────────────────────────────────────────────────────────────
+# Datos de muestra (demo) — etiquetados para poder reemplazarlos por data real
+#   DTE:        observaciones = 'mock'
+#   movimientos: referencia    = 'MOCK'
+# La carga real (RCV por cert / cartola subida) NO lleva esas etiquetas → "Limpiar
+# muestra" borra solo lo mock y deja intacta la data real.
+# ─────────────────────────────────────────────────────────────
+
+_CLIENTES = ["Comercial Andes Ltda", "Distribuidora Sur SpA", "Servicios Norte SA", "Retail Pacífico EIRL"]
+_PROVS    = ["Insumos Centro SpA", "Logística del Sur Ltda", "Energía y Gas SA", "Oficina Total EIRL"]
+
+
+def _rut(rng) -> str:
+    return f"{rng.randint(60,79)}.{rng.randint(100,999)}.{rng.randint(100,999)}-{rng.randint(0,9)}"
+
+
+def _mes_menos(hoy: date, k: int) -> tuple[int, int]:
+    tot = hoy.year * 12 + (hoy.month - 1) - k
+    return tot // 12, tot % 12 + 1
+
+
+def _gen_dtes_mock(hoy: date) -> list[dict]:
+    """DTE de muestra: ventas (facturas/boletas) + compras de los últimos 3 meses."""
+    rng = random.Random(20260613)
+    docs, fv, fc = [], 9100, 8100
+    for k in range(3):
+        y, m = _mes_menos(hoy, k)
+        dmax = hoy.day if k == 0 else 28
+        if dmax < 1:
+            continue
+        for _ in range(3):
+            neto = rng.randint(300, 2500) * 1000
+            docs.append({"clase": "venta", "tipo": ("boleta" if rng.random() < 0.35 else "factura"),
+                         "numero_documento": str(fv), "rut_contraparte": _rut(rng),
+                         "proveedor": rng.choice(_CLIENTES), "fecha": date(y, m, rng.randint(1, dmax)),
+                         "monto_neto": neto, "monto_iva": round(neto * 0.19), "monto_total": round(neto * 1.19)})
+            fv += 1
+        for _ in range(3):
+            neto = rng.randint(150, 1500) * 1000
+            docs.append({"clase": "compra", "tipo": "factura",
+                         "numero_documento": str(fc), "rut_contraparte": _rut(rng),
+                         "proveedor": rng.choice(_PROVS), "fecha": date(y, m, rng.randint(1, dmax)),
+                         "monto_neto": neto, "monto_iva": round(neto * 0.19), "monto_total": round(neto * 1.19)})
+            fc += 1
+    return docs
+
+
+def _filas(status: str) -> int:
+    try:
+        return int(status.rsplit(" ", 1)[-1])
+    except ValueError:
+        return 0
+
+
+async def cargar_muestra_sii(tenant_id: str) -> dict:
+    """Inserta DTE de muestra (etiquetados 'mock') en documentos_tributarios."""
+    if not t._TENANT_RE.match(tenant_id):
+        raise AdminError("ID de empresa inválido.")
+    docs = _gen_dtes_mock(date.today())
+    ins = 0
+    async with config.raw_pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(f'SET LOCAL search_path = "{tenant_id}", public')
+            for d in docs:
+                try:
+                    r = await conn.execute(
+                        "INSERT INTO documentos_tributarios (clase,tipo,numero_documento,rut_contraparte,"
+                        "proveedor,fecha,monto_neto,monto_iva,monto_total,estado,observaciones) "
+                        "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'registrado','mock') "
+                        "ON CONFLICT (clase,tipo,numero_documento,rut_contraparte) "
+                        "WHERE numero_documento IS NOT NULL AND rut_contraparte IS NOT NULL DO NOTHING",
+                        d["clase"], d["tipo"], d["numero_documento"], d["rut_contraparte"], d["proveedor"],
+                        d["fecha"], d["monto_neto"], d["monto_iva"], d["monto_total"])
+                except Exception as e:                       # noqa: BLE001
+                    raise AdminError(f"No se pudo cargar la muestra SII en '{tenant_id}': {e}")
+                ins += _filas(r)
+    logger.info(f"[admin] muestra SII en {tenant_id}: {ins}/{len(docs)} DTE")
+    return {"documentos": len(docs), "insertados": ins}
+
+
+async def cargar_muestra_banco(tenant_id: str) -> dict:
+    """Genera movimientos bancarios (etiquetados 'MOCK') que calzan con un subconjunto
+    de los DTE → la conciliación matchea y CxC/CxP reflejan lo pendiente. Reemplaza la
+    muestra de banco previa. Requiere DTE cargados."""
+    if not t._TENANT_RE.match(tenant_id):
+        raise AdminError("ID de empresa inválido.")
+    rng = random.Random(7720)
+    hoy = date.today()
+    movs: list = []
+    async with config.raw_pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(f'SET LOCAL search_path = "{tenant_id}", public')
+            try:
+                docs = await conn.fetch(
+                    "SELECT clase, fecha, monto_total, proveedor FROM documentos_tributarios "
+                    "WHERE clase IN ('venta','compra') AND fecha <= $1 "
+                    "AND LOWER(COALESCE(estado,'')) NOT IN ('anulado','anulada','rechazado','rechazada') "
+                    "ORDER BY fecha", hoy)
+            except Exception:                                # noqa: BLE001
+                raise AdminError("Cargá primero los datos de muestra del SII.")
+            if not docs:
+                raise AdminError("No hay DTE para conciliar; cargá la muestra del SII primero.")
+            await conn.execute("DELETE FROM movimientos_bancarios WHERE referencia = 'MOCK'")
+            for d in docs:
+                edad = (hoy - d["fecha"]).days
+                prob = 0.9 if edad > 30 else 0.55 if edad >= 7 else 0.2
+                if rng.random() > prob:
+                    continue
+                fpago = d["fecha"] + timedelta(days=rng.randint(2, max(2, min(edad, 45))))
+                if fpago > hoy:
+                    fpago = hoy
+                signo = 1 if d["clase"] == "venta" else -1
+                glosa = ("Cobro " if signo > 0 else "Pago ") + (d["proveedor"] or "")
+                movs.append((fpago, glosa[:200], round(signo * to_float(d["monto_total"]), 2)))
+            for f, g, mt in movs:
+                await conn.execute(
+                    "INSERT INTO movimientos_bancarios (fecha,glosa,monto,referencia) VALUES ($1,$2,$3,'MOCK')",
+                    f, g, mt)
+    logger.info(f"[admin] muestra banco en {tenant_id}: {len(movs)} movimientos")
+    return {"movimientos": len(movs)}
+
+
+async def limpiar_muestra(tenant_id: str) -> dict:
+    """Borra SOLO la data de muestra (DTE 'mock' + movimientos 'MOCK'); la data real
+    (RCV por cert / cartola subida) queda intacta."""
+    if not t._TENANT_RE.match(tenant_id):
+        raise AdminError("ID de empresa inválido.")
+    async with config.raw_pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(f'SET LOCAL search_path = "{tenant_id}", public')
+            try:
+                d1 = await conn.execute("DELETE FROM documentos_tributarios WHERE observaciones = 'mock'")
+            except Exception:                                # noqa: BLE001
+                d1 = "DELETE 0"
+            d2 = await conn.execute("DELETE FROM movimientos_bancarios WHERE referencia = 'MOCK'")
+    return {"documentos": _filas(d1), "movimientos": _filas(d2)}

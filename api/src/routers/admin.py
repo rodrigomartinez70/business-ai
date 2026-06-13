@@ -277,6 +277,43 @@ async def sincronizar_rcv_sii(request: Request, tenant_id: str,
          "sii_cert": await sii_svc.cert_estado(tenant_id), "cert_msg": msg})
 
 
+@router.post("/admin/tenants/{tenant_id}/sii-muestra", response_class=HTMLResponse)
+async def cargar_muestra_sii(request: Request, tenant_id: str,
+                            _admin: str = Depends(require_admin)):
+    try:
+        r = await sii_svc.cargar_muestra_sii(tenant_id)
+        msg = f"📥 Datos de muestra SII: {r['insertados']} DTE nuevos (de {r['documentos']})."
+    except sii_svc.AdminError as e:
+        msg = f"⚠ {e}"
+    return _TEMPLATES.TemplateResponse(
+        "_sii_resultado.html", {"request": request, "res": None, "msg": msg})
+
+
+@router.post("/admin/tenants/{tenant_id}/banco-muestra", response_class=HTMLResponse)
+async def cargar_muestra_banco(request: Request, tenant_id: str,
+                              _admin: str = Depends(require_admin)):
+    try:
+        r = await sii_svc.cargar_muestra_banco(tenant_id)
+        msg = f"📥 Datos de muestra banco: {r['movimientos']} movimientos (calzan con los DTE)."
+    except sii_svc.AdminError as e:
+        msg = f"⚠ {e}"
+    return _TEMPLATES.TemplateResponse(
+        "_sii_resultado.html", {"request": request, "res": None, "msg": msg})
+
+
+@router.post("/admin/tenants/{tenant_id}/muestra-limpiar", response_class=HTMLResponse)
+async def limpiar_muestra(request: Request, tenant_id: str,
+                          _admin: str = Depends(require_admin)):
+    try:
+        r = await sii_svc.limpiar_muestra(tenant_id)
+        msg = (f"🗑 Muestra eliminada: {r['documentos']} DTE + {r['movimientos']} movimientos. "
+               f"La data real (cert/cartola) no se toca.")
+    except sii_svc.AdminError as e:
+        msg = f"⚠ {e}"
+    return _TEMPLATES.TemplateResponse(
+        "_sii_resultado.html", {"request": request, "res": None, "msg": msg})
+
+
 @router.post("/admin/tenants/{tenant_id}/conciliar", response_class=HTMLResponse)
 async def conciliar_tenant(request: Request, tenant_id: str,
                            _admin: str = Depends(require_admin)):
