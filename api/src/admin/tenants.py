@@ -270,6 +270,26 @@ async def set_modulo(tenant_id: str, clave: str, activo: bool) -> None:
     logger.info(f"[admin] {tenant_id} módulo {clave} → {'on' if activo else 'off'}")
 
 
+async def eliminar(tenant_id: str) -> dict:
+    """Elimina una empresa: filas de control (api_keys, integraciones, schedules) +
+    DROP SCHEMA con todos sus datos. IRREVERSIBLE. Recarga el registry."""
+    tenant_id = (tenant_id or "").strip().lower()
+    if not _TENANT_RE.match(tenant_id):                      # anti-inyección en DROP SCHEMA
+        raise AdminError("ID de empresa inválido.")
+    if not await config.raw_pool.fetchval("SELECT 1 FROM public.tenants WHERE id = $1", tenant_id):
+        raise AdminError(f"No existe la empresa '{tenant_id}'.")
+    async with config.raw_pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute("DELETE FROM public.api_keys WHERE tenant_id = $1", tenant_id)
+            await conn.execute("DELETE FROM public.integraciones WHERE tenant_id = $1", tenant_id)
+            await conn.execute("DELETE FROM public.report_schedules WHERE tenant_id = $1", tenant_id)
+            await conn.execute("DELETE FROM public.tenants WHERE id = $1", tenant_id)
+            await conn.execute(f'DROP SCHEMA IF EXISTS "{tenant_id}" CASCADE')
+    await _recargar_registry()
+    logger.warning(f"[admin] EMPRESA ELIMINADA: {tenant_id}")
+    return {"tenant_id": tenant_id}
+
+
 async def set_activo(tenant_id: str, activo: bool) -> dict:
     row = await config.raw_pool.fetchrow(
         "SELECT id FROM public.tenants WHERE id = $1", tenant_id)

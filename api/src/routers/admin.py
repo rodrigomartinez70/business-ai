@@ -95,6 +95,24 @@ async def toggle(
         "_tabla.html", {"request": request, "tenants": await svc.listar()})
 
 
+@router.post("/admin/tenants/{tenant_id}/eliminar", response_class=HTMLResponse)
+async def eliminar(
+    request:   Request,
+    tenant_id: str,
+    _admin:    str = Depends(require_admin),
+):
+    mensaje, error = None, None
+    try:
+        await svc.eliminar(tenant_id)
+        mensaje = f"🗑 Empresa «{tenant_id}» eliminada por completo."
+    except svc.AdminError as e:
+        error = str(e)
+    return _TEMPLATES.TemplateResponse(
+        "_resultado.html",
+        {"request": request, "creada": None, "error": error,
+         "mensaje": mensaje, "tenants": await svc.listar()})
+
+
 @router.get("/api/admin/tenants")
 async def api_listar(_admin: str = Depends(require_admin)):
     return JSONResponse(
