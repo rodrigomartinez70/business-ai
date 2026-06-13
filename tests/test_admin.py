@@ -70,6 +70,13 @@ async def test_crear_preset_invalido():
 
 # ── Capacidades SII (bajo request) ──────────────────────────────────────
 
+def test_iter_periodos_backfill():
+    from src.admin import sii
+    assert list(sii._iter_periodos(2024, 11, 2025, 2)) == [(2024, 11), (2024, 12), (2025, 1), (2025, 2)]
+    assert len(list(sii._iter_periodos(2024, 1, 2025, 12))) == 24
+    assert list(sii._iter_periodos(2025, 6, 2025, 6)) == [(2025, 6)]   # un solo mes
+
+
 def test_sii_caps_defaults():
     from src.admin import sii
     assert {c["clave"] for c in sii.CAPS} == {"rcv", "estado_dte"}

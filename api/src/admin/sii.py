@@ -112,12 +112,8 @@ async def _upsert_docs(conn, tenant_id: str, docs: list[dict]) -> tuple[int, int
     return insertados, actualizados
 
 
-async def sincronizar_rcv(tenant_id: str, anio: int, mes: int) -> dict:
-    """Fase B paso 2: token SII → consulta RCV (compras=recibidos + ventas=emitidos)
-    del período → upsert en documentos_tributarios. Re-ejecutar un período cerrado lo
-    actualiza (upsert idempotente)."""
-    if not t._TENANT_RE.match(tenant_id):
-        raise AdminError("ID de empresa inválido.")
+async def _token_cert(tenant_id: str) -> tuple[str, str, str]:
+    """(token, rut, ambiente) del certificado SII guardado. Lanza AdminError si no hay."""
     row = await config.raw_pool.fetchrow(
         "SELECT access_token, cuenta_id, config FROM public.integraciones "
         "WHERE tenant_id = $1 AND proveedor = 'sii'", tenant_id)
@@ -126,23 +122,67 @@ async def sincronizar_rcv(tenant_id: str, anio: int, mes: int) -> dict:
     cfg = row["config"] if isinstance(row["config"], dict) else json.loads(row["config"] or "{}")
     ambiente = cfg.get("ambiente", "certificacion")
     rut = cfg.get("rut") or row["cuenta_id"] or ""
-
     token = await sii_auth.obtener_token(
         base64.b64decode(row["access_token"]), cfg.get("password", ""), ambiente)
+    return token, rut, ambiente
+
+
+async def _sync_periodo(tenant_id: str, token: str, rut: str, ambiente: str,
+                        anio: int, mes: int) -> dict:
+    """Consulta RCV de un período (con un token ya obtenido) → upsert."""
     recibidos = await sii_rcv_api.consultar(token, rut, anio, mes, "COMPRA", ambiente)
     emitidos  = await sii_rcv_api.consultar(token, rut, anio, mes, "VENTA", ambiente)
     docs = recibidos + emitidos
-
     insertados = actualizados = 0
     if docs:
         async with config.raw_pool.acquire() as conn:
             async with conn.transaction():
                 insertados, actualizados = await _upsert_docs(conn, tenant_id, docs)
-    logger.info(f"[admin] RCV SII {tenant_id} {anio}-{mes}: "
-                f"recibidos={len(recibidos)} emitidos={len(emitidos)} "
-                f"ins={insertados} act={actualizados}")
-    return {"periodo": f"{anio}-{mes:02d}", "recibidos": len(recibidos),
-            "emitidos": len(emitidos), "insertados": insertados, "actualizados": actualizados}
+    return {"recibidos": len(recibidos), "emitidos": len(emitidos),
+            "insertados": insertados, "actualizados": actualizados}
+
+
+def _iter_periodos(anio_d: int, mes_d: int, anio_h: int, mes_h: int):
+    """(anio, mes) desde→hasta inclusive."""
+    cur, fin = anio_d * 12 + (mes_d - 1), anio_h * 12 + (mes_h - 1)
+    while cur <= fin:
+        yield cur // 12, cur % 12 + 1
+        cur += 1
+
+
+async def sincronizar_rcv(tenant_id: str, anio: int, mes: int) -> dict:
+    """Fase B paso 2: token SII → consulta RCV (recibidos+emitidos) del período →
+    upsert. Re-ejecutar un período cerrado lo actualiza (upsert idempotente)."""
+    if not t._TENANT_RE.match(tenant_id):
+        raise AdminError("ID de empresa inválido.")
+    token, rut, ambiente = await _token_cert(tenant_id)
+    r = await _sync_periodo(tenant_id, token, rut, ambiente, anio, mes)
+    logger.info(f"[admin] RCV SII {tenant_id} {anio}-{mes}: {r}")
+    return {"periodo": f"{anio}-{mes:02d}", **r}
+
+
+async def sincronizar_rcv_rango(tenant_id: str, anio_d: int, mes_d: int,
+                                anio_h: int, mes_h: int) -> dict:
+    """Backfill: trae el RCV de todos los meses del rango con UN solo token. Útil
+    para la carga histórica inicial (año actual + anterior). Upsert idempotente."""
+    if not t._TENANT_RE.match(tenant_id):
+        raise AdminError("ID de empresa inválido.")
+    if not (1 <= mes_d <= 12 and 1 <= mes_h <= 12):
+        raise AdminError("Período inválido.")
+    if anio_h * 12 + mes_h < anio_d * 12 + mes_d:
+        raise AdminError("El período 'desde' debe ser anterior o igual a 'hasta'.")
+    if (anio_h * 12 + mes_h) - (anio_d * 12 + mes_d) > 35:
+        raise AdminError("Rango máximo: 36 meses.")
+
+    token, rut, ambiente = await _token_cert(tenant_id)          # una sola vez
+    tot = {"periodos": 0, "recibidos": 0, "emitidos": 0, "insertados": 0, "actualizados": 0}
+    for anio, mes in _iter_periodos(anio_d, mes_d, anio_h, mes_h):
+        r = await _sync_periodo(tenant_id, token, rut, ambiente, anio, mes)
+        tot["periodos"] += 1
+        for k in ("recibidos", "emitidos", "insertados", "actualizados"):
+            tot[k] += r[k]
+    logger.info(f"[admin] backfill RCV {tenant_id} {anio_d}-{mes_d}→{anio_h}-{mes_h}: {tot}")
+    return {"desde": f"{anio_d}-{mes_d:02d}", "hasta": f"{anio_h}-{mes_h:02d}", **tot}
 
 
 # ─────────────────────────────────────────────────────────────

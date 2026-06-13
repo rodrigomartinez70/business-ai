@@ -277,6 +277,31 @@ async def sincronizar_rcv_sii(request: Request, tenant_id: str,
          "sii_cert": await sii_svc.cert_estado(tenant_id), "cert_msg": msg})
 
 
+@router.post("/admin/tenants/{tenant_id}/sii-rcv-rango", response_class=HTMLResponse)
+async def backfill_rcv_sii(request: Request, tenant_id: str, desde: str = Form(...),
+                           hasta: str = Form(...), _admin: str = Depends(require_admin)):
+    from ..integraciones.sii_auth import SiiAuthError
+    try:
+        ad, md = int(desde[:4]), int(desde[5:7])
+        ah, mh = int(hasta[:4]), int(hasta[5:7])
+    except (ValueError, IndexError):
+        msg = "⚠ Período inválido (usá los selectores de mes)."
+    else:
+        try:
+            r = await sii_svc.sincronizar_rcv_rango(tenant_id, ad, md, ah, mh)
+            msg = (f"✓ Backfill {r['desde']} → {r['hasta']}: {r['periodos']} meses · "
+                   f"{r['recibidos']} recibidos · {r['emitidos']} emitidos → "
+                   f"{r['insertados']} nuevos, {r['actualizados']} actualizados.")
+        except (sii_svc.AdminError, SiiAuthError) as e:
+            msg = f"⚠ {e}"
+        except Exception as e:                    # noqa: BLE001 — red/SOAP del SII
+            msg = f"⚠ Error en el backfill: {e}"
+    return _TEMPLATES.TemplateResponse(
+        "_sii_cert.html",
+        {"request": request, "tenant_id": tenant_id,
+         "sii_cert": await sii_svc.cert_estado(tenant_id), "cert_msg": msg})
+
+
 @router.post("/admin/tenants/{tenant_id}/integraciones/{proveedor}", response_class=HTMLResponse)
 async def guardar_integracion(request: Request, tenant_id: str, proveedor: str,
                               _admin: str = Depends(require_admin)):
