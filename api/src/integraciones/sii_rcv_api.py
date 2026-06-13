@@ -88,11 +88,14 @@ def _rut_partes(rut: str) -> tuple[str, str]:
 
 def _extraer_detalle(payload: dict) -> list[dict]:
     """Saca la lista de filas de la respuesta del SII (tolerante a la estructura)."""
-    data = payload.get("data", payload) if isinstance(payload, dict) else {}
-    for k in ("detalle", "detalleCompra", "detalleVenta", "items", "rows"):
-        if isinstance(data.get(k), list):
-            return data[k]
-    return data if isinstance(data, list) else []
+    data = payload.get("data", payload) if isinstance(payload, dict) else payload
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        for k in ("detalle", "detalleCompra", "detalleVenta", "items", "rows"):
+            if isinstance(data.get(k), list):
+                return data[k]
+    return []
 
 
 async def consultar(token: str, rut: str, anio: int, mes: int, registro: str,
