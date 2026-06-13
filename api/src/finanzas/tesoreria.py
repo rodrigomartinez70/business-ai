@@ -37,16 +37,28 @@ async def _posicion_caja(conn, hasta: date) -> tuple[float, str]:
     return round(ing - egr, 2), "flujo_30d"
 
 
+async def _flujo_90(conn, desde: date, hasta: date) -> tuple[float, float]:
+    """Cobros y egresos del período. POS (pagos/gastos) si hay; si no, la cartola
+    (abonos=cobros, cargos=egresos) — el flujo real de una empresa sin POS."""
+    pagos = to_float(await fetchval_opt(conn,
+        "SELECT COALESCE(SUM(monto),0) FROM pagos WHERE fecha BETWEEN $1 AND $2", desde, hasta) or 0)
+    gastos = to_float(await conn.fetchval(
+        "SELECT COALESCE(SUM(monto),0) FROM gastos WHERE fecha BETWEEN $1 AND $2", desde, hasta) or 0)
+    banco = await conn.fetchrow(
+        "SELECT COALESCE(SUM(monto) FILTER (WHERE monto > 0), 0) AS abonos, "
+        "COALESCE(-SUM(monto) FILTER (WHERE monto < 0), 0) AS cargos, COUNT(*) AS n "
+        "FROM movimientos_bancarios WHERE fecha BETWEEN $1 AND $2", desde, hasta)
+    tiene_banco = bool(banco and int(banco["n"]) > 0)
+    cobros  = pagos  if pagos  > 0 else (to_float(banco["abonos"]) if tiene_banco else 0.0)
+    egresos = gastos if gastos > 0 else (to_float(banco["cargos"]) if tiene_banco else 0.0)
+    return round(cobros, 2), round(egresos, 2)
+
+
 async def calcular_tesoreria(hasta: date) -> dict:
     desde_90 = hasta - timedelta(days=89)
     async with config.db_pool.acquire() as conn:
         caja, fuente_caja = await _posicion_caja(conn, hasta)
-        cobros_90 = to_float(await fetchval_opt(conn,
-            "SELECT COALESCE(SUM(monto),0) FROM pagos WHERE fecha BETWEEN $1 AND $2",
-            desde_90, hasta) or 0)
-        egresos_90 = to_float(await conn.fetchval(
-            "SELECT COALESCE(SUM(monto),0) FROM gastos WHERE fecha BETWEEN $1 AND $2",
-            desde_90, hasta) or 0)
+        cobros_90, egresos_90 = await _flujo_90(conn, desde_90, hasta)
 
     cxp = await calcular_cuentas_por_pagar(hasta)
     cxc = await calcular_cuentas_por_cobrar(hasta)
