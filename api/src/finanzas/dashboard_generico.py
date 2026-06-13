@@ -84,24 +84,32 @@ _VALIDO_DTE = ("LOWER(COALESCE(estado,'')) NOT IN "
                "('pendiente_revision','anulado','anulada','rechazado','rechazada')")
 
 
-async def _ventas_desde_rcv(cfg: dict, desde: date, corte: date) -> str | None:
+def _mtd(hasta: date) -> tuple[date, date, date, date]:
+    """Mes a la fecha vs mismo tramo del mes anterior → (ini_act, fin_act, ini_ant, fin_ant).
+    Comparación justa (mismos días) para empresas con facturación mensual."""
+    ini_act = date(hasta.year, hasta.month, 1)
+    pm = ini_act - timedelta(days=1)                  # último día del mes anterior
+    ini_ant = date(pm.year, pm.month, 1)
+    fin_ant = date(pm.year, pm.month, min(hasta.day, pm.day))
+    return ini_act, hasta, ini_ant, fin_ant
+
+
+async def _ventas_desde_rcv(cfg: dict, hasta: date) -> str | None:
     """Ventas/Comercial de una empresa sin POS: facturas/boletas emitidas del RCV
-    (clase='venta', neto) + variación y top clientes. Devuelve el HTML del card."""
-    largo = (corte - desde).days
-    ant_fin = desde - timedelta(days=1)
-    ant_desde = ant_fin - timedelta(days=largo)
+    (clase='venta', neto), mes a la fecha vs mismo tramo del mes anterior + top clientes."""
+    ini_act, fin_act, ini_ant, fin_ant = _mtd(hasta)
     async with config.db_pool.acquire() as conn:
         try:
             cur = await conn.fetchrow(
                 f"SELECT COALESCE(SUM(monto_neto),0) AS neto, COUNT(*) AS n FROM documentos_tributarios "
-                f"WHERE clase='venta' AND fecha BETWEEN $1 AND $2 AND {_VALIDO_DTE}", desde, corte)
+                f"WHERE clase='venta' AND fecha BETWEEN $1 AND $2 AND {_VALIDO_DTE}", ini_act, fin_act)
             tp = await conn.fetchval(
                 f"SELECT COALESCE(SUM(monto_neto),0) FROM documentos_tributarios "
-                f"WHERE clase='venta' AND fecha BETWEEN $1 AND $2 AND {_VALIDO_DTE}", ant_desde, ant_fin)
+                f"WHERE clase='venta' AND fecha BETWEEN $1 AND $2 AND {_VALIDO_DTE}", ini_ant, fin_ant)
             top = await conn.fetch(
                 f"SELECT COALESCE(NULLIF(TRIM(proveedor),''),'—') AS cliente, SUM(monto_neto) AS m "
                 f"FROM documentos_tributarios WHERE clase='venta' AND fecha BETWEEN $1 AND $2 AND {_VALIDO_DTE} "
-                f"GROUP BY 1 ORDER BY 2 DESC LIMIT 5", desde, corte)
+                f"GROUP BY 1 ORDER BY 2 DESC LIMIT 5", ini_act, fin_act)
         except Exception:                             # noqa: BLE001 — sin clase/tabla
             return None
     neto, n = to_float(cur["neto"]), int(cur["n"] or 0)
@@ -109,32 +117,32 @@ async def _ventas_desde_rcv(cfg: dict, desde: date, corte: date) -> str | None:
         return None
     tp = to_float(tp)
     var = f"{round((neto - tp) * 100 / tp, 1):+.1f}%" if tp > 0 else "—"
-    rows = [("Ventas netas (emitidas)", _fm(neto, cfg)),
+    rows = [("Ventas netas del mes", _fm(neto, cfg)),
             ("N° documentos", str(n)),
-            ("vs período anterior", var)]
+            ("vs mes anterior", var)]
     filas = "".join(f'<tr><td>{r["cliente"]}</td><td>{_fm(to_float(r["m"]), cfg)}</td></tr>' for r in top)
     tabla = (f'<table class="dt"><tr><th>Cliente</th><th>Ventas</th></tr>{filas}</table>') if filas else ""
     return _card("📊 Ventas / Comercial", _kpis(rows) + tabla)
 
 
-async def _gastos_desde_rcv(desde: date, corte: date) -> dict | None:
+async def _gastos_desde_rcv(hasta: date) -> dict | None:
     """Control de gastos desde las compras del RCV (facturas recibidas, neto) — para
-    empresas sin POS cuyo libro `gastos` está vacío. El SII no categoriza → 'Sin
-    clasificar'. Mismo shape que calcular_control_gastos (resumen/categorias/alertas)."""
-    largo = (corte - desde).days
-    ant_fin = desde - timedelta(days=1)
-    ant_desde = ant_fin - timedelta(days=largo)
+    empresas sin POS cuyo libro `gastos` está vacío. Mes a la fecha vs mismo tramo del
+    mes anterior. El SII no categoriza → 'Sin clasificar'."""
+    ini_act, fin_act, ini_ant, fin_ant = _mtd(hasta)
     async with config.db_pool.acquire() as conn:
         try:
             cats = await conn.fetch(
-                "SELECT COALESCE(NULLIF(TRIM(categoria_gasto), ''), 'Sin clasificar') AS categoria, "
-                "SUM(monto_neto) AS monto FROM documentos_tributarios "
-                "WHERE clase = 'compra' AND fecha BETWEEN $1 AND $2 GROUP BY 1 ORDER BY 2 DESC",
-                desde, corte)
-            ta = await conn.fetchval("SELECT COALESCE(SUM(monto_neto),0) FROM documentos_tributarios "
-                                     "WHERE clase='compra' AND fecha BETWEEN $1 AND $2", desde, corte)
-            tp = await conn.fetchval("SELECT COALESCE(SUM(monto_neto),0) FROM documentos_tributarios "
-                                     "WHERE clase='compra' AND fecha BETWEEN $1 AND $2", ant_desde, ant_fin)
+                f"SELECT COALESCE(NULLIF(TRIM(categoria_gasto), ''), 'Sin clasificar') AS categoria, "
+                f"SUM(monto_neto) AS monto FROM documentos_tributarios "
+                f"WHERE clase = 'compra' AND fecha BETWEEN $1 AND $2 AND {_VALIDO_DTE} "
+                f"GROUP BY 1 ORDER BY 2 DESC", ini_act, fin_act)
+            ta = await conn.fetchval(f"SELECT COALESCE(SUM(monto_neto),0) FROM documentos_tributarios "
+                                     f"WHERE clase='compra' AND fecha BETWEEN $1 AND $2 AND {_VALIDO_DTE}",
+                                     ini_act, fin_act)
+            tp = await conn.fetchval(f"SELECT COALESCE(SUM(monto_neto),0) FROM documentos_tributarios "
+                                     f"WHERE clase='compra' AND fecha BETWEEN $1 AND $2 AND {_VALIDO_DTE}",
+                                     ini_ant, fin_ant)
         except Exception:                             # noqa: BLE001 — sin clase/tabla
             return None
     ta, tp = to_float(ta), to_float(tp)
@@ -157,7 +165,7 @@ async def calcular_dashboard() -> dict:
     pnl          = await _pnl(cfg, corte)
     gastos       = await calcular_control_gastos(desde, corte)
     if not gastos.get("resumen", {}).get("total_actual"):     # libro `gastos` vacío
-        gastos = await _gastos_desde_rcv(desde, corte) or gastos
+        gastos = await _gastos_desde_rcv(hoy) or gastos        # → RCV, mes a la fecha
     conciliacion = await calcular_conciliacion(corte, 30)
     marketing    = await calcular_marketing(corte, 61)     # None si no hay tablas/datos
     tributario   = await calcular_tributario_semanal(hoy, _ingresos_comercial)   # F29 mes a la fecha
@@ -165,7 +173,7 @@ async def calcular_dashboard() -> dict:
 
     comercial_html = (await comercial.render(cfg, _vertical_de(cfg), desde, corte)
                       if comercial.tiene_config(cfg)
-                      else await _ventas_desde_rcv(cfg, desde, corte))   # sin POS → RCV
+                      else await _ventas_desde_rcv(cfg, hoy))   # sin POS → RCV, mes a la fecha
 
     return {
         "fecha_envio":    str(hoy),
@@ -193,8 +201,8 @@ def _sec_gastos(g: dict, cfg) -> str:
     r = g.get("resumen", {})
     var = r.get("variacion_pct")
     rows = [
-        ("Total semana", _fm(r.get("total_actual", 0), cfg)),
-        ("Semana anterior", _fm(r.get("total_anterior", 0), cfg)),
+        ("Total del período", _fm(r.get("total_actual", 0), cfg)),
+        ("Período anterior", _fm(r.get("total_anterior", 0), cfg)),
         ("Variación", f"{var:+.1f}%" if var is not None else "—"),
         ("Categorías en alerta", f"{len(g.get('alertas', []))}"),
     ]
