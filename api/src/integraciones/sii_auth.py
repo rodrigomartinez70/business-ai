@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import html
 import logging
 import re
 
@@ -122,11 +123,24 @@ def _extraer(tag: str, texto: str) -> str | None:
     return m.group(1).strip() if m else None
 
 
+# CrSeed/GetTokenFromSeed son servicios SOAP (validado en vivo contra maullin: el GET
+# devuelve el índice; hay que POSTear el envelope). La semilla/token vuelven
+# HTML-escapados dentro del return SOAP → se desescapan antes de extraer.
+_HEADERS_SOAP = {"Content-Type": "text/xml; charset=utf-8", "SOAPAction": ""}
+
+_SOAP_SEED = (
+    '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" '
+    'xmlns:def="http://DefaultNamespace"><soapenv:Header/><soapenv:Body>'
+    '<def:getSeed/></soapenv:Body></soapenv:Envelope>'
+)
+
+
 async def pedir_semilla(base: str) -> str:
     async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.get(f"{base}/CrSeed.jws")
+        resp = await client.post(f"{base}/CrSeed.jws", content=_SOAP_SEED.encode(),
+                                 headers=_HEADERS_SOAP)
         resp.raise_for_status()
-        seed = _extraer("SEMILLA", resp.text)
+        seed = _extraer("SEMILLA", html.unescape(resp.text))
     if not seed:
         raise SiiAuthError(f"El SII no devolvió SEMILLA: {resp.text[:200]}")
     return seed
@@ -134,19 +148,21 @@ async def pedir_semilla(base: str) -> str:
 
 async def pedir_token(base: str, xml_firmado: bytes) -> str:
     envelope = (
-        '<?xml version="1.0" encoding="UTF-8"?>'
-        '<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/">'
-        '<SOAP-ENV:Body><getToken xmlns="http://DefaultNamespace">'
-        f'<pszXml><![CDATA[{xml_firmado.decode("utf-8")}]]></pszXml>'
-        '</getToken></SOAP-ENV:Body></SOAP-ENV:Envelope>'
+        '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" '
+        'xmlns:def="http://DefaultNamespace"><soapenv:Header/><soapenv:Body>'
+        '<def:getToken><pszXml><![CDATA[' + xml_firmado.decode("utf-8") +
+        ']]></pszXml></def:getToken></soapenv:Body></soapenv:Envelope>'
     )
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post(f"{base}/GetTokenFromSeed.jws", content=envelope.encode(),
-                                 headers={"Content-Type": "text/xml; charset=utf-8"})
+                                 headers=_HEADERS_SOAP)
         resp.raise_for_status()
-        token = _extraer("TOKEN", resp.text)
+        texto = html.unescape(resp.text)
+        token = _extraer("TOKEN", texto)
     if not token:
-        raise SiiAuthError(f"El SII no devolvió TOKEN: {resp.text[:300]}")
+        estado = _extraer("ESTADO", texto) or "?"
+        glosa = _extraer("GLOSA", texto) or resp.text[:200]
+        raise SiiAuthError(f"El SII no devolvió TOKEN (estado {estado}): {glosa}")
     return token
 
 
