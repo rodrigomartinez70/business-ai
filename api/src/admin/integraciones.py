@@ -12,8 +12,11 @@ Cada proveedor declara sus campos: (columna, etiqueta, secreto?). La columna es
 
 import json
 import logging
+from datetime import date, timedelta
 
 from .. import config
+from ..integraciones import google_ads, meta_ads, odoo, toteat
+from .tenants import _TENANT_RE
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +123,7 @@ async def estado(tenant_id: str) -> dict:
                       "categoria": meta.get("categoria", "otros"),
                       "color": meta.get("color", "#6b7280"), "sigla": sistema[:1].upper(),
                       "configurado": configurado, "tiene_token": tiene_token,
+                      "con_muestra": prov in PROVEEDORES_CON_MUESTRA,
                       "activo": bool(row and row["activo"]), "campos": campos})
 
     # Agrupar en secciones, en el orden de CATEGORIAS (omite las vacías).
@@ -177,3 +181,35 @@ async def desconectar(tenant_id: str, proveedor: str) -> None:
         "DELETE FROM public.integraciones WHERE tenant_id=$1 AND proveedor=$2",
         tenant_id, proveedor)
     logger.info(f"[admin] integración {proveedor} de {tenant_id} desconectada")
+
+
+# Proveedores con datos de muestra (mock): (función de sync, ventana de días).
+_MUESTRA = {
+    "meta":       (meta_ads.sincronizar,           120),
+    "google_ads": (google_ads.sincronizar,         120),
+    "toteat":     (toteat.sincronizar,              30),
+    "odoo":       (odoo.sincronizar_contabilidad,   730),
+}
+
+PROVEEDORES_CON_MUESTRA = set(_MUESTRA)
+
+
+async def cargar_muestra(tenant_id: str, proveedor: str) -> dict:
+    """Carga datos de muestra (mock) del proveedor en el schema del tenant — como si
+    se importaran del cliente. Requiere que existan las tablas del módulo."""
+    if proveedor not in _MUESTRA:
+        raise AdminError(f"'{proveedor}' no tiene datos de muestra.")
+    if not _TENANT_RE.match(tenant_id):
+        raise AdminError("ID de empresa inválido.")
+    fn, dias = _MUESTRA[proveedor]
+    hasta = date.today()
+    desde = hasta - timedelta(days=dias)
+    async with config.raw_pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(f'SET LOCAL search_path = "{tenant_id}", public')
+            try:
+                res = await fn(conn, tenant_id, desde, hasta, mock=True)
+            except Exception as e:                   # noqa: BLE001
+                raise AdminError(f"No se pudo cargar la muestra de {proveedor}: {e}")
+    logger.info(f"[admin] muestra {proveedor} cargada en {tenant_id}: {res}")
+    return res

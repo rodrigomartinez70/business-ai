@@ -43,8 +43,14 @@
               </label>
               {% endfor %}
             </div>
-            <div class="acciones" style="margin-top:14px;justify-content:space-between;">
+            <div class="acciones" style="margin-top:14px;gap:8px;flex-wrap:wrap;">
               <button type="submit">Guardar</button>
+              {% if ig.con_muestra %}
+              <button class="icon-btn" type="button"
+                      hx-post="/admin/tenants/{{ tenant_id }}/integraciones/{{ ig.proveedor }}/muestra"
+                      hx-target="#integ-cards" hx-swap="outerHTML"
+                      hx-confirm="¿Cargar datos de muestra (mock) de {{ ig.sistema }} en {{ tenant_id }}?">📥 Datos de muestra</button>
+              {% endif %}
               {% if ig.tiene_token or ig.configurado %}
               <button class="icon-btn del" type="button"
                       hx-post="/admin/tenants/{{ tenant_id }}/integraciones/{{ ig.proveedor }}/desconectar"

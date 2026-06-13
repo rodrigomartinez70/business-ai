@@ -303,6 +303,21 @@ async def desconectar_integracion(request: Request, tenant_id: str, proveedor: s
          **(await integ.estado(tenant_id))})
 
 
+@router.post("/admin/tenants/{tenant_id}/integraciones/{proveedor}/muestra",
+             response_class=HTMLResponse)
+async def cargar_muestra_integracion(request: Request, tenant_id: str, proveedor: str,
+                                     _admin: str = Depends(require_admin)):
+    try:
+        res = await integ.cargar_muestra(tenant_id, proveedor)
+        nums = ", ".join(f"{k}={v}" for k, v in res.items() if isinstance(v, int))
+        msg = f"✓ Datos de muestra cargados ({proveedor}): {nums}"
+    except integ.AdminError as e:
+        msg = f"⚠ {e}"
+    return _TEMPLATES.TemplateResponse(
+        "_integraciones_cards.html",
+        {"request": request, "mensaje": msg, **(await integ.estado(tenant_id))})
+
+
 # ─────────────────────────────────────────────────────────────
 # Programación de correos
 # ─────────────────────────────────────────────────────────────
