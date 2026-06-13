@@ -193,7 +193,7 @@ async def calcular_dashboard() -> dict:
     gastos       = await calcular_control_gastos(desde, corte)
     if not gastos.get("resumen", {}).get("total_actual"):     # libro `gastos` vacío
         gastos = await _gastos_desde_rcv(hoy) or gastos        # → RCV, mes a la fecha
-    conciliacion = await calcular_conciliacion(corte, 30)
+    conciliacion = await calcular_conciliacion(hoy, 30)   # hoy: incluye movimientos recientes
     marketing    = await calcular_marketing(corte, 61)     # None si no hay tablas/datos
     tributario   = await calcular_tributario_semanal(hoy, _ingresos_comercial)   # F29 mes a la fecha
     cierre       = await _cierre_desde_rcv(hoy)            # ventas diarias por DTE (mes a la fecha)

@@ -102,8 +102,24 @@ async def conciliar_y_marcar(conn, hasta: date, dias: int = 60) -> dict:
             "movimientos": len(movs)}
 
 
+async def _docs_para_conciliar(conn, hasta: date, dias: int, clase: str) -> list:
+    """DTE (venta/compra) válidos para conciliar contra la cartola — empresa sin POS.
+    Ventana más amplia (pago puede venir tras la factura)."""
+    desde = hasta - timedelta(days=dias - 1 + _TOL_PAGO_DIAS)
+    try:
+        return await conn.fetch(
+            "SELECT fecha, COALESCE(NULLIF(TRIM(proveedor),''),'—') AS proveedor, monto_total "
+            "FROM documentos_tributarios WHERE clase = $1 AND fecha BETWEEN $2 AND $3 "
+            "AND LOWER(COALESCE(estado,'')) NOT IN ('anulado','anulada','rechazado','rechazada')",
+            clase, desde, hasta)
+    except Exception:                                 # noqa: BLE001 — sin clase/tabla
+        return []
+
+
 async def calcular_conciliacion(hasta: date, dias: int = 30) -> dict:
-    """Concilia la cartola con los libros en la ventana [hasta-dias+1, hasta]."""
+    """Concilia la cartola con los libros en la ventana [hasta-dias+1, hasta].
+    Con POS cruza contra pagos/gastos; sin POS, contra los DTE del RCV (ventas=abonos,
+    compras=cargos), igual que la conciliación que marca cobrado/pagado."""
     desde = hasta - timedelta(days=dias - 1)
 
     async with config.db_pool.acquire() as conn:
@@ -114,15 +130,23 @@ async def calcular_conciliacion(hasta: date, dias: int = 30) -> dict:
             "SELECT fecha, monto FROM pagos WHERE fecha BETWEEN $1 AND $2", desde, hasta)
         gastos = await conn.fetch(
             "SELECT fecha, monto, proveedor FROM gastos WHERE fecha BETWEEN $1 AND $2", desde, hasta)
+        ventas_dte  = [] if pagos  else await _docs_para_conciliar(conn, hasta, dias, "venta")
+        compras_dte = [] if gastos else await _docs_para_conciliar(conn, hasta, dias, "compra")
 
-    # Candidatos por lado (con flag de uso). Los egresos se cruzan contra el
-    # libro de gastos (salida de caja); las facturas (documentos_tributarios)
-    # alimentan el IVA, no la conciliación bancaria, para no duplicar egresos.
-    abonos = [{"fecha": p["fecha"], "monto": to_float(p["monto"]), "used": False}
-              for p in pagos]
-    cargos = [{"fecha": g["fecha"], "monto": to_float(g["monto"]),
-               "ref": g["proveedor"], "used": False}
-              for g in gastos]
+    # Candidatos por lado. Si la fuente son DTE, el match admite que el pago ocurra
+    # días después de la factura (_match_doc); con pagos/gastos es estricto (_buscar).
+    if pagos:
+        abonos, match_ab = [{"fecha": p["fecha"], "monto": to_float(p["monto"]), "used": False}
+                            for p in pagos], _buscar
+    else:
+        abonos, match_ab = [{"fecha": d["fecha"], "monto": to_float(d["monto_total"]), "used": False}
+                            for d in ventas_dte], _match_doc
+    if gastos:
+        cargos, match_ca = [{"fecha": g["fecha"], "monto": to_float(g["monto"]),
+                             "ref": g["proveedor"], "used": False} for g in gastos], _buscar
+    else:
+        cargos, match_ca = [{"fecha": d["fecha"], "monto": to_float(d["monto_total"]),
+                             "ref": d["proveedor"], "used": False} for d in compras_dte], _match_doc
 
     conciliados = 0
     monto_conciliado = 0.0
@@ -131,8 +155,9 @@ async def calcular_conciliacion(hasta: date, dias: int = 30) -> dict:
     for m in movimientos:
         monto = to_float(m["monto"])
         fecha = m["fecha"]
-        candidatos = abonos if monto > 0 else cargos
-        if _buscar(abs(monto), fecha, candidatos):
+        ok = (match_ab(abs(monto), fecha, abonos) if monto > 0
+              else match_ca(abs(monto), fecha, cargos))
+        if ok:
             conciliados += 1
             monto_conciliado += abs(monto)
         else:
