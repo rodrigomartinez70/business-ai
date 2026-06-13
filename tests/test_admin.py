@@ -68,6 +68,17 @@ async def test_crear_preset_invalido():
         await svc.crear(tenant_id="empresa_x", nombre="X", preset="inexistente")
 
 
+# ── Capacidades SII (bajo request) ──────────────────────────────────────
+
+def test_sii_caps_defaults():
+    from src.admin import sii
+    assert {c["clave"] for c in sii.CAPS} == {"rcv", "estado_dte"}
+    assert sii.activa({}, "rcv") is False            # bajo request → off por defecto
+    assert sii.activa({}, "estado_dte") is True      # on por defecto (sin regresión)
+    assert sii.activa({"sii": {"rcv": True}}, "rcv") is True
+    assert sii.activa({"sii": {"estado_dte": False}}, "estado_dte") is False
+
+
 # ── Módulos del informe ─────────────────────────────────────────────────
 
 def test_modulo_activo_default_on():

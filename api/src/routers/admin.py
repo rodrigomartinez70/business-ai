@@ -11,7 +11,7 @@ Rutas (todas detrás de HTTP Basic, rol plataforma):
 from datetime import date
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
@@ -20,6 +20,7 @@ from ..admin import config_editor as cfged
 from ..admin import integraciones as integ
 from ..admin import modelo as modelo_svc
 from ..admin import schedules as sched
+from ..admin import sii as sii_svc
 from ..admin import tenants as svc
 from ..admin import users as usr
 from ..admin.auth import require_admin
@@ -182,7 +183,34 @@ async def guardar_config(request: Request, tenant_id: str, contenido: str = Form
 async def panel_integraciones(request: Request, tenant_id: str,
                               _admin: str = Depends(require_admin)):
     return _TEMPLATES.TemplateResponse(
-        "integraciones.html", {"request": request, **(await integ.estado(tenant_id))})
+        "integraciones.html",
+        {"request": request, **(await integ.estado(tenant_id)),
+         "sii_caps": (await sii_svc.estado(tenant_id))["sii_caps"]})
+
+
+@router.post("/admin/tenants/{tenant_id}/sii/{cap}", response_class=HTMLResponse)
+async def toggle_sii(request: Request, tenant_id: str, cap: str,
+                     activo: str = Form(...), _admin: str = Depends(require_admin)):
+    try:
+        await sii_svc.set_cap(tenant_id, cap, activo == "true")
+    except sii_svc.AdminError:
+        pass
+    return _TEMPLATES.TemplateResponse(
+        "_sii_caps.html", {"request": request, **(await sii_svc.estado(tenant_id))})
+
+
+@router.post("/admin/tenants/{tenant_id}/rcv", response_class=HTMLResponse)
+async def subir_rcv(request: Request, tenant_id: str,
+                    archivo: UploadFile = File(...), modo: str = Form("insertar"),
+                    _admin: str = Depends(require_admin)):
+    contenido = await archivo.read()
+    res = msg = None
+    try:
+        res = await sii_svc.subir_rcv(tenant_id, contenido, modo)
+    except (sii_svc.AdminError, ValueError) as e:
+        msg = f"⚠ {e}"
+    return _TEMPLATES.TemplateResponse(
+        "_sii_resultado.html", {"request": request, "res": res, "msg": msg})
 
 
 @router.post("/admin/tenants/{tenant_id}/integraciones/{proveedor}", response_class=HTMLResponse)

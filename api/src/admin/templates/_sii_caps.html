@@ -1,0 +1,26 @@
+{% for c in sii_caps %}
+<div class="modrow">
+  <div style="flex:1;">
+    <div style="font-weight:600;font-size:14px;">{{ c.titulo }}</div>
+    <div style="color:#6b7280;font-size:12px;">{{ c.desc }}</div>
+    {% if c.clave == 'rcv' and c.activo %}
+    <form style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;"
+          hx-post="/admin/tenants/{{ tenant_id }}/rcv" hx-encoding="multipart/form-data"
+          hx-target="#sii-resultado" hx-swap="innerHTML">
+      <input type="file" name="archivo" accept=".csv,text/csv" required
+             style="font-size:12px;">
+      <button class="mini" type="submit" name="modo" value="validar">Validar</button>
+      <button class="mini ok" type="submit" name="modo" value="insertar">Subir RCV</button>
+    </form>
+    {% endif %}
+  </div>
+  <label class="switch" title="{{ 'Activa' if c.activo else 'Inactiva' }}">
+    <input type="checkbox" {% if c.activo %}checked{% endif %}
+           hx-post="/admin/tenants/{{ tenant_id }}/sii/{{ c.clave }}"
+           hx-vals='{"activo": "{{ "false" if c.activo else "true" }}"}'
+           hx-target="#sii-caps" hx-swap="innerHTML">
+    <span class="slider"></span>
+  </label>
+</div>
+{% endfor %}
+<div id="sii-resultado" style="margin-top:10px;"></div>

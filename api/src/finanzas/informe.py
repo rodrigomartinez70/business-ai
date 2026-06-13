@@ -153,7 +153,9 @@ def renderizar_informe_html(data: dict, cfg: dict, biz: str) -> str:
     liquidez = _sec_tesoreria(panel["tesoreria"]) + secs.get("conciliacion", "")
     cobros_pagos = _sec_cxc(panel["cuentas_por_cobrar"]) + _sec_cxp(panel["cuentas_por_pagar"])
     presupuesto  = _sec_presupuesto(panel["presupuesto"])
-    tributario   = secs.get("tributario", "") + secs.get("estado_dte", "")
+    # Estado DTE: solo si la capacidad SII está activa (default on → sin regresión).
+    _sii_dte = ((cfg.get("sii") or {}).get("estado_dte", True))
+    tributario   = secs.get("tributario", "") + (secs.get("estado_dte", "") if _sii_dte else "")
 
     contenido = {
         "rentabilidad": secs.get("pnl", ""),

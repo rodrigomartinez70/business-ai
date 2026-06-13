@@ -1,0 +1,15 @@
+{% if msg %}
+<div class="banner err">{{ msg }}</div>
+{% elif res and res.modo == 'validar' %}
+<div class="banner ok">
+  RCV <strong>{{ res.clase }}</strong> — {{ res.total }} documentos detectados
+  (IVA ${{ "{:,.0f}".format(res.total_iva).replace(",", ".") }}).
+  Si está OK, apretá <em>Subir RCV</em>.
+</div>
+{% elif res %}
+<div class="banner ok">
+  RCV <strong>{{ res.clase }}</strong> cargado:
+  <strong>{{ res.insertados }}</strong> nuevos · {{ res.actualizados }} actualizados
+  (IVA ${{ "{:,.0f}".format(res.total_iva).replace(",", ".") }}).
+</div>
+{% endif %}
