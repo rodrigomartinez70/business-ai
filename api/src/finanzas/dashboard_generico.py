@@ -78,6 +78,38 @@ async def _ingresos_comercial(conn, ini: date, fin: date) -> float:
     return to_float(v or 0)
 
 
+async def _gastos_desde_rcv(desde: date, corte: date) -> dict | None:
+    """Control de gastos desde las compras del RCV (facturas recibidas, neto) — para
+    empresas sin POS cuyo libro `gastos` está vacío. El SII no categoriza → 'Sin
+    clasificar'. Mismo shape que calcular_control_gastos (resumen/categorias/alertas)."""
+    largo = (corte - desde).days
+    ant_fin = desde - timedelta(days=1)
+    ant_desde = ant_fin - timedelta(days=largo)
+    async with config.db_pool.acquire() as conn:
+        try:
+            cats = await conn.fetch(
+                "SELECT COALESCE(NULLIF(TRIM(categoria_gasto), ''), 'Sin clasificar') AS categoria, "
+                "SUM(monto_neto) AS monto FROM documentos_tributarios "
+                "WHERE clase = 'compra' AND fecha BETWEEN $1 AND $2 GROUP BY 1 ORDER BY 2 DESC",
+                desde, corte)
+            ta = await conn.fetchval("SELECT COALESCE(SUM(monto_neto),0) FROM documentos_tributarios "
+                                     "WHERE clase='compra' AND fecha BETWEEN $1 AND $2", desde, corte)
+            tp = await conn.fetchval("SELECT COALESCE(SUM(monto_neto),0) FROM documentos_tributarios "
+                                     "WHERE clase='compra' AND fecha BETWEEN $1 AND $2", ant_desde, ant_fin)
+        except Exception:                             # noqa: BLE001 — sin clase/tabla
+            return None
+    ta, tp = to_float(ta), to_float(tp)
+    if ta == 0 and not cats:
+        return None
+    var = round((ta - tp) * 100 / tp, 1) if tp > 0 else None
+    return {
+        "resumen": {"total_actual": ta, "total_anterior": tp, "variacion_pct": var},
+        "categorias": [{"categoria": c["categoria"], "monto_actual": to_float(c["monto"])} for c in cats],
+        "alertas": [],
+        "fuente": "rcv",
+    }
+
+
 async def calcular_dashboard() -> dict:
     hoy          = date.today()
     desde, corte = _semana_cerrada(hoy)
@@ -85,6 +117,8 @@ async def calcular_dashboard() -> dict:
 
     pnl          = await _pnl(cfg, corte)
     gastos       = await calcular_control_gastos(desde, corte)
+    if not gastos.get("resumen", {}).get("total_actual"):     # libro `gastos` vacío
+        gastos = await _gastos_desde_rcv(desde, corte) or gastos
     conciliacion = await calcular_conciliacion(corte, 30)
     marketing    = await calcular_marketing(corte, 61)     # None si no hay tablas/datos
     tributario   = await calcular_tributario_semanal(corte, _ingresos_comercial)
