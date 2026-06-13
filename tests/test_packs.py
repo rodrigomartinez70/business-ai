@@ -22,8 +22,15 @@ def _tablas(sql: str) -> set[str]:
     return {m.group(1).lower() for m in _RE_TABLA.finditer(sql)}
 
 
+# Marketing es horizontal: históricamente vivía en postgres/marketing.sql y se
+# aplicaba aparte a cada tenant. Ahora está en el pack base, así que la
+# equivalencia es: packs == schema del vertical ∪ marketing.sql.
+_MARKETING = _SRC.parent.parent / "postgres" / "marketing.sql"
+
+
 def _tablas_vertical(vertical: str) -> set[str]:
-    return _tablas((_SRC / "verticals" / vertical / "schema.sql").read_text())
+    return (_tablas((_SRC / "verticals" / vertical / "schema.sql").read_text())
+            | _tablas(_MARKETING.read_text()))
 
 
 @pytest.mark.parametrize("vertical", ["restaurante", "hotel"])
