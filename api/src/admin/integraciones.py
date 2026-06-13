@@ -14,6 +14,8 @@ import json
 import logging
 from datetime import date, timedelta
 
+import asyncpg
+
 from .. import config
 from ..integraciones import google_ads, meta_ads, odoo, toteat
 from .tenants import _TENANT_RE
@@ -213,3 +215,51 @@ async def cargar_muestra(tenant_id: str, proveedor: str) -> dict:
                 raise AdminError(f"No se pudo cargar la muestra de {proveedor}: {e}")
     logger.info(f"[admin] muestra {proveedor} cargada en {tenant_id}: {res}")
     return res
+
+
+def _sql_marketing(plataforma: str) -> list[str]:
+    """Borra los datos de marketing de UNA plataforma (no toca la otra)."""
+    return [
+        "DELETE FROM insights_marketing WHERE campana_id IN "
+        "(SELECT c.id FROM campanas c JOIN canales_marketing ca ON ca.id = c.canal_id "
+        f"WHERE ca.plataforma = '{plataforma}')",
+        "DELETE FROM campanas WHERE canal_id IN "
+        f"(SELECT id FROM canales_marketing WHERE plataforma = '{plataforma}')",
+        f"DELETE FROM canales_marketing WHERE plataforma = '{plataforma}'",
+    ]
+
+
+# DELETEs por proveedor (orden respeta FKs; hijos primero). plataforma es constante.
+_LIMPIEZA = {
+    "meta":       _sql_marketing("meta"),
+    "google_ads": _sql_marketing("google"),
+    "odoo":       ["DELETE FROM saldos_cuentas", "DELETE FROM plan_cuentas"],
+    "toteat":     ["DELETE FROM detalle_pedido", "DELETE FROM pagos", "DELETE FROM pedidos",
+                   "DELETE FROM productos", "DELETE FROM categorias_menu",
+                   "DELETE FROM mesas", "DELETE FROM canales_venta"],
+}
+
+PROVEEDORES_CON_DATOS = set(_LIMPIEZA)
+
+
+async def limpiar_datos(tenant_id: str, proveedor: str) -> int:
+    """Vacía los datos del módulo de ese proveedor en el schema del tenant (NO toca
+    credenciales). Útil antes del cutover mock→real o al cambiar de plataforma.
+    Devuelve filas eliminadas. Tolera tablas inexistentes (savepoint por statement)."""
+    if proveedor not in _LIMPIEZA:
+        raise AdminError(f"'{proveedor}' no tiene datos para limpiar.")
+    if not _TENANT_RE.match(tenant_id):
+        raise AdminError("ID de empresa inválido.")
+    total = 0
+    async with config.raw_pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(f'SET LOCAL search_path = "{tenant_id}", public')
+            for sql in _LIMPIEZA[proveedor]:
+                try:
+                    async with conn.transaction():        # savepoint
+                        r = await conn.execute(sql)
+                    total += int(r.rsplit(" ", 1)[-1]) if r.startswith("DELETE") else 0
+                except asyncpg.UndefinedTableError:
+                    continue                              # el tenant no tiene esa tabla
+    logger.info(f"[admin] datos de {proveedor} limpiados en {tenant_id}: {total} filas")
+    return total

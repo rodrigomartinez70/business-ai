@@ -318,6 +318,20 @@ async def cargar_muestra_integracion(request: Request, tenant_id: str, proveedor
         {"request": request, "mensaje": msg, **(await integ.estado(tenant_id))})
 
 
+@router.post("/admin/tenants/{tenant_id}/integraciones/{proveedor}/limpiar",
+             response_class=HTMLResponse)
+async def limpiar_datos_integracion(request: Request, tenant_id: str, proveedor: str,
+                                    _admin: str = Depends(require_admin)):
+    try:
+        n = await integ.limpiar_datos(tenant_id, proveedor)
+        msg = f"🗑 Datos del módulo {proveedor} eliminados ({n} filas). Las credenciales no se tocan."
+    except integ.AdminError as e:
+        msg = f"⚠ {e}"
+    return _TEMPLATES.TemplateResponse(
+        "_integraciones_cards.html",
+        {"request": request, "mensaje": msg, **(await integ.estado(tenant_id))})
+
+
 # ─────────────────────────────────────────────────────────────
 # Programación de correos
 # ─────────────────────────────────────────────────────────────

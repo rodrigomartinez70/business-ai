@@ -44,6 +44,10 @@
                       hx-post="/admin/tenants/{{ tenant_id }}/integraciones/{{ ig.proveedor }}/muestra"
                       hx-target="#integ-cards" hx-swap="outerHTML"
                       hx-confirm="¿Cargar datos de muestra (mock) de {{ ig.sistema }} en {{ tenant_id }}?">📥 Datos de muestra</button>
+              <button class="icon-btn del" type="button"
+                      hx-post="/admin/tenants/{{ tenant_id }}/integraciones/{{ ig.proveedor }}/limpiar"
+                      hx-target="#integ-cards" hx-swap="outerHTML"
+                      hx-confirm="¿Eliminar TODOS los datos del módulo {{ ig.sistema }} de {{ tenant_id }}? (no borra credenciales)">🗑 Limpiar datos</button>
               {% endif %}
               {% if ig.tiene_token or ig.configurado %}
               <button class="icon-btn del" type="button"
