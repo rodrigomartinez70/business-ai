@@ -8,6 +8,8 @@ El crédito, remanente, PPM, retención y postergación son comunes a todos.
 
 from datetime import date, timedelta
 
+import asyncpg
+
 from src import config
 from src.agents._common import to_float
 from . import _common as c
@@ -30,17 +32,31 @@ def _sumar_meses(d: date, n: int) -> date:
     return date(total // 12, total % 12 + 1, min(d.day, 28))
 
 
+async def _docs_iva(conn, ini: date, fin: date, clase: str):
+    """Suma de IVA de DTE registrados (RCV) de una clase (compra/venta), neteando
+    notas de crédito. Defensivo: si el schema aún no tiene la columna `clase`
+    (pre-migración 012), cae a la consulta sin filtro de clase (= compras)."""
+    sql = ("SELECT COUNT(*) AS n, "
+           "COALESCE(SUM(CASE WHEN tipo = 'nota_credito' THEN -monto_iva ELSE monto_iva END), 0) AS iva "
+           "FROM documentos_tributarios "
+           "WHERE estado = 'registrado' AND clase = $3 AND fecha BETWEEN $1 AND $2")
+    try:
+        return await conn.fetchrow(sql, ini, fin, clase)
+    except asyncpg.UndefinedColumnError:
+        if clase != "compra":
+            return None
+        return await conn.fetchrow(
+            "SELECT COUNT(*) AS n, "
+            "COALESCE(SUM(CASE WHEN tipo = 'nota_credito' THEN -monto_iva ELSE monto_iva END), 0) AS iva "
+            "FROM documentos_tributarios WHERE estado = 'registrado' AND fecha BETWEEN $1 AND $2",
+            ini, fin)
+
+
 async def _credito(conn, ini: date, fin: date) -> tuple[float, str]:
-    """IVA crédito: facturas registradas (netea notas de crédito) si existen;
-    si no, estimación gastos × 19% excluyendo categorías no afectas."""
-    docs = await conn.fetchrow("""
-        SELECT COUNT(*) AS n,
-               COALESCE(SUM(CASE WHEN tipo = 'nota_credito' THEN -monto_iva
-                                 ELSE monto_iva END), 0) AS iva
-        FROM documentos_tributarios
-        WHERE estado = 'registrado' AND fecha BETWEEN $1 AND $2
-    """, ini, fin)
-    if int(docs["n"]) > 0:
+    """IVA crédito: facturas de COMPRA registradas (RCV, netea notas de crédito) si
+    existen; si no, estimación gastos × 19% excluyendo categorías no afectas."""
+    docs = await _docs_iva(conn, ini, fin, "compra")
+    if docs and int(docs["n"]) > 0:
         return to_float(docs["iva"]), "documentos"
     g = await conn.fetchval("""
         SELECT COALESCE(SUM(g.monto), 0) FROM gastos g
@@ -48,6 +64,15 @@ async def _credito(conn, ini: date, fin: date) -> tuple[float, str]:
         WHERE g.fecha BETWEEN $1 AND $2 AND COALESCE(cg.nombre, '') <> ALL($3::text[])
     """, ini, fin, list(c.NO_AFECTO_IVA))
     return round(to_float(g) * 0.19, 2), "estimado"
+
+
+async def _debito_real(conn, ini: date, fin: date) -> float | None:
+    """IVA débito desde DTE de VENTA del RCV (real). None si no hay → se estima
+    desde las ventas del vertical (ingresos_fn × 19%)."""
+    docs = await _docs_iva(conn, ini, fin, "venta")
+    if docs and int(docs["n"]) > 0:
+        return to_float(docs["iva"])
+    return None
 
 
 async def calcular_iva(conn, hasta: date, ingresos_fn, uf: float | None = None) -> dict:
@@ -63,14 +88,19 @@ async def calcular_iva(conn, hasta: date, ingresos_fn, uf: float | None = None) 
     gasto_sem = to_float(gastos_semana.get("total_gastos", 0))
 
     ingresos_mes = await ingresos_fn(conn, inicio_mes, hasta)
-    iva_debito   = round(ingresos_mes * c.IVA_TASA, 2)
+    debito_real  = await _debito_real(conn, inicio_mes, hasta)
+    if debito_real is not None:                          # DTE de venta del RCV → real
+        iva_debito, debito_fuente = debito_real, "documentos"
+    else:                                                # sin RCV de ventas → estimado
+        iva_debito, debito_fuente = round(ingresos_mes * c.IVA_TASA, 2), "estimado"
     iva_credito, credito_fuente = await _credito(conn, inicio_mes, hasta)
 
     remanente = 0.0
     cur = date(hasta.year, 1, 1)
     while cur < inicio_mes:
         fin = _fin_de_mes(cur)
-        deb_m = round(await ingresos_fn(conn, cur, fin) * c.IVA_TASA, 2)
+        deb_real = await _debito_real(conn, cur, fin)
+        deb_m = deb_real if deb_real is not None else round(await ingresos_fn(conn, cur, fin) * c.IVA_TASA, 2)
         cred_m, _ = await _credito(conn, cur, fin)
         remanente = max(0.0, round(cred_m + remanente - deb_m, 2))
         cur = _siguiente_mes(cur)
@@ -128,6 +158,7 @@ async def calcular_iva(conn, hasta: date, ingresos_fn, uf: float | None = None) 
         "f29": {
             "periodo":               inicio_mes.strftime("%Y-%m"),
             "iva_debito":            iva_debito,
+            "iva_debito_fuente":     debito_fuente,
             "iva_credito":           iva_credito,
             "remanente_anterior":    remanente_anterior,
             "iva_a_pagar":           iva_a_pagar,

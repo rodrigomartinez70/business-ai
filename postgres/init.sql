@@ -85,7 +85,9 @@ CREATE TABLE documentos_tributarios (
     id              SERIAL PRIMARY KEY,
     fecha           DATE NOT NULL,
     tipo            VARCHAR(30) NOT NULL DEFAULT 'factura',  -- 'factura', 'boleta', 'nota_credito', 'factura_exenta'
+    clase           VARCHAR(10) NOT NULL DEFAULT 'compra',   -- compra | venta (RCV del SII)
     numero_documento VARCHAR(50),
+    rut_contraparte VARCHAR(20),                             -- RUT proveedor (compra) / cliente (venta)
     proveedor       VARCHAR(100) NOT NULL,
     monto_neto      NUMERIC(10,2) NOT NULL,
     monto_iva       NUMERIC(10,2),
@@ -96,6 +98,10 @@ CREATE TABLE documentos_tributarios (
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_doc_rcv ON documentos_tributarios
+    (clase, tipo, numero_documento, rut_contraparte)
+    WHERE numero_documento IS NOT NULL AND rut_contraparte IS NOT NULL;
 
 CREATE TABLE movimientos_bancarios (
     id              SERIAL PRIMARY KEY,

@@ -20,6 +20,7 @@ from ..auth import get_role
 from ..tenant import get_tenant
 
 from ..finanzas.cartola import normalizar_cartola
+from ..finanzas.rcv import normalizar_rcv
 
 router = APIRouter(prefix="/api/ingest", tags=["ingest"])
 
@@ -73,6 +74,62 @@ async def importar_cartola(
                 vistos.add(clave)
                 insertados += 1
     return {"modo": "insertar", "insertados": insertados, "duplicados_omitidos": duplicados,
+            **res["meta"]}
+
+
+@router.post("/rcv")
+async def importar_rcv(
+    archivo: UploadFile = File(..., description="RCV del SII (CSV: Registro de Compras o de Ventas)"),
+    modo:    str        = Query("validar", description="validar (dry-run) | insertar"),
+    _rol:    str        = Depends(get_role),
+):
+    """
+    Normaliza el RCV del SII (compras o ventas, auto-detectado) y lo inserta en
+    `documentos_tributarios` con estado 'registrado'. Hace real el Copiloto
+    Tributario sin certificado: IVA crédito = compras, IVA débito = ventas.
+
+    - **validar**: dry-run; devuelve clase, columnas detectadas + preview.
+    - **insertar**: upsert idempotente (un DTE = clase+tipo+folio+RUT).
+    """
+    contenido = await archivo.read()
+    try:
+        res = normalizar_rcv(contenido)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    docs = res["documentos"]
+    if not docs:
+        raise HTTPException(status_code=400, detail="No se detectaron documentos en el RCV.")
+
+    if modo == "validar":
+        return {"modo": "validar", **res["meta"], "preview": docs[:5]}
+
+    if config.ingest_pool is None:
+        raise HTTPException(status_code=503, detail="Ingest no configurado (INGEST_DATABASE_URL).")
+
+    insertados = actualizados = 0
+    async with config.ingest_pool.acquire() as conn:
+        async with conn.transaction():
+            for d in docs:
+                es_nuevo = await conn.fetchval(
+                    """INSERT INTO documentos_tributarios
+                           (clase, tipo, numero_documento, rut_contraparte, proveedor,
+                            fecha, monto_neto, monto_iva, monto_total, estado)
+                       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'registrado')
+                       ON CONFLICT (clase, tipo, numero_documento, rut_contraparte)
+                           WHERE numero_documento IS NOT NULL AND rut_contraparte IS NOT NULL
+                       DO UPDATE SET monto_neto = EXCLUDED.monto_neto,
+                                     monto_iva = EXCLUDED.monto_iva,
+                                     monto_total = EXCLUDED.monto_total,
+                                     fecha = EXCLUDED.fecha, proveedor = EXCLUDED.proveedor,
+                                     estado = 'registrado', updated_at = now()
+                       RETURNING (xmax = 0)""",
+                    d["clase"], d["tipo"], d["numero_documento"], d["rut_contraparte"],
+                    d["proveedor"], d["fecha"], d["monto_neto"], d["monto_iva"], d["monto_total"])
+                if es_nuevo:
+                    insertados += 1
+                else:
+                    actualizados += 1
+    return {"modo": "insertar", "insertados": insertados, "actualizados": actualizados,
             **res["meta"]}
 
 
