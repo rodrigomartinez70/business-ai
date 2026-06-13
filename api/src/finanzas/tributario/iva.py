@@ -32,24 +32,25 @@ def _sumar_meses(d: date, n: int) -> date:
     return date(total // 12, total % 12 + 1, min(d.day, 28))
 
 
+# El IVA se devenga al emitir/recibir el DTE, NO al pagarlo → cuentan todos los
+# documentos válidos (incluye pagado/cobrado por la conciliación); se excluyen los
+# no confirmados o sin efecto tributario.
+_VALIDO = "LOWER(COALESCE(estado,'')) NOT IN ('pendiente_revision','anulado','anulada','rechazado','rechazada')"
+
+
 async def _docs_iva(conn, ini: date, fin: date, clase: str):
-    """Suma de IVA de DTE registrados (RCV) de una clase (compra/venta), neteando
+    """Suma de IVA de los DTE válidos (RCV) de una clase (compra/venta), neteando
     notas de crédito. Defensivo: si el schema aún no tiene la columna `clase`
     (pre-migración 012), cae a la consulta sin filtro de clase (= compras)."""
-    sql = ("SELECT COUNT(*) AS n, "
-           "COALESCE(SUM(CASE WHEN tipo = 'nota_credito' THEN -monto_iva ELSE monto_iva END), 0) AS iva "
-           "FROM documentos_tributarios "
-           "WHERE estado = 'registrado' AND clase = $3 AND fecha BETWEEN $1 AND $2")
+    base = ("SELECT COUNT(*) AS n, "
+            "COALESCE(SUM(CASE WHEN tipo = 'nota_credito' THEN -monto_iva ELSE monto_iva END), 0) AS iva "
+            f"FROM documentos_tributarios WHERE {_VALIDO} AND fecha BETWEEN $1 AND $2")
     try:
-        return await conn.fetchrow(sql, ini, fin, clase)
+        return await conn.fetchrow(base + " AND clase = $3", ini, fin, clase)
     except asyncpg.UndefinedColumnError:
         if clase != "compra":
             return None
-        return await conn.fetchrow(
-            "SELECT COUNT(*) AS n, "
-            "COALESCE(SUM(CASE WHEN tipo = 'nota_credito' THEN -monto_iva ELSE monto_iva END), 0) AS iva "
-            "FROM documentos_tributarios WHERE estado = 'registrado' AND fecha BETWEEN $1 AND $2",
-            ini, fin)
+        return await conn.fetchrow(base, ini, fin)
 
 
 async def _credito(conn, ini: date, fin: date) -> tuple[float, str]:

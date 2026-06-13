@@ -71,7 +71,9 @@ async def _ingresos_comercial(conn, ini: date, fin: date) -> float:
     try:
         v = await conn.fetchval(
             "SELECT COALESCE(SUM(monto_neto), 0) FROM documentos_tributarios "
-            "WHERE clase = 'venta' AND estado = 'registrado' AND fecha BETWEEN $1 AND $2",
+            "WHERE clase = 'venta' AND fecha BETWEEN $1 AND $2 "
+            "AND LOWER(COALESCE(estado,'')) NOT IN "
+            "('pendiente_revision','anulado','anulada','rechazado','rechazada')",
             ini, fin)
     except Exception:                                 # noqa: BLE001
         return 0.0
@@ -121,7 +123,7 @@ async def calcular_dashboard() -> dict:
         gastos = await _gastos_desde_rcv(desde, corte) or gastos
     conciliacion = await calcular_conciliacion(corte, 30)
     marketing    = await calcular_marketing(corte, 61)     # None si no hay tablas/datos
-    tributario   = await calcular_tributario_semanal(corte, _ingresos_comercial)
+    tributario   = await calcular_tributario_semanal(hoy, _ingresos_comercial)   # F29 mes a la fecha
     ipc          = await obtener_ipc(12)
 
     comercial_html = (await comercial.render(cfg, _vertical_de(cfg), desde, corte)
