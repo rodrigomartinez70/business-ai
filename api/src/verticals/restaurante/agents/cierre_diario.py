@@ -13,11 +13,14 @@ from src.agents._common import to_float
 
 async def calcular_cierre_semanal(desde: date, hasta: date) -> dict:
     async with config.db_pool.acquire() as conn:
-        ventas = to_float(await conn.fetchval("""
-            SELECT COALESCE(SUM(d.total), 0)
+        vc = dict(await conn.fetchrow("""
+            SELECT COALESCE(SUM(d.total), 0) AS ventas,
+                   COALESCE(SUM(d.costo_total), 0) AS costo_ventas
             FROM pedidos p JOIN detalle_pedido d ON d.pedido_id = p.id
             WHERE p.estado = 'pagado' AND p.fecha BETWEEN $1 AND $2
-        """, desde, hasta) or 0)
+        """, desde, hasta))
+        ventas = to_float(vc["ventas"])
+        costo_ventas = to_float(vc["costo_ventas"])      # food cost (COGS) desde el POS
         cur = dict(await conn.fetchrow("""
             SELECT COUNT(*) AS n_pedidos, COALESCE(SUM(comensales), 0) AS comensales,
                    COALESCE(SUM(propina), 0) AS propinas
@@ -37,12 +40,17 @@ async def calcular_cierre_semanal(desde: date, hasta: date) -> dict:
         """, desde, hasta)
 
     n = int(cur["n_pedidos"])
-    resultado = round(ventas - gastos, 2)
+    margen_bruto = round(ventas - costo_ventas, 2)       # ventas - food cost
+    margen_pct = round(margen_bruto * 100 / ventas, 1) if ventas else 0
+    resultado = round(ventas - costo_ventas - gastos, 2)  # bruto menos gastos operativos
     return {
         "periodo": {"inicio": str(desde), "fin": str(hasta)},
         "totales": {
             "ventas": ventas,
             "cobrado": cobrado,
+            "costo_ventas": costo_ventas,
+            "margen_bruto": margen_bruto,
+            "margen_pct": margen_pct,
             "gastos": gastos,
             "resultado": resultado,
             "resultado_estado": "positivo" if resultado >= 0 else "negativo",

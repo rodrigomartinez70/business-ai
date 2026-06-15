@@ -228,7 +228,10 @@ def _sec_cierre(c: dict, cfg) -> str:
     rows = [
         ("Ventas de la semana", _fm(t["ventas"], cfg)),
         ("Cobrado", _fm(t["cobrado"], cfg)),
-        ("Gastos", _fm(t["gastos"], cfg)),
+        (f"Costo de ventas (food cost {t.get('margen_pct', 0) and round(100 - t['margen_pct'], 1)}%)",
+         _fm(t.get("costo_ventas", 0), cfg)),
+        (f"Margen bruto ({t.get('margen_pct', 0)}%)", _fm(t.get("margen_bruto", 0), cfg)),
+        ("Gastos operativos", _fm(t["gastos"], cfg)),
         (f"Resultado {'✅' if t['resultado_estado'] == 'positivo' else '🔴'}", _fm(t["resultado"], cfg)),
         ("Pedidos / Comensales", f"{t['n_pedidos']} / {t['comensales']}"),
         ("Ticket promedio", _fm(t["ticket_promedio"], cfg)),
