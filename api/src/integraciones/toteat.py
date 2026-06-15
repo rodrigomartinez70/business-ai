@@ -210,7 +210,7 @@ def _parse_venta(raw: dict) -> dict:
                  or raw.get("closeDate") or raw.get("operationDate") or raw.get("date"),
         "estado": "pagado",
         "mesa": raw.get("tableId") or raw.get("tableName") or raw.get("table"),
-        "canal": raw.get("zoneName") or raw.get("channel"),
+        "canal": _detectar_canal(raw, pagos),
         "comensales": int(raw.get("numberClients") or raw.get("guests") or raw.get("pax") or 1),
         "propina": float(raw.get("gratuity", 0) or 0) or sum(p["propina"] for p in pagos),
         "total": float(raw.get("total", 0) or 0) or sum(p["monto"] for p in pagos),
@@ -345,6 +345,33 @@ async def obtener_datos(creds: Optional[dict], desde: date, hasta: date,
 _CANAL_MAP = {"salon": "Salón", "salón": "Salón", "delivery": "Delivery",
               "takeaway": "Takeaway", "pickup": "Takeaway", "pos": "Salón"}
 
+# Plataformas de delivery (se reconocen por el medio de pago o el nombre del cliente).
+_APPS = {"ubereats": "Uber Eats", "uber": "Uber Eats", "rappi": "Rappi",
+         "pedidosya": "PedidosYa", "cornershop": "Cornershop", "justo": "Justo",
+         "didi": "DiDi Food"}
+
+
+def _detectar_canal(raw: dict, pagos: list) -> str:
+    """Canal de venta real de Toteat. La API no trae un campo 'channel', así que se
+    infiere: medio de pago de app > nombre de cliente con marca de app > mesa
+    'Virtual' (sin zona) = para llevar/delivery > Salón (presencial)."""
+    ch = (raw.get("channel") or "").strip().lower()      # camino mock (channel explícito)
+    if ch:
+        return {"salon": "Salón", "delivery": "Delivery", "takeaway": "Para llevar"}.get(ch, "Salón")
+    for p in pagos:                                       # plataforma por medio de pago
+        m = (p.get("medio") or "").lower().replace(" ", "")
+        for k, v in _APPS.items():
+            if k in m:
+                return v
+    cli = raw.get("client") or {}                         # plataforma marcada en el cliente
+    nombre = cli.get("firstName", "") if isinstance(cli, dict) else ""
+    for k, v in _APPS.items():
+        if k in (nombre or "").lower():
+            return v
+    if (raw.get("tableName") or "").lower() == "virtual" or not (raw.get("zoneName") or "").strip():
+        return "Para llevar / Delivery"
+    return "Salón"
+
 
 def _metodo_pago(medio: str) -> str:
     m = (medio or "").lower()
@@ -413,7 +440,7 @@ async def sincronizar(conn, tenant_id: str, desde: date, hasta: date,
     canal_cache: dict = {}
     n_ped = 0
     for v in data["ventas"]:
-        canal_nombre = _CANAL_MAP.get((v.get("canal") or "").lower(), "Salón")
+        canal_nombre = v.get("canal") or "Salón"   # ya resuelto en _parse_venta
         canal_id = await _ensure_id(
             conn, canal_cache, "canales_venta", canal_nombre,
             "INSERT INTO canales_venta (nombre) VALUES ($1) RETURNING id")
