@@ -27,6 +27,7 @@ from ..admin.auth import require_admin
 from .. import dashboard_users as du
 from ..finanzas.informe import calcular_informe, renderizar_informe_html
 from ..finanzas.dashboard_web import renderizar_dashboard_web
+from ..finanzas import categorizacion as cat
 from ..tenant import set_tenant, reset_tenant
 
 router = APIRouter(tags=["admin"])
@@ -678,6 +679,34 @@ async def borrar_dash_user(request: Request, tenant_id: str, uid: int,
                            _admin: str = Depends(require_admin)):
     await du.eliminar(uid)
     return await _tabla_dash_users(request, tenant_id)
+
+
+# ─────────────────────────────────────────────────────────────
+# Categorización de proveedores del RCV (compras → categoría OPEX)
+# ─────────────────────────────────────────────────────────────
+
+@router.get("/admin/tenants/{tenant_id}/proveedores", response_class=HTMLResponse)
+async def panel_proveedores(request: Request, tenant_id: str, _admin: str = Depends(require_admin)):
+    return _TEMPLATES.TemplateResponse(
+        "proveedores.html",
+        {"request": request, "tenant_id": tenant_id, "biz": _biz_de(tenant_id),
+         "proveedores": await cat.listar_proveedores(tenant_id),
+         "categorias": await cat.listar_categorias(tenant_id)})
+
+
+@router.post("/admin/tenants/{tenant_id}/proveedores", response_class=HTMLResponse)
+async def guardar_proveedor(request: Request, tenant_id: str, proveedor: str = Form(...),
+                            categoria: str = Form(""), es_comida: str = Form(""),
+                            _admin: str = Depends(require_admin)):
+    try:
+        await cat.guardar_regla(tenant_id, proveedor, categoria, es_comida in ("on", "true", "1"))
+    except cat.CatError:
+        pass
+    return _TEMPLATES.TemplateResponse(
+        "_proveedores_tabla.html",
+        {"request": request, "tenant_id": tenant_id,
+         "proveedores": await cat.listar_proveedores(tenant_id),
+         "categorias": await cat.listar_categorias(tenant_id)})
 
 
 @router.get("/api/admin/schedules")

@@ -231,17 +231,21 @@ async def _control_gastos_desde_rcv(conn, fecha_inicio, fecha_fin, prev_inicio, 
     que calcular_control_gastos, o None si no hay tabla/compras (sigue flujo normal)."""
     if not await conn.fetchval("SELECT to_regclass('documentos_tributarios')"):
         return None
+    # Excluir proveedores de comida (insumos = COGS, ya contados como food cost del POS).
+    filtro = _VALIDO_COMPRA
+    if await conn.fetchval("SELECT to_regclass('categorias_proveedor')"):
+        filtro += " AND proveedor NOT IN (SELECT proveedor FROM categorias_proveedor WHERE es_comida)"
     cat_rows = [dict(r) for r in await conn.fetch(f"""
         WITH actual AS (
             SELECT COALESCE(NULLIF(TRIM(categoria_gasto), ''), 'Sin clasificar') AS categoria,
                    SUM(monto_neto) AS monto, COUNT(*) AS n_gastos
             FROM documentos_tributarios
-            WHERE {_VALIDO_COMPRA} AND fecha BETWEEN $1 AND $2 GROUP BY 1),
+            WHERE {filtro} AND fecha BETWEEN $1 AND $2 GROUP BY 1),
         anterior AS (
             SELECT COALESCE(NULLIF(TRIM(categoria_gasto), ''), 'Sin clasificar') AS categoria,
                    SUM(monto_neto) AS monto
             FROM documentos_tributarios
-            WHERE {_VALIDO_COMPRA} AND fecha BETWEEN $3 AND $4 GROUP BY 1)
+            WHERE {filtro} AND fecha BETWEEN $3 AND $4 GROUP BY 1)
         SELECT COALESCE(a.categoria, p.categoria) AS categoria,
                COALESCE(a.monto, 0) AS monto_actual, COALESCE(a.n_gastos, 0) AS n_gastos,
                COALESCE(p.monto, 0) AS monto_anterior,
@@ -257,7 +261,7 @@ async def _control_gastos_desde_rcv(conn, fecha_inicio, fecha_fin, prev_inicio, 
                COALESCE(SUM(monto_neto) FILTER (WHERE fecha BETWEEN $3 AND $4), 0) AS total_anterior,
                COUNT(*) FILTER (WHERE fecha BETWEEN $1 AND $2) AS n_gastos_actual,
                COUNT(*) FILTER (WHERE fecha BETWEEN $3 AND $4) AS n_gastos_anterior
-        FROM documentos_tributarios WHERE {_VALIDO_COMPRA} AND fecha BETWEEN $3 AND $2
+        FROM documentos_tributarios WHERE {filtro} AND fecha BETWEEN $3 AND $2
     """, fecha_inicio, fecha_fin, prev_inicio, prev_fin))
     if not totales["total_actual"] and not totales["total_anterior"]:
         return None   # no hay compras en el rango → flujo normal (módulo vacío)
@@ -265,7 +269,7 @@ async def _control_gastos_desde_rcv(conn, fecha_inicio, fecha_fin, prev_inicio, 
     top_gastos = [dict(r) for r in await conn.fetch(f"""
         SELECT fecha, COALESCE(NULLIF(TRIM(categoria_gasto), ''), 'Sin clasificar') AS categoria,
                proveedor AS descripcion, monto_neto AS monto, proveedor
-        FROM documentos_tributarios WHERE {_VALIDO_COMPRA} AND fecha BETWEEN $1 AND $2
+        FROM documentos_tributarios WHERE {filtro} AND fecha BETWEEN $1 AND $2
         ORDER BY monto_neto DESC LIMIT 5
     """, fecha_inicio, fecha_fin)]
 

@@ -27,6 +27,16 @@ CREATE TABLE IF NOT EXISTS gastos (
     created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Reglas de categorización de proveedores del RCV (compras) → categoría OPEX.
+-- es_comida = insumo de comida (COGS) → se excluye del control de gastos.
+CREATE TABLE IF NOT EXISTS categorias_proveedor (
+    id         SERIAL PRIMARY KEY,
+    proveedor  VARCHAR(150) UNIQUE NOT NULL,
+    categoria  VARCHAR(100),
+    es_comida  BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS documentos_tributarios (
     id               SERIAL PRIMARY KEY,
     fecha            DATE NOT NULL,

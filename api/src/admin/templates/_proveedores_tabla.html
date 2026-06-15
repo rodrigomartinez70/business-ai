@@ -1,0 +1,33 @@
+<table id="prov-tabla" class="dt"{% if oob %} hx-swap-oob="true"{% endif %}>
+  <thead><tr><th>Proveedor</th><th>Compras</th><th>Total neto</th>
+    <th>Categoría (OPEX)</th><th>¿Comida?</th><th></th></tr></thead>
+  <tbody>
+    {% for p in proveedores %}
+    <tr>
+      <td><strong>{{ p.proveedor }}</strong></td>
+      <td>{{ p.n }}</td>
+      <td>${{ '{:,.0f}'.format(p.total or 0) }}</td>
+      <td>
+        <input type="hidden" name="proveedor" value="{{ p.proveedor }}">
+        <select name="categoria">
+          <option value="">— sin asignar —</option>
+          {% for c in categorias %}
+          <option value="{{ c }}" {{ 'selected' if c == p.categoria else '' }}>{{ c }}</option>
+          {% endfor %}
+        </select>
+      </td>
+      <td style="text-align:center;">
+        <input type="checkbox" name="es_comida" title="Insumo de comida (food cost) — se excluye de gastos"
+               {{ 'checked' if p.es_comida else '' }}>
+      </td>
+      <td>
+        <button class="mini ok" hx-post="/admin/tenants/{{ tenant_id }}/proveedores"
+                hx-include="closest tr" hx-target="#prov-tabla" hx-swap="outerHTML">Guardar</button>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" style="color:#9ca3af;">Sin compras cargadas. Subí el RCV de compras
+      (o conectá un ERP) para ver acá los proveedores y categorizarlos.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>

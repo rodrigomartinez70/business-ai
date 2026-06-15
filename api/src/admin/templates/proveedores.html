@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<title>MBI Admin — Proveedores de {{ biz }}</title>
+{% include "_head.html" %}
+</head>
+<body>
+{% include "_menu.html" %}
+<div class="wrap">
+  <header><h1>Categorización de proveedores</h1>
+    <p>{{ biz }} · <code>{{ tenant_id }}</code></p></header>
+
+  <section class="card">
+    <p style="color:#6b7280;font-size:13px;margin:0 0 6px;">
+      Asigná a cada proveedor del RCV de compras su <strong>categoría de gasto (OPEX)</strong>.
+      Marcá <strong>¿Comida?</strong> en los proveedores de insumos de comida: esos se
+      <strong>excluyen</strong> del Control de Gastos porque ya son <em>food cost</em> (COGS) del POS.</p>
+    <p style="color:#6b7280;font-size:13px;margin:0;">
+      Las reglas se guardan y se <strong>re-aplican solas</strong> en cada carga futura del RCV.</p>
+  </section>
+
+  <section class="card">
+    {% include "_proveedores_tabla.html" %}
+  </section>
+</div>
+</body>
+</html>

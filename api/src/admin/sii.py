@@ -92,6 +92,8 @@ async def subir_rcv(tenant_id: str, contenido: bytes, modo: str = "insertar") ->
     async with config.raw_pool.acquire() as conn:
         async with conn.transaction():
             insertados, actualizados = await _upsert_docs(conn, tenant_id, docs)
+            from ..finanzas.categorizacion import aplicar as _aplicar_cat
+            await _aplicar_cat(conn, tenant_id)        # categoriza por reglas de proveedor
     logger.info(f"[admin] RCV {res['meta']['clase']} cargado en {tenant_id}: "
                 f"{insertados} nuevos, {actualizados} actualizados")
     return {"modo": "insertar", "insertados": insertados, "actualizados": actualizados,
