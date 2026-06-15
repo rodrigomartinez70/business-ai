@@ -27,10 +27,15 @@ def _tablas(sql: str) -> set[str]:
 # equivalencia es: packs == schema del vertical ∪ marketing.sql.
 _MARKETING = _SRC.parent.parent / "postgres" / "marketing.sql"
 
+# Tablas horizontales nuevas que viven solo en el pack base (no en los schemas
+# legados de los verticales): se suman al conjunto esperado.
+_BASE_EXTRA = {"categorias_proveedor"}
+
 
 def _tablas_vertical(vertical: str) -> set[str]:
     return (_tablas((_SRC / "verticals" / vertical / "schema.sql").read_text())
-            | _tablas(_MARKETING.read_text()))
+            | _tablas(_MARKETING.read_text())
+            | _BASE_EXTRA)
 
 
 @pytest.mark.parametrize("vertical", ["restaurante", "hotel"])
