@@ -172,42 +172,47 @@ def _parse_producto(raw: dict) -> dict:
 
 
 def _parse_venta(raw: dict) -> dict:
-    """Normaliza una venta de /sales. Tolerante a campos ausentes (el detalle fino
-    del schema se afina con una respuesta real)."""
+    """Normaliza una venta de /sales al schema real de Toteat: pagos en
+    `paymentForms`, líneas en `products`, fecha en `dateClosed`, comensales en
+    `numberClients`. Mantiene fallbacks a los nombres antiguos por tolerancia."""
     pagos = []
-    for p in raw.get("payments", []) or []:
-        mid = p.get("paymentMethodId", p.get("id"))
+    for p in raw.get("paymentForms", raw.get("payments", []) or []) or []:
+        mid = p.get("id", p.get("paymentMethodId"))
         try:
             mid = int(mid) if mid is not None else None
         except (TypeError, ValueError):
             mid = None
         pagos.append({
             "medio_id": mid,
-            "medio": MEDIOS_PAGO.get(mid, p.get("paymentMethod") or "Otro"),
+            "medio": p.get("name") or MEDIOS_PAGO.get(mid, "Otro"),
             "monto": float(p.get("amount", p.get("total", 0)) or 0),
             "propina": float(p.get("tip", 0) or 0),
-            "fiscal_type": p.get("fiscalType"),  # 'NC' → montos en negativo
+            "fiscal_type": p.get("fiscalType"),
         })
     lineas = []
-    for ln in raw.get("line", raw.get("lines", []) or []) or []:
-        cant = float(ln.get("quantity", 1) or 1)
-        precio = float(ln.get("price", ln.get("unitPrice", 0)) or 0)
+    for ln in raw.get("products", raw.get("line", raw.get("lines", []) or [])) or []:
+        cant = float(ln.get("quantity", 1) or 1) or 1
+        neto = float(ln.get("netPrice", ln.get("price", ln.get("unitPrice", 0))) or 0)
+        pagado = float(ln.get("payed", neto) or neto)
+        costo = float(ln.get("unitCost", 0) or 0)            # costo REAL por línea
         lineas.append({
-            "producto": ln.get("productName", ln.get("name", "")),
-            "codigo": str(ln.get("productCode", ln.get("localCode", "")) or ""),
+            "producto": ln.get("name", ln.get("productName", "")),
+            "codigo": str(ln.get("id", ln.get("productCode", ln.get("localCode", ""))) or ""),
             "cantidad": cant,
-            "precio_unitario": precio,
-            "total": float(ln.get("total", precio * cant) or 0),
+            "precio_unitario": round(neto / cant, 2),
+            "costo_unitario": round(costo / cant, 2),
+            "total": pagado,
         })
     return {
         "order_id": str(raw.get("orderId", "") or ""),
-        "order_reference": str(raw.get("orderReference", "") or ""),
-        "fecha": raw.get("closeDate") or raw.get("operationDate") or raw.get("date"),
-        "estado": raw.get("orderStatus", "CLOSED"),
-        "mesa": raw.get("tableId") or raw.get("table"),
-        "canal": raw.get("channel"),
-        "comensales": int(raw.get("guests") or raw.get("pax") or raw.get("diners") or 1),
-        "propina": sum(p["propina"] for p in pagos) or float(raw.get("tip", 0) or 0),
+        "order_reference": str(raw.get("fiscalId", raw.get("orderReference", "")) or ""),
+        "fecha": raw.get("dateClosed") or raw.get("dateOpen")
+                 or raw.get("closeDate") or raw.get("operationDate") or raw.get("date"),
+        "estado": "pagado",
+        "mesa": raw.get("tableId") or raw.get("tableName") or raw.get("table"),
+        "canal": raw.get("zoneName") or raw.get("channel"),
+        "comensales": int(raw.get("numberClients") or raw.get("guests") or raw.get("pax") or 1),
+        "propina": float(raw.get("gratuity", 0) or 0) or sum(p["propina"] for p in pagos),
         "total": float(raw.get("total", 0) or 0) or sum(p["monto"] for p in pagos),
         "lineas": lineas,
         "pagos": pagos,
@@ -432,14 +437,17 @@ async def sincronizar(conn, tenant_id: str, desde: date, hasta: date,
         det_rows = []
         for ln in v["lineas"]:
             pid = prod_por_clave.get(ln["codigo"]) or prod_por_clave.get(ln["producto"])
+            # Costo real de la línea (/sales) > inventario/maestro > estimación.
+            costo_ln = (ln.get("costo_unitario") or costos_inv.get(ln["producto"])
+                        or round(ln["precio_unitario"] * FOOD_COST_PCT, 2))
             if pid is None:  # producto fuera del menú → crearlo al vuelo
-                costo_ln = costos_inv.get(ln["producto"]) or round(ln["precio_unitario"] * FOOD_COST_PCT, 2)
                 pid = await conn.fetchval(
                     "INSERT INTO productos (nombre, precio, costo, activo) VALUES ($1,$2,$3,TRUE) RETURNING id",
                     ln["producto"] or "Producto", ln["precio_unitario"], costo_ln)
                 prod_por_clave[ln["producto"]] = pid
                 prod_costo[pid] = costo_ln
-            det_rows.append((ped_id, pid, int(ln["cantidad"]), ln["precio_unitario"], prod_costo.get(pid, 0)))
+            det_rows.append((ped_id, pid, int(ln["cantidad"]), ln["precio_unitario"],
+                             costo_ln or prod_costo.get(pid, 0)))
         if det_rows:
             await conn.executemany(
                 "INSERT INTO detalle_pedido (pedido_id, producto_id, cantidad, precio_unitario, costo_unitario) "
