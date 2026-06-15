@@ -18,6 +18,10 @@ logger = logging.getLogger(__name__)
 UMBRAL_ALERTA_PCT   = 20   # ⚠️  variación ≥ 20%
 UMBRAL_CRITICO_PCT  = 50   # 🚨 variación ≥ 50%
 
+# Compras válidas del RCV (excluye pendientes/anuladas/rechazadas).
+_VALIDO_COMPRA = ("clase = 'compra' AND LOWER(COALESCE(estado, '')) NOT IN "
+                  "('pendiente_revision', 'anulado', 'anulada', 'rechazado', 'rechazada')")
+
 
 # ─────────────────────────────────────────────────────────────
 # Cálculo principal
@@ -32,6 +36,17 @@ async def calcular_control_gastos(
     prev_fin    = fecha_inicio - timedelta(days=1)
 
     async with config.db_pool.acquire() as conn:
+
+        # Sin gastos cargados (tabla `gastos` vacía) → usar compras del RCV
+        # (documentos_tributarios). El SII/ERP alimenta los gastos operativos.
+        hay_gastos = await conn.fetchval(
+            "SELECT EXISTS(SELECT 1 FROM gastos WHERE fecha BETWEEN $1 AND $2)",
+            prev_inicio, fecha_fin)
+        if not hay_gastos:
+            rcv = await _control_gastos_desde_rcv(
+                conn, fecha_inicio, fecha_fin, prev_inicio, prev_fin, dias)
+            if rcv is not None:
+                return rcv
 
         # 1. Resumen por categoría: período actual vs anterior
         cat_rows = [dict(r) for r in await conn.fetch("""
@@ -206,6 +221,90 @@ async def calcular_control_gastos(
             }
             for r in top_gastos
         ],
+    }
+
+
+async def _control_gastos_desde_rcv(conn, fecha_inicio, fecha_fin, prev_inicio, prev_fin, dias):
+    """Control de gastos desde las compras del RCV (documentos_tributarios, clase
+    'compra') cuando la tabla `gastos` está vacía. Agrupa por categoria_gasto (el
+    SII no categoriza → 'Sin clasificar'). Monto = neto. Devuelve el mismo shape
+    que calcular_control_gastos, o None si no hay tabla/compras (sigue flujo normal)."""
+    if not await conn.fetchval("SELECT to_regclass('documentos_tributarios')"):
+        return None
+    cat_rows = [dict(r) for r in await conn.fetch(f"""
+        WITH actual AS (
+            SELECT COALESCE(NULLIF(TRIM(categoria_gasto), ''), 'Sin clasificar') AS categoria,
+                   SUM(monto_neto) AS monto, COUNT(*) AS n_gastos
+            FROM documentos_tributarios
+            WHERE {_VALIDO_COMPRA} AND fecha BETWEEN $1 AND $2 GROUP BY 1),
+        anterior AS (
+            SELECT COALESCE(NULLIF(TRIM(categoria_gasto), ''), 'Sin clasificar') AS categoria,
+                   SUM(monto_neto) AS monto
+            FROM documentos_tributarios
+            WHERE {_VALIDO_COMPRA} AND fecha BETWEEN $3 AND $4 GROUP BY 1)
+        SELECT COALESCE(a.categoria, p.categoria) AS categoria,
+               COALESCE(a.monto, 0) AS monto_actual, COALESCE(a.n_gastos, 0) AS n_gastos,
+               COALESCE(p.monto, 0) AS monto_anterior,
+               CASE WHEN COALESCE(p.monto, 0) = 0 THEN NULL
+                    ELSE ROUND((COALESCE(a.monto, 0) - COALESCE(p.monto, 0)) * 100.0 / p.monto, 1)
+               END AS variacion_pct
+        FROM actual a FULL OUTER JOIN anterior p ON a.categoria = p.categoria
+        ORDER BY COALESCE(a.monto, 0) DESC
+    """, fecha_inicio, fecha_fin, prev_inicio, prev_fin)]
+
+    totales = dict(await conn.fetchrow(f"""
+        SELECT COALESCE(SUM(monto_neto) FILTER (WHERE fecha BETWEEN $1 AND $2), 0) AS total_actual,
+               COALESCE(SUM(monto_neto) FILTER (WHERE fecha BETWEEN $3 AND $4), 0) AS total_anterior,
+               COUNT(*) FILTER (WHERE fecha BETWEEN $1 AND $2) AS n_gastos_actual,
+               COUNT(*) FILTER (WHERE fecha BETWEEN $3 AND $4) AS n_gastos_anterior
+        FROM documentos_tributarios WHERE {_VALIDO_COMPRA} AND fecha BETWEEN $3 AND $2
+    """, fecha_inicio, fecha_fin, prev_inicio, prev_fin))
+    if not totales["total_actual"] and not totales["total_anterior"]:
+        return None   # no hay compras en el rango → flujo normal (módulo vacío)
+
+    top_gastos = [dict(r) for r in await conn.fetch(f"""
+        SELECT fecha, COALESCE(NULLIF(TRIM(categoria_gasto), ''), 'Sin clasificar') AS categoria,
+               proveedor AS descripcion, monto_neto AS monto, proveedor
+        FROM documentos_tributarios WHERE {_VALIDO_COMPRA} AND fecha BETWEEN $1 AND $2
+        ORDER BY monto_neto DESC LIMIT 5
+    """, fecha_inicio, fecha_fin)]
+
+    _f = to_float
+    total_actual, total_anterior = _f(totales["total_actual"]), _f(totales["total_anterior"])
+    variacion_total = (round((total_actual - total_anterior) * 100 / total_anterior, 1)
+                       if total_anterior > 0 else None)
+    categorias = [{"categoria": r["categoria"], "monto_actual": _f(r["monto_actual"]),
+                   "monto_anterior": _f(r["monto_anterior"]), "n_gastos": int(r["n_gastos"] or 0),
+                   "variacion_pct": float(r["variacion_pct"]) if r["variacion_pct"] is not None else None}
+                  for r in cat_rows]
+    alertas = []
+    for c in categorias:
+        pct = c["variacion_pct"]
+        if pct is None or c["monto_actual"] == 0:
+            continue
+        nivel = ("critico" if abs(pct) >= UMBRAL_CRITICO_PCT
+                 else "alerta" if abs(pct) >= UMBRAL_ALERTA_PCT else None)
+        if nivel:
+            alertas.append({"categoria": c["categoria"], "variacion_pct": pct,
+                            "monto_actual": c["monto_actual"], "monto_anterior": c["monto_anterior"],
+                            "nivel": nivel})
+    alertas.sort(key=lambda x: abs(x["variacion_pct"]), reverse=True)
+
+    return {
+        "periodo": {"inicio": str(fecha_inicio), "fin": str(fecha_fin), "dias": dias,
+                    "prev_inicio": str(prev_inicio), "prev_fin": str(prev_fin)},
+        "resumen": {"total_actual": total_actual, "total_anterior": total_anterior,
+                    "variacion_pct": variacion_total,
+                    "n_gastos_actual": int(totales["n_gastos_actual"] or 0),
+                    "n_gastos_ant": int(totales["n_gastos_anterior"] or 0)},
+        "categorias": categorias,
+        "alertas": alertas,
+        "sin_categoria": {"n": 0, "total": 0.0},
+        "proveedores_nuevos": [],
+        "top_gastos": [{"fecha": str(r["fecha"]), "categoria": r["categoria"],
+                        "descripcion": r["descripcion"], "monto": _f(r["monto"]),
+                        "proveedor": r["proveedor"]} for r in top_gastos],
+        "fuente": "rcv",
     }
 
 
